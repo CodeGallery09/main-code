@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flightpath — Scroll-Driven Cards</title>
+<meta name="description" content="Flightpath orchestrates LinkedIn, email and follow-up into engagement-aware, benchmarked outreach workflows for SMB sales teams.">
+<script>
+  document.documentElement.classList.add('js');
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('rm');
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F7F1E8; --surface:#FFFBF5; --surface-2:#F1E8DB;
+  --ink:#2B2118; --ink-2:#4A3E33; --muted:#6F6354;
+  --line:#E6DBCB; --line-strong:#D5C6B0;
+  --accent:#B24E26; --accent-ink:#8A3A19; --accent-soft:#F4DFD2;
+  --hl:#C9922E; --pos:#4F6B45; --pos-soft:#E3EBDD;
+  --shadow:rgb(60 38 20 / .28);
+  --btn-bg:#2B2118; --btn-ink:#FFFBF5; --btn-hover:#B24E26;
+  --glow-1:rgb(244 223 210 / .85); --glow-2:rgb(236 220 186 / .55);
+  --cta-bg:#F4E6D8;
+  --font-body:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --serif:"Instrument Serif",Georgia,serif;
+  --radius:14px; --radius-lg:20px; --card-r:18px;
+  --ease:cubic-bezier(.22,1,.36,1);
+  --nav-h:68px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:calc(var(--nav-h) + 16px);-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer}
+ul{list-style:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+::selection{background:var(--accent-soft);color:var(--accent-ink)}
+.wrap{width:100%;max-width:1200px;margin-inline:auto;padding-inline:20px}
+@media(min-width:768px){.wrap{padding-inline:32px}}
+.display{font-family:var(--serif);font-weight:400;letter-spacing:-.015em;line-height:1.02}
+.display em{font-style:italic;color:var(--accent)}
+.eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:16px;top:16px;z-index:100;background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:999px}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:46px;padding-inline:22px;border-radius:999px;font-size:14.5px;font-weight:500;white-space:nowrap;transition:background .2s var(--ease),color .2s var(--ease),border-color .2s var(--ease),transform .2s var(--ease)}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--btn-bg);color:var(--btn-ink);box-shadow:0 10px 24px -12px var(--btn-bg)}
+.btn-primary:hover{background:var(--btn-hover)}
+.btn-ghost{color:var(--ink)}
+.btn-ghost:hover{color:var(--accent)}
+.btn-line{border:1px solid var(--line-strong);color:var(--ink)}
+.btn-line:hover{background:var(--surface);border-color:var(--ink)}
+.btn svg{width:16px;height:16px;transition:transform .2s var(--ease)}
+.btn:hover svg{transform:translateX(3px)}
+.btn-sm{height:40px;padding-inline:18px;font-size:14px}
+
+/* ---------- nav ---------- */
+header.nav{position:sticky;top:0;z-index:50;border-bottom:1px solid transparent;transition:background .3s,border-color .3s}
+header.nav.solid{background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-color:var(--line)}
+.nav-in{height:var(--nav-h);display:flex;align-items:center;justify-content:space-between;gap:16px}
+.logo{display:inline-flex;align-items:center;gap:9px;font-weight:600;font-size:18px;letter-spacing:-.01em}
+.logo-mark{width:26px;height:26px;border-radius:8px;background:var(--accent);display:grid;place-items:center}
+.logo-mark svg{width:15px;height:15px;color:#fff}
+.nav-links{display:none;gap:4px}
+.nav-links a{padding:8px 14px;border-radius:999px;font-size:14.5px;color:var(--ink-2);transition:background .2s,color .2s}
+.nav-links a:hover{background:var(--surface-2);color:var(--ink)}
+.nav-cta{display:flex;align-items:center;gap:6px}
+.nav-cta .signin{padding:8px 14px;font-size:14.5px;color:var(--ink-2);border-radius:999px}
+.nav-cta .signin:hover{background:var(--surface-2);color:var(--ink)}
+@media(min-width:860px){.nav-links{display:flex}}
+
+/* ---------- scene rail ---------- */
+.rail{position:fixed;right:16px;top:50%;transform:translateY(-50%);z-index:40;display:none;flex-direction:column;gap:14px}
+@media(min-width:1320px){.rail{display:flex}}
+.rail a{position:relative;width:9px;height:9px;border-radius:50%;background:var(--line-strong);transition:background .3s,transform .3s var(--ease)}
+.rail a::before{content:"";position:absolute;inset:-7px}
+.rail a.on{background:var(--accent);transform:scale(1.55)}
+.rail a span{position:absolute;right:22px;top:50%;transform:translateY(-50%);white-space:nowrap;font-family:var(--font-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;background:var(--ink);color:var(--bg);padding:4px 10px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity .2s}
+.rail a:hover span,.rail a:focus-visible span{opacity:1}
+
+/* =====================================================================
+   CARD SYSTEM
+   .slot  = empty placeholder in the page flow (defines where a card rests)
+   .pc    = one persistent card in the fixed layer; JS interpolates it
+            between slots, driven by scroll
+   .face  = the content a card shows in one scene (crossfaded while morphing)
+   ===================================================================== */
+.slot{position:relative;width:100%;height:var(--h,150px)}
+.slot > .face{position:absolute;inset:0;overflow:hidden}
+/* no-JS / reduced-motion: the slot itself is the card surface */
+.slot{background:var(--surface);border:1px solid var(--line);border-radius:var(--card-r);box-shadow:0 1px 0 rgb(0 0 0/.02),0 22px 44px -26px var(--shadow);overflow:hidden}
+/* JS enhanced: hide static slots (cards are drawn by the fixed layer instead) */
+.js:not(.rm) .slot{background:none;border:0;box-shadow:none;overflow:visible}
+.js:not(.rm) .slot > .face{visibility:hidden}
+
+.cards-layer{position:fixed;inset:0;z-index:20;pointer-events:none;overflow:hidden}
+.pc{position:absolute;left:0;top:0;border-radius:var(--card-r);background:var(--surface);box-shadow:0 1px 0 rgb(0 0 0/.02),0 22px 44px -26px var(--shadow);will-change:transform,opacity,width,height;visibility:hidden}
+.pc-lift{position:absolute;inset:0;border-radius:inherit;box-shadow:0 40px 80px -30px var(--shadow);opacity:0;pointer-events:none}
+.pc-clip{position:absolute;inset:0;border-radius:inherit;overflow:hidden}
+.pc-clip::after{content:"";position:absolute;inset:0;border:1px solid var(--line);border-radius:inherit;pointer-events:none;z-index:5}
+.pc .face{position:absolute;left:50%;top:50%;opacity:0;transform-origin:50% 50%;pointer-events:none;will-change:transform,opacity}
+.pc .face[data-interactive]{pointer-events:none}
+.pc .face.hit{pointer-events:auto}
+
+.face{display:block;text-align:left;color:var(--ink)}
+
+/* ---------- face: stat (hero) ---------- */
+.f-stat{padding:16px 18px;display:flex;flex-direction:column}
+.imp-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.imp-label{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.imp-tag{font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border:1px dashed var(--line-strong);border-radius:999px;padding:1px 7px;flex-shrink:0}
+.imp-val{margin-top:8px;font-family:var(--serif);font-size:clamp(1.9rem,3.2vw,2.5rem);letter-spacing:-.01em;line-height:1;display:flex;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums}
+.imp-val small{font-family:var(--font-body);font-size:13px;font-weight:600;color:var(--pos);letter-spacing:0}
+.imp-note{margin-top:6px;font-size:12.5px;color:var(--muted)}
+.f-stat .grow{margin-top:auto}
+.spark{display:block;width:100%;height:30px}
+.bar{height:6px;border-radius:999px;background:var(--line);position:relative;overflow:hidden}
+.bar i{position:absolute;inset:0;transform-origin:left;border-radius:inherit;background:var(--pos)}
+.chip{display:inline-flex;align-items:center;gap:6px;margin-top:12px;border-radius:999px;background:var(--pos-soft);color:var(--pos);padding:4px 11px;font-family:var(--font-mono);font-size:11.5px;align-self:flex-start}
+.chip svg{width:12px;height:12px}
+.dots{display:flex;gap:6px}
+.dots i{width:9px;height:9px;border-radius:50%;background:var(--line-strong)}
+.dots i.f{background:var(--accent)}
+.dots i.h{background:linear-gradient(90deg,var(--accent) 20%,var(--line-strong) 20%)}
+.mono-s{font-family:var(--font-mono);font-size:10.5px;color:var(--muted)}
+
+/* ---------- face: journey ---------- */
+.f-journey{display:flex;flex-direction:column}
+.jcard-head{display:flex;align-items:center;justify-content:space-between;padding:13px 20px;border-bottom:1px solid var(--line)}
+.live{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:11.5px;color:var(--pos)}
+.live i{width:7px;height:7px;border-radius:50%;background:var(--pos);box-shadow:0 0 0 4px var(--pos-soft)}
+.lead{display:flex;align-items:center;gap:14px;padding:18px 20px 6px}
+.avatar{width:44px;height:44px;border-radius:50%;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-weight:600;font-size:14px;flex-shrink:0}
+.lead b{display:block;font-weight:600}
+.lead span{font-size:13.5px;color:var(--muted)}
+.steps{padding:12px 20px 4px;position:relative}
+.step{display:grid;grid-template-columns:40px 1fr;gap:14px;padding-bottom:12px;position:relative;opacity:.35;transition:opacity .5s var(--ease)}
+.step.on{opacity:1}
+.step::before{content:"";position:absolute;left:19px;top:40px;bottom:-2px;width:2px;background:var(--line)}
+.step:last-child::before{display:none}
+.step .ico{width:40px;height:40px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;position:relative;z-index:1}
+.step:not(.on) .ico{background:var(--line-strong)}
+.step.go .ico{background:var(--pos)}
+.ico svg{width:18px;height:18px}
+.step .box{border:1px solid var(--line);border-radius:12px;padding:11px 14px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;background:var(--surface)}
+.step.go.on .box{background:var(--pos-soft);border-color:color-mix(in srgb,var(--pos) 30%,var(--line))}
+.box b{display:block;font-weight:500;font-size:14.5px}
+.box span.d{font-size:13px;color:var(--muted)}
+.badge{flex-shrink:0;font-family:var(--font-mono);font-size:11px;color:var(--pos);background:var(--pos-soft);border-radius:999px;padding:3px 10px;opacity:0;transition:opacity .4s .15s;text-align:right}
+.step.done .badge{opacity:1}
+.score{margin:6px 20px 20px;padding:14px 16px;border-radius:12px;background:var(--surface-2);border:1px solid var(--line)}
+.score-top{display:flex;justify-content:space-between;align-items:baseline}
+.score-top .n{font-weight:600;font-size:18px;font-variant-numeric:tabular-nums}
+.track{position:relative;height:7px;border-radius:999px;background:var(--line);margin-top:10px}
+.track i{position:absolute;inset:0;border-radius:inherit;background:var(--pos);transform-origin:left;transform:scaleX(.18);transition:transform .9s var(--ease)}
+.track u{position:absolute;left:70%;top:-4px;bottom:-4px;width:2px;background:var(--ink-2);opacity:.6}
+.score p{margin-top:9px;font-size:12.5px;color:var(--muted)}
+
+/* ---------- face: panels (status quo vs flightpath) ---------- */
+.f-panel{padding:28px}
+.f-bad{background:var(--surface-2)}
+.f-panel h3{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:500}
+.f-bad h3{color:color-mix(in srgb,var(--hl) 55%,var(--ink))}
+.f-good h3{color:var(--pos)}
+.tools{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}
+.tool{border:1px solid var(--line-strong);border-radius:999px;padding:7px 14px;font-size:13.5px;background:var(--surface);transform:rotate(var(--r,0deg))}
+.quotes{margin-top:22px;display:grid;gap:9px}
+.quote{border-left:3px solid var(--hl);padding:2px 0 2px 13px;font-size:14.5px;color:var(--ink-2)}
+.flow-one{margin-top:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.flow-one span.n{display:inline-flex;border-radius:999px;background:var(--accent-soft);color:var(--accent-ink);padding:7px 14px;font-size:13.5px;font-weight:500}
+.flow-one i{color:var(--muted);font-style:normal}
+.f-good p.t{margin-top:22px;font-size:15.5px;color:var(--ink-2)}
+.f-good h4{margin-top:22px;font-family:var(--serif);font-weight:400;font-size:1.7rem;line-height:1.1;letter-spacing:-.015em}
+
+/* ---------- face: how-it-works step ---------- */
+.f-how{padding:24px;display:flex;flex-direction:column}
+.f-how .k{font-family:var(--font-mono);font-size:12px;color:var(--accent)}
+.f-how h3{margin-top:14px;font-size:19px;font-weight:600;line-height:1.25}
+.f-how p{margin-top:10px;font-size:14.5px;color:var(--ink-2);flex:1}
+.tags{display:flex;flex-wrap:wrap;gap:7px;margin-top:18px}
+.tags span{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);border:1px solid var(--line-strong);border-radius:999px;padding:3px 10px}
+
+/* ---------- face: approval mode (interactive) ---------- */
+button.f-mode{width:100%;border:0;background:var(--surface);font:inherit;padding:24px;display:flex;flex-direction:column;align-items:flex-start;cursor:pointer;transition:background .3s}
+.f-mode:hover{background:color-mix(in srgb,var(--surface) 60%,var(--surface-2))}
+.f-mode:focus-visible{outline-offset:-4px;border-radius:var(--card-r)}
+.f-mode .mt{display:flex;justify-content:space-between;align-items:center;width:100%}
+.f-mode .mtag{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent-soft);border-radius:999px;padding:2px 10px}
+.f-mode .mname{margin-top:14px;font-family:var(--serif);font-size:2rem;line-height:1.05;letter-spacing:-.015em}
+.f-mode .mdesc{margin-top:10px;font-size:14.5px;color:var(--ink-2);flex:1}
+.f-mode .mmeta{margin-top:16px;font-family:var(--font-mono);font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.f-mode .mmeta i{width:8px;height:8px;border-radius:50%;background:var(--line-strong)}
+.f-mode .mpick{position:absolute;right:20px;bottom:20px;width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line-strong);display:grid;place-items:center;color:transparent;font-size:13px;transition:all .3s var(--ease)}
+.f-mode[aria-pressed="true"]{background:color-mix(in srgb,var(--accent-soft) 45%,var(--surface))}
+.f-mode[aria-pressed="true"] .mpick{background:var(--accent);border-color:var(--accent);color:#fff}
+.f-mode[aria-pressed="true"] .mmeta i{background:var(--accent)}
+.f-mode[aria-pressed="true"]::after{content:"";position:absolute;inset:0;border:2px solid var(--accent);border-radius:var(--card-r);pointer-events:none}
+.mode-note{margin:34px auto 0;max-width:42rem;text-align:center;font-size:15px;color:var(--ink-2);min-height:3em}
+.mode-note b{font-weight:600;color:var(--ink)}
+
+/* ---------- face: dashboard ---------- */
+.f-dash{display:flex;flex-direction:column}
+.dash-bar{display:flex;flex-wrap:wrap;gap:8px 16px;justify-content:space-between;align-items:center;padding:14px 22px;border-bottom:1px solid var(--line)}
+.dash-bar .note{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted)}
+.dash-bar .note svg{width:14px;height:14px;color:var(--accent);flex-shrink:0}
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-bottom:1px solid var(--line)}
+@media(min-width:900px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.kpi{padding:22px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.kpi:nth-child(2n){border-right:0}
+@media(min-width:900px){.kpi{border-bottom:0}.kpi:nth-child(2n){border-right:1px solid var(--line)}.kpi:last-child{border-right:0}}
+.kpi .v{margin-top:8px;font-family:var(--serif);font-size:2.4rem;letter-spacing:-.015em;line-height:1;font-variant-numeric:tabular-nums}
+.kpi .n{margin-top:6px;font-size:12.5px;color:var(--muted)}
+.dash-body{display:grid;grid-template-columns:minmax(0,1fr);flex:1}
+@media(min-width:900px){.dash-body{grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr)}}
+.dash-body>div{padding:24px 24px 28px}
+@media(min-width:900px){.dash-body>div:first-child{border-right:1px solid var(--line)}}
+.dash-body h4{font-family:var(--font-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:500;color:var(--muted)}
+.fun{margin-top:18px;display:grid;gap:11px}
+.fun-row{display:grid;grid-template-columns:92px minmax(0,1fr) 52px;gap:12px;align-items:center;font-size:13.5px}
+.fun-row .b{height:22px;border-radius:7px;background:var(--surface-2);overflow:hidden}
+.fun-row .b i{display:block;height:100%;width:var(--w);border-radius:7px;background:var(--accent);transform-origin:left;transform:scaleX(0);transition:transform 1.1s var(--ease);transition-delay:var(--d,0ms)}
+.fun-row.drop .b i{background:var(--hl)}
+.f-dash.in .fun-row .b i{transform:scaleX(1)}
+.fun-row .nn{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.drop-note{margin-top:14px;font-size:12.5px;color:var(--muted)}
+.bench{margin-top:18px;display:grid;gap:22px}
+.bench-row .top{display:flex;justify-content:space-between;font-size:13.5px}
+.bench-row .top span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
+.btrack{position:relative;height:8px;border-radius:999px;background:var(--surface-2);margin-top:10px}
+.btrack .range{position:absolute;top:0;bottom:0;border-radius:999px;background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.btrack .dot{position:absolute;top:50%;width:14px;height:14px;border-radius:50%;background:var(--accent);border:3px solid var(--surface);box-shadow:0 0 0 1px var(--accent);transform:translate(-50%,-50%) scale(0);transition:transform .5s var(--ease) .9s}
+.btrack .dot.low{background:var(--hl);box-shadow:0 0 0 1px var(--hl)}
+.f-dash.in .btrack .dot{transform:translate(-50%,-50%) scale(1)}
+.bench-row small{display:block;margin-top:8px;font-size:12px;color:var(--muted)}
+
+/* ---------- face: closing CTA ---------- */
+.f-cta{background:var(--cta-bg);padding:48px 28px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.f-cta::before{content:"";position:absolute;inset:0;background:radial-gradient(520px 300px at 50% 0%,var(--glow-1),transparent 70%);pointer-events:none}
+.f-cta>*{position:relative}
+.f-cta h2{font-size:clamp(2rem,4.6vw,3.4rem);max-width:15ch;margin:16px auto 0;text-wrap:balance}
+.f-cta .lede{margin:20px auto 0;max-width:30rem;font-size:16.5px;color:var(--ink-2)}
+.cta-row{display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:center;margin-top:30px}
+.f-cta .fine2{margin-top:18px;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+
+/* ---------- slot sizes (the geometry each card rests in) ---------- */
+.s-stat{--h:140px}
+.s-journey{--h:560px}
+.s-bad{--h:480px}
+.s-good{--h:440px}
+.s-how{--h:320px}
+.s-mode{--h:300px}
+.s-dash{--h:960px}
+.s-cta{--h:600px}
+@media(max-width:599px){.s-stat{--h:178px}.s-journey{--h:700px}.s-dash{--h:1060px}.s-cta{--h:620px}}
+@media(min-width:900px){
+  .s-stat{--h:152px}
+  .s-journey{--h:510px}
+  .s-bad,.s-good{--h:370px}
+  .s-how{--h:350px}
+  .s-mode{--h:290px}
+  .s-dash{--h:530px}
+  .s-cta{--h:460px}
+}
+
+/* ---------- hero ---------- */
+.hero{position:relative;overflow:hidden}
+.hero-glow{position:absolute;inset:0;pointer-events:none;background:
+  radial-gradient(900px 520px at 50% 34%,var(--glow-1),transparent 70%),
+  radial-gradient(520px 380px at 12% 8%,var(--glow-2),transparent 70%),
+  radial-gradient(520px 380px at 90% 12%,var(--glow-2),transparent 70%)}
+.stage{position:relative;display:flex;flex-direction:column;gap:28px;padding-block:44px 56px}
+.center{order:-1;text-align:center;display:flex;flex-direction:column;align-items:center;padding-block:12px}
+.center h1{font-size:clamp(2.6rem,6.4vw,4.7rem);max-width:15ch;text-wrap:balance}
+.center h1 .u{position:relative;display:inline-block}
+.center h1 .u svg{position:absolute;left:-1%;bottom:-.14em;width:102%;height:.24em;overflow:visible;color:var(--hl)}
+.cta-row.hero-cta{margin-top:34px}
+.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.row .slot:nth-child(3){grid-column:1/-1;max-width:calc(50% - 7px);justify-self:center}
+.hero-foot{text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+.hide-s{display:none}
+@media(max-width:899px){.imp-tag{display:none}.f-stat{padding:14px}}
+@media(min-width:900px){
+  .stage{display:block;padding-block:56px 56px}
+  .row{grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;align-items:start}
+  .row .slot:nth-child(3){grid-column:auto;max-width:none;justify-self:end}
+  .center{padding-block:56px 52px}
+  .row .slot{max-width:310px}
+  .row.top .slot:nth-child(1){margin-top:6px}
+  .row.top .slot:nth-child(2){margin-top:-6px;justify-self:center}
+  .row.top .slot:nth-child(3){margin-top:12px}
+  .row.bottom .slot:nth-child(1){margin-left:2%}
+  .row.bottom .slot:nth-child(2){margin-top:14px;justify-self:center}
+  .row.bottom .slot:nth-child(3){margin-right:2%}
+  .hide-s{display:block}
+}
+
+/* ---------- reveal ---------- */
+.js .reveal{opacity:0;transform:translateY(16px);transition:opacity .7s var(--ease),transform .7s var(--ease);transition-delay:var(--d,0ms)}
+.js .reveal.in{opacity:1;transform:none}
+
+/* ---------- scenes ---------- */
+.scene{position:relative}
+section.s{padding-block:88px}
+@media(min-width:900px){section.s{padding-block:120px}}
+.sh{max-width:46rem}
+.sh.c{margin-inline:auto;text-align:center}
+.sh h2{font-size:clamp(2.1rem,4.6vw,3.6rem);margin-top:14px}
+.sh p.lede{margin-top:18px;font-size:17px;color:var(--ink-2);max-width:36rem}
+.sh.c p.lede{margin-inline:auto}
+.tint{background:color-mix(in srgb,var(--surface) 60%,transparent);border-block:1px solid var(--line)}
+
+/* journey (sticky on large screens; card is pinned while steps advance) */
+.journey{position:relative;height:300vh;border-top:1px solid var(--line)}
+.journey-pin{position:sticky;top:0;min-height:100vh;display:flex;align-items:center;padding-block:calc(var(--nav-h) + 12px) 24px}
+.journey.unpinned{height:auto}
+.journey.unpinned .journey-pin{position:static;min-height:0;padding-block:80px}
+.journey-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:28px;align-items:center;width:100%}
+@media(min-width:960px){.journey-grid{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:64px}}
+.journey h2{font-size:clamp(2rem,4.2vw,3.3rem);margin-top:14px}
+.journey .lede{margin-top:16px;color:var(--ink-2);max-width:30rem;font-size:16.5px}
+.events{margin-top:26px;border-top:1px solid var(--line)}
+.events li{display:grid;grid-template-columns:54px 1fr;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);font-family:var(--font-mono);font-size:12.5px;color:var(--muted);opacity:.38;transition:opacity .45s var(--ease),color .45s}
+.events li.on{opacity:1;color:var(--ink)}
+.events li b{font-weight:500;color:var(--accent)}
+
+/* status quo */
+.duo{display:grid;grid-template-columns:minmax(0,1fr);gap:22px;margin-top:56px}
+@media(min-width:900px){.duo{grid-template-columns:repeat(2,minmax(0,1fr));gap:28px}}
+.pains{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;margin-top:44px}
+@media(min-width:760px){.pains{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.pain{border-top:2px solid var(--line-strong);padding-top:14px}
+.pain .k{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;color:var(--accent);text-transform:uppercase}
+.pain h5{margin-top:8px;font-size:16.5px;font-weight:600;line-height:1.3}
+.pain p{margin-top:6px;font-size:14.5px;color:var(--ink-2)}
+
+/* how it works */
+.quad{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;margin-top:56px}
+@media(min-width:760px){.quad{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:1100px){.quad{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+/* approval */
+.trio{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;margin-top:56px}
+@media(min-width:900px){.trio{grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}}
+
+/* outcomes + cta */
+.solo{margin-top:52px}
+.fine{margin-top:22px;max-width:42rem;font-size:12.5px;color:var(--muted)}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--line);position:relative;z-index:1}
+.foot{display:grid;grid-template-columns:minmax(0,1fr);gap:36px;padding-block:56px}
+@media(min-width:800px){.foot{grid-template-columns:1.4fr 1fr 1fr}}
+.foot p.about{margin-top:14px;max-width:20rem;font-size:14px;color:var(--muted)}
+.foot ul{margin-top:14px;display:grid;gap:10px;font-size:14px}
+.foot ul a{color:var(--ink-2)}
+.foot ul a:hover{color:var(--accent)}
+.legal{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-block:22px;font-size:12.5px;color:var(--muted)}
+@media(min-width:700px){.legal{flex-direction:row;justify-content:space-between}}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition-duration:0s!important;transition-delay:0s!important}
+  html{scroll-behavior:auto}
+  .js .reveal{opacity:1;transform:none}
+  .journey{height:auto}
+  .journey-pin{position:static;min-height:0;padding-block:96px}
+  .fun-row .b i{transform:scaleX(1)}
+  .btrack .dot{transform:translate(-50%,-50%) scale(1)}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="nav">
+  <nav class="wrap nav-in" aria-label="Primary">
+    <a class="logo" href="#top" aria-label="Flightpath home">
+      <span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18c4-1 6-6 9-9 2-2 4-3 7-4-1 3-2 5-4 7-3 3-8 5-12 6z"/></svg></span>
+      Flightpath
+    </a>
+    <ul class="nav-links">
+      <li><a href="#product">Product</a></li>
+      <li><a href="#how-it-works">How it works</a></li>
+      <li><a href="#why">Why Flightpath</a></li>
+    </ul>
+    <div class="nav-cta">
+      <a class="signin" href="#">Sign in</a>
+      <a class="btn btn-primary btn-sm" href="#demo">Book a demo</a>
+    </div>
+  </nav>
+</header>
+
+<nav class="rail" id="rail" aria-label="Story sections">
+  <a href="#top"><span>Overview</span></a>
+  <a href="#journey"><span>One lead</span></a>
+  <a href="#why"><span>The problem</span></a>
+  <a href="#how-it-works"><span>How it works</span></a>
+  <a href="#approval"><span>Approval</span></a>
+  <a href="#product"><span>Outcomes</span></a>
+  <a href="#demo"><span>Book a demo</span></a>
+</nav>
+
+<main id="main">
+
+<!-- ============ SCENE 0 · HERO — six cards ============ -->
+<section class="scene hero" id="top" data-scene="0" aria-labelledby="hero-title">
+  <div class="hero-glow" aria-hidden="true"></div>
+  <div class="wrap stage">
+    <div class="row top">
+      <div class="slot s-stat" data-scene="0" data-card="0" data-rot="-4">
+        <article class="face f-stat">
+          <div class="imp-head"><span class="imp-label">Leads in motion</span><span class="imp-tag">Sample</span></div>
+          <div class="imp-val"><span data-count="1284">1,284</span></div>
+          <p class="imp-note">across 3 workflows</p>
+          <svg class="spark grow" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path d="M0,24 L11,21 L22,22 L33,16 L44,15 L55,16 L66,10 L77,8 L88,9 L100,4" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>
+        </article>
+      </div>
+      <div class="slot s-stat" data-scene="0" data-card="1" data-rot="2.5">
+        <article class="face f-stat">
+          <div class="imp-head"><span class="imp-label">Positive reply rate</span><span class="imp-tag">Sample</span></div>
+          <div class="imp-val"><span data-count="6.4" data-dec="1" data-suf="%">6.4%</span><small>↗</small></div>
+          <p class="imp-note">benchmark range 4–7%</p>
+          <div class="bar grow" aria-hidden="true"><i style="transform:scaleX(.64)"></i></div>
+        </article>
+      </div>
+      <div class="slot s-stat" data-scene="0" data-card="2" data-rot="3.5">
+        <article class="face f-stat">
+          <div class="imp-head"><span class="imp-label">Meetings booked</span><span class="imp-tag">Sample</span></div>
+          <div class="imp-val"><span data-count="38">38</span><small>↗</small></div>
+          <p class="imp-note">last 30 days</p>
+          <svg class="spark grow" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path d="M0,26 L12,24 L24,24 L36,18 L48,20 L60,13 L72,10 L84,12 L100,5" fill="none" stroke="var(--pos)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>
+        </article>
+      </div>
+    </div>
+
+    <div class="center">
+      <h1 id="hero-title" class="display reveal">Your GTM motion, <em class="u">on autopilot.<svg viewBox="0 0 300 24" preserveAspectRatio="none" aria-hidden="true"><path d="M2 17 C 60 7, 110 4, 160 11 S 250 22, 298 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".75"/></svg></em></h1>
+      <div class="cta-row hero-cta reveal" style="--d:140ms">
+        <a class="btn btn-primary" href="#demo">Book a demo <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="btn btn-ghost" href="#journey">Scroll to follow one lead <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </div>
+    </div>
+
+    <div class="row bottom">
+      <div class="slot s-stat" data-scene="0" data-card="3" data-rot="-3">
+        <article class="face f-stat">
+          <div class="imp-head"><span class="imp-label">Touches to meeting</span><span class="imp-tag">Sample</span></div>
+          <div class="imp-val"><span data-count="4.2" data-dec="1">4.2</span></div>
+          <p class="imp-note">median across workflows</p>
+          <div class="dots grow" aria-hidden="true"><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i class="h"></i><i></i><i></i></div>
+        </article>
+      </div>
+      <div class="slot s-stat" data-scene="0" data-card="4" data-rot="2">
+        <article class="face f-stat">
+          <div class="imp-head"><span class="imp-label">Engagement score</span><span class="imp-tag">Sample</span></div>
+          <div class="imp-val"><span data-count="76">76</span></div>
+          <p class="imp-note">Route to a call when score &gt; 70</p>
+          <div class="bar grow" aria-hidden="true"><i style="transform:scaleX(.76)"></i></div>
+        </article>
+      </div>
+      <div class="slot s-stat" data-scene="0" data-card="5" data-rot="-2.5">
+        <article class="face f-stat">
+          <div class="imp-head"><span class="imp-label">Next action</span><span class="imp-tag">Sample</span></div>
+          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>Call task → owner</span>
+          <p class="imp-note">Chosen by engagement, not a timer</p>
+          <span class="mono-s grow">trigger · score 76 &gt; 70</span>
+        </article>
+      </div>
+    </div>
+    <p class="hero-foot reveal">Illustrative sample data, not customer results.</p>
+  </div>
+</section>
+
+<!-- ============ SCENE 1 · ONE LEAD — six cards merge into one ============ -->
+<section class="scene journey" id="journey" data-scene="1" aria-labelledby="journey-title">
+  <div class="journey-pin">
+    <div class="wrap journey-grid">
+      <div>
+        <p class="eyebrow">Scroll · one lead's journey</p>
+        <h2 id="journey-title" class="display">One lead. One flow. <em>Every next step earned.</em></h2>
+        <p class="lede">Flightpath runs LinkedIn, email and follow-up as a single sequence. What the lead does decides what happens next.</p>
+        <ul class="events" id="events" aria-label="Event stream (sample)">
+          <li><span>09:12</span><span><b>LinkedIn</b> connection request sent</span></li>
+          <li><span>11:47</span><span><b>Accepted</b> → email step queued</span></li>
+          <li><span>14:03</span><span><b>Email opened</b> (2nd time)</span></li>
+          <li><span>14:05</span><span><b>Clicked /pricing</b> → threshold crossed</span></li>
+          <li><span>14:05</span><span><b>Call task</b> created for owner</span></li>
+        </ul>
+      </div>
+      <div class="slot s-journey" data-scene="1" data-card="0">
+        <div class="face f-journey" role="img" aria-label="Sample lead journey: a LinkedIn connection is accepted, an email is opened twice and clicked, and the engagement score crosses 70, which creates a call task for the owner.">
+          <div class="jcard-head"><span class="eyebrow">Lead journey <span style="text-transform:none;letter-spacing:0;margin-left:8px">Outbound · ICP-A</span></span><span class="live"><i></i>Live</span></div>
+          <div class="lead"><div class="avatar">MR</div><div><b>Maya Reyes</b><span>Head of RevOps · Example Co. (sample lead)</span></div></div>
+          <div class="steps">
+            <div class="step" data-at="0" data-done="1"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 11v5M8 8v.01M12 16v-5M12 13a3 3 0 016 0v3"/></svg></div><div class="box"><div><b>LinkedIn</b><span class="d">Connection request</span></div><span class="badge">✓ Accepted</span></div></div>
+            <div class="step" data-at="1" data-done="3"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></div><div class="box"><div><b>Email · step 2</b><span class="d">“Quick question on rep handoffs”</span></div><span class="badge">✓ Opened ×2 · Clicked</span></div></div>
+            <div class="step go" data-at="3" data-done="4"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg></div><div class="box"><div><b>Next action</b><span class="d">Chosen by engagement, not a timer</span></div><span class="badge">✓ Call task → owner</span></div></div>
+          </div>
+          <div class="score"><div class="score-top"><span class="eyebrow">Engagement score</span><span class="n" id="score">18</span></div><div class="track"><i id="track"></i><u></u></div><p>Route to a call when score &gt; 70</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SCENE 2 · FRAGMENTED — one card splits into two ============ -->
+<section class="scene s" id="why" data-scene="2" aria-labelledby="why-title">
+  <div class="wrap">
+    <div class="sh c reveal">
+      <p class="eyebrow">Why Flightpath · The status quo</p>
+      <h2 id="why-title" class="display">Outbound is fragmented, manual, and <em>broken.</em></h2>
+      <p class="lede">See what a rep's day actually looks like, then watch it untangle.</p>
+    </div>
+    <div class="duo">
+      <div class="slot s-bad" data-scene="2" data-card="0">
+        <article class="face f-panel f-bad">
+          <h3>Today · five tools, five clocks</h3>
+          <div class="tools" aria-hidden="true">
+            <span class="tool" style="--r:-3deg">Lead lists</span><span class="tool" style="--r:2deg">Sequencer</span><span class="tool" style="--r:-1.5deg">LinkedIn</span><span class="tool" style="--r:3deg">Call list</span><span class="tool" style="--r:-2deg">CRM</span>
+          </div>
+          <div class="quotes">
+            <p class="quote">12 tabs open, lost track of Priya's thread.</p>
+            <p class="quote">Omar opened the email 3×. Call, DM, or wait?</p>
+            <p class="quote">He replied on LinkedIn, but email step 4 still went out.</p>
+            <p class="quote">Two reps messaged the same lead.</p>
+          </div>
+        </article>
+      </div>
+      <div class="slot s-good" data-scene="2" data-card="1">
+        <article class="face f-panel f-good">
+          <h3>With Flightpath · one workflow, one clock</h3>
+          <div class="flow-one" aria-hidden="true"><span class="n">Lead sources</span><i>→</i><span class="n">One workflow per lead</span><i>→</i><span class="n">Every channel</span></div>
+          <h4>One workflow. One clock. Every channel.</h4>
+          <p class="t">Sources in, coordinated touches out. The next step follows engagement, not guesswork.</p>
+        </article>
+      </div>
+    </div>
+    <div class="pains">
+      <div class="pain reveal"><span class="k">01 · Tool fatigue</span><h5>Your reps are drowning in tabs.</h5><p>Lists, a sequencer, LinkedIn, a call list and the CRM. Every lead lives in five places at once.</p></div>
+      <div class="pain reveal" style="--d:100ms"><span class="k">02 · The “if/then” problem</span><h5>Did they open it? Call, DM, or wait?</h5><p>Checking whether a prospect engaged before choosing the next channel is manual, and it doesn't scale.</p></div>
+      <div class="pain reveal" style="--d:200ms"><span class="k">03 · Every tool, its own clock</span><h5>Touches collide. Or go silent.</h5><p>Timers fire regardless of what the lead just did, so replies get ignored and follow-ups get missed.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SCENE 3 · HOW IT WORKS — two cards unstack into four ============ -->
+<section class="scene s tint" id="how-it-works" data-scene="3" aria-labelledby="how-title">
+  <div class="wrap">
+    <div class="sh reveal">
+      <p class="eyebrow">How it works</p>
+      <h2 id="how-title" class="display">From workflow to next action, <em>automatically.</em></h2>
+      <p class="lede">Four moves, from picking a motion to routing the next step by behaviour.</p>
+    </div>
+    <div class="quad">
+      <div class="slot s-how" data-scene="3" data-card="0">
+        <article class="face f-how"><span class="k">01</span><h3>Pick a proven workflow</h3><p>Start from the Workflow Library: outbound, inbound and re-engagement motions with channel order and guardrails already set.</p><div class="tags"><span>Outbound · Inbound · Re-engage</span><span>Channel order preset</span></div></article>
+      </div>
+      <div class="slot s-how" data-scene="3" data-card="1">
+        <article class="face f-how"><span class="k">02</span><h3>Flightpath runs the first touches</h3><p>Each lead moves through LinkedIn and email in a coordinated order. Touches never collide, and nothing is sent twice from two tools.</p><div class="tags"><span>One sequence per lead</span><span>No double sends</span></div></article>
+      </div>
+      <div class="slot s-how" data-scene="3" data-card="2">
+        <article class="face f-how"><span class="k">03</span><h3>It listens for engagement</h3><p>Accepts, opens, clicks and replies are read as signals in real time, across every channel the workflow uses.</p><div class="tags"><span>Opens · clicks · replies</span><span>Engagement score</span></div></article>
+      </div>
+      <div class="slot s-how" data-scene="3" data-card="3">
+        <article class="face f-how"><span class="k">04</span><h3>The next action is routed, not scheduled</h3><p>Instead of “wait three days, send step 4”, the engine checks each branch and picks the one that matches what the lead actually did.</p><div class="tags"><span>Branch by behaviour</span><span>No fixed timers</span></div></article>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SCENE 4 · APPROVAL WORKFLOW — four cards become three (interactive) ============ -->
+<section class="scene s" id="approval" data-scene="4" aria-labelledby="approval-title">
+  <div class="wrap">
+    <div class="sh c reveal">
+      <p class="eyebrow">Control · Approval workflow</p>
+      <h2 id="approval-title" class="display">Pick how much runs <em>on its own.</em></h2>
+      <p class="lede">Choose where a person stays in the loop. Pick a card to try it; the setting is per workflow.</p>
+    </div>
+    <div class="trio">
+      <div class="slot s-mode" data-scene="4" data-card="0">
+        <button type="button" class="face f-mode" data-interactive data-mode="0" aria-pressed="false">
+          <span class="mt"><span class="eyebrow">Mode 01</span><span class="mtag">Hands-off</span></span>
+          <span class="mname">Auto-send</span>
+          <span class="mdesc">Touches go out as soon as consent and limit checks pass. Everything is logged to the audit trail.</span>
+          <span class="mmeta"><i></i>Human review: none</span>
+          <span class="mpick" aria-hidden="true">✓</span>
+        </button>
+      </div>
+      <div class="slot s-mode" data-scene="4" data-card="1">
+        <button type="button" class="face f-mode" data-interactive data-mode="1" aria-pressed="true">
+          <span class="mt"><span class="eyebrow">Mode 02</span><span class="mtag">Balanced</span></span>
+          <span class="mname">Review first</span>
+          <span class="mdesc">Drafts for each batch wait in a queue. A rep approves, edits or skips before anything is sent.</span>
+          <span class="mmeta"><i></i>Human review: every batch</span>
+          <span class="mpick" aria-hidden="true">✓</span>
+        </button>
+      </div>
+      <div class="slot s-mode" data-scene="4" data-card="2">
+        <button type="button" class="face f-mode" data-interactive data-mode="2" aria-pressed="false">
+          <span class="mt"><span class="eyebrow">Mode 03</span><span class="mtag">Tightest</span></span>
+          <span class="mname">Approval gate</span>
+          <span class="mdesc">A manager signs off on new sequences and named accounts. Routine follow-ups still run on their own.</span>
+          <span class="mmeta"><i></i>Human review: new sequences + named accounts</span>
+          <span class="mpick" aria-hidden="true">✓</span>
+        </button>
+      </div>
+    </div>
+    <p class="mode-note" id="mode-note" aria-live="polite"></p>
+  </div>
+</section>
+
+<!-- ============ SCENE 5 · OUTCOMES — three cards merge into one dashboard ============ -->
+<section class="scene s tint" id="product" data-scene="5" aria-labelledby="outcomes-title">
+  <div class="wrap">
+    <div class="sh reveal">
+      <p class="eyebrow">Product · Outcomes</p>
+      <h2 id="outcomes-title" class="display">See what's working, <em>against a benchmark.</em></h2>
+      <p class="lede">Every workflow is measured, so you know where leads drop off and which motions beat the range.</p>
+    </div>
+    <div class="solo">
+      <div class="slot s-dash" data-scene="5" data-card="0">
+        <div class="face f-dash">
+          <div class="dash-bar"><span class="eyebrow">Workflow performance</span><span class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/></svg>Illustrative demo data, not customer results</span></div>
+          <div class="kpis">
+            <div class="kpi"><span class="eyebrow">Leads in motion</span><p class="v"><span data-count="1284">1,284</span></p><p class="n">across 3 workflows</p></div>
+            <div class="kpi"><span class="eyebrow">Positive reply rate</span><p class="v"><span data-count="6.4" data-dec="1" data-suf="%">6.4%</span></p><p class="n">benchmark range 4–7%</p></div>
+            <div class="kpi"><span class="eyebrow">Meetings booked</span><p class="v"><span data-count="38">38</span></p><p class="n">last 30 days</p></div>
+            <div class="kpi"><span class="eyebrow">Touches to meeting</span><p class="v"><span data-count="4.2" data-dec="1">4.2</span></p><p class="n">median</p></div>
+          </div>
+          <div class="dash-body">
+            <div>
+              <h4>Lead funnel</h4>
+              <div class="fun">
+                <div class="fun-row"><span>Enrolled</span><span class="b"><i style="--w:100%;--d:0ms"></i></span><span class="nn">1,284</span></div>
+                <div class="fun-row"><span>Engaged</span><span class="b"><i style="--w:47.7%;--d:120ms"></i></span><span class="nn">612</span></div>
+                <div class="fun-row drop"><span>Replied</span><span class="b"><i style="--w:11.1%;--d:240ms"></i></span><span class="nn">142</span></div>
+                <div class="fun-row"><span>Meeting</span><span class="b"><i style="--w:3%;--d:360ms"></i></span><span class="nn">38</span></div>
+                <div class="fun-row"><span>Opportunity</span><span class="b"><i style="--w:1.6%;--d:480ms"></i></span><span class="nn">21</span></div>
+              </div>
+              <p class="drop-note">Steepest drop: Engaged → Replied. That's where to test new copy.</p>
+            </div>
+            <div>
+              <h4>Reply rate vs benchmark</h4>
+              <div class="bench">
+                <div class="bench-row"><div class="top"><span>Net-new outbound</span><span>5.8%</span></div><div class="btrack"><span class="range" style="left:13.3%;width:10%"></span><span class="dot" style="left:19.3%"></span></div><small>Benchmark 4.0–7.0% · within range</small></div>
+                <div class="bench-row"><div class="top"><span>Inbound follow-up</span><span>21.5%</span></div><div class="btrack"><span class="range" style="left:50%;width:33.3%"></span><span class="dot" style="left:71.7%"></span></div><small>Benchmark 15.0–25.0% · within range</small></div>
+                <div class="bench-row"><div class="top"><span>Closed-lost re-engage</span><span>2.1%</span></div><div class="btrack"><span class="range" style="left:10%;width:10%"></span><span class="dot low" style="left:7%"></span></div><small>Benchmark 3.0–6.0% · below range</small></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SCENE 6 · CTA — the same card morphs into the close ============ -->
+<section class="scene s" id="demo" data-scene="6" aria-labelledby="demo-title">
+  <div class="wrap">
+    <div class="slot s-cta" data-scene="6" data-card="0">
+      <div class="face f-cta" data-interactive>
+        <p class="eyebrow">Ready when you are</p>
+        <h2 id="demo-title" class="display">Put your GTM motion <em>on autopilot.</em></h2>
+        <p class="lede">See a workflow from the library run end to end on your use case, and how the engine decides each lead's next step.</p>
+        <div class="cta-row"><a class="btn btn-primary" href="#">Book a demo <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a><a class="btn btn-line" href="#journey">Revisit the journey</a></div>
+        <p class="fine2">30-minute walkthrough · no commitment</p>
+      </div>
+    </div>
+    <p class="fine">Flightpath helps you apply your own outreach and data policies consistently. It doesn't replace legal advice. Your team stays responsible for the rules you configure. Product visuals use illustrative sample data.</p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div><a class="logo" href="#top"><span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18c4-1 6-6 9-9 2-2 4-3 7-4-1 3-2 5-4 7-3 3-8 5-12 6z"/></svg></span>Flightpath</a><p class="about">GTM workflow orchestration for SMB sales teams. Coordinated, engagement-aware, benchmarked.</p></div>
+    <nav aria-label="Footer"><p class="eyebrow">Explore</p><ul><li><a href="#product">Product</a></li><li><a href="#how-it-works">How it works</a></li><li><a href="#why">Why Flightpath</a></li></ul></nav>
+    <div><p class="eyebrow">Talk to us</p><ul><li><a href="#demo">Book a demo</a></li><li><a href="#top">Back to top</a></li></ul></div>
+  </div>
+  <div class="wrap legal"><p>© 2026 Flightpath. All rights reserved.</p><p>Product visuals use illustrative sample data.</p></div>
+</footer>
+
+<script>
+(function(){
+  'use strict';
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var $  = function(s,r){return (r||document).querySelector(s)};
+  var $$ = function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+  var clamp = function(v,a,b){return v<a?a:v>b?b:v};
+  var lerp  = function(a,b,t){return a+(b-a)*t};
+  var ss    = function(a,b,x){var t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)};            // smoothstep
+  var ease  = function(t){return t*t*t*(t*(t*6-15)+10)};                                   // smootherstep
+
+  /* ---------- nav / reveal / counters (shared by both modes) ---------- */
+  var nav = $('#nav');
+  var onNav = function(){ nav.classList.toggle('solid', window.scrollY > 8) };
+  onNav(); window.addEventListener('scroll', onNav, {passive:true});
+
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target) } });
+  }, {threshold:.12, rootMargin:'0px 0px -6% 0px'});
+  $$('.reveal').forEach(function(el){ io.observe(el) });
+
+  var fmt = function(v,d,s){ return v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}) + s };
+  function countUp(el){
+    var to = parseFloat(el.dataset.count), d = +(el.dataset.dec||0), s = el.dataset.suf||'';
+    if(reduce){ el.textContent = fmt(to,d,s); return }
+    var t0 = performance.now(), dur = 1300;
+    (function tick(now){
+      var t = Math.min(1,(now-t0)/dur), k = 1-Math.pow(1-t,4);
+      el.textContent = fmt(to*k,d,s);
+      if(t<1) requestAnimationFrame(tick);
+    })(t0);
+  }
+  /* runs once, the first time a card face is actually on screen */
+  function revealFace(face){ face.classList.add('in'); $$('[data-count]',face).forEach(countUp) }
+
+  /* ---------- approval-mode picker (cards are buttons) ---------- */
+  var MODE = [
+    '<b>Auto-send</b> — touches go out as soon as checks pass. Best when volume is high and messaging is proven.',
+    '<b>Review first</b> — a rep approves each batch before it sends. A sensible default while you tune copy.',
+    '<b>Approval gate</b> — managers sign off on new sequences and named accounts; routine follow-ups run on their own.'
+  ];
+  var modeNote = $('#mode-note');
+  function pickMode(n){
+    $$('.f-mode').forEach(function(b){ b.setAttribute('aria-pressed', String(+b.dataset.mode === n)) });
+    modeNote.innerHTML = MODE[n];
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('.f-mode');
+    if(b) pickMode(+b.dataset.mode);
+  });
+  pickMode(1);
+
+  /* ---------- journey card internals (steps / score) ---------- */
+  var jsec = $('#journey'), steps = $$('.step'), evs = $$('#events li'), scoreEl = $('#score'), track = $('#track');
+  var SCORE = [18,34,52,76,76], phase = -1;
+  function setPhase(p){
+    if(p === phase) return; phase = p;
+    steps.forEach(function(s){
+      s.classList.toggle('on',   p >= +s.dataset.at);
+      s.classList.toggle('done', p >= +s.dataset.done);
+    });
+    evs.forEach(function(li,i){ li.classList.toggle('on', i <= p) });
+    var sc = SCORE[Math.min(p,4)];
+    scoreEl.textContent = sc;
+    track.style.transform = 'scaleX(' + (sc/100) + ')';
+  }
+  var phaseOf = function(p){ return p < .06 ? 0 : p < .26 ? 1 : p < .48 ? 2 : p < .68 ? 3 : 4 };
+
+  /* ======================================================================
+     REDUCED MOTION: no flying cards. Faces stay in their slots as a normal,
+     fully readable page.
+     ====================================================================== */
+  if(reduce){
+    $$('.face').forEach(revealFace);
+    setPhase(4);
+    return;
+  }
+
+  /* ======================================================================
+     SCROLL-DRIVEN CARD SYSTEM
+     ====================================================================== */
+  var scenes = $$('.scene'), N = scenes.length, K = 6;
+  var slotsByScene = scenes.map(function(){ return [] });
+  $$('.slot').forEach(function(el){
+    slotsByScene[+el.dataset.scene][+el.dataset.card] = { el: el, rot: +(el.dataset.rot||0) };
+  });
+
+  /* build the persistent cards and "lift" every face out of its slot into them */
+  var layer = document.createElement('div');
+  layer.className = 'cards-layer';
+  document.body.appendChild(layer);
+
+  var cards = [];
+  for(var k=0;k<K;k++){
+    var el = document.createElement('div'); el.className = 'pc';
+    var lift = document.createElement('div'); lift.className = 'pc-lift';
+    var clip = document.createElement('div'); clip.className = 'pc-clip';
+    el.appendChild(lift); el.appendChild(clip); layer.appendChild(el);
+    cards.push({ el: el, lift: lift, clip: clip, faces: [], vis: false, z: -1 });
+  }
+  slotsByScene.forEach(function(row, j){
+    row.forEach(function(s, k){
+      if(!s) return;
+      var face = $(':scope > .face', s.el);
+      s.el.classList.add('lifted');
+      cards[k].clip.appendChild(face);
+      face.inert = true;
+      cards[k].faces[j] = { el: face, slot: s.el, w: 0, h: 0, op: -1, act: false, seen: false, hit: false,
+                            interactive: face.hasAttribute('data-interactive') };
+    });
+  });
+
+  /* ---------- geometry ---------- */
+  var vw = 0, vh = 0, pinned = true, rotScale = 1;
+  var top = [], H = [], edge = [], TA = [], TB = [];
+  function measure(){
+    vw = window.innerWidth; vh = window.innerHeight;
+    pinned = vw >= 960 && vh >= 620;
+    jsec.classList.toggle('unpinned', !pinned);
+    rotScale = vw >= 900 ? 1 : .4;
+    var sy = window.scrollY;
+    scenes.forEach(function(s,j){ var r = s.getBoundingClientRect(); top[j] = r.top + sy; H[j] = r.height });
+    for(var j=0;j<N;j++) edge[j] = Math.min(.32*H[j], .5*vh);
+    /* travel window between scene i and i+1, expressed on the viewport-centre line */
+    for(var i=0;i<N-1;i++){ TA[i] = top[i+1] - edge[i]; TB[i] = top[i+1] + edge[i+1] }
+    cards.forEach(function(c){
+      c.faces.forEach(function(f){
+        if(!f) return;
+        f.w = f.slot.offsetWidth; f.h = f.slot.offsetHeight;
+        f.el.style.width = f.w + 'px'; f.el.style.height = f.h + 'px';
+      });
+    });
+  }
+  /* scroll position -> fractional scene index (holds at integers while a section is "docked") */
+  function targetU(c){
+    for(var i=0;i<N-1;i++){
+      if(c < TA[i]) return i;
+      if(c < TB[i]) return i + (c - TA[i]) / (TB[i] - TA[i]);
+    }
+    return N-1;
+  }
+
+  /* ---------- per-frame rect helpers (reads are batched before any writes) ---------- */
+  var live = [];
+  function slotRect(j,k){
+    var row = live[j] || (live[j] = []), r = row[k];
+    if(r) return r;
+    var s = slotsByScene[j][k]; if(!s) return null;
+    var b = s.el.getBoundingClientRect();
+    return (row[k] = { x:b.left, y:b.top, w:b.width, h:b.height, r:s.rot*rotScale });
+  }
+  function nearestK(j,k){
+    var best = -1, bd = 99;
+    for(var m=0;m<K;m++) if(slotsByScene[j][m]){ var d = Math.abs(m-k); if(d < bd){ bd = d; best = m } }
+    return best;
+  }
+  /* where a card rests in scene j: its slot, or tucked *behind* the nearest card (shrunk, offset, tilted) */
+  function cardRect(k,j){
+    var r = slotRect(j,k); if(r) return r;
+    var n = nearestK(j,k), nb = slotRect(j,n), d = k - n, ad = Math.min(Math.abs(d),3);
+    var sc = .92 - .05*(ad-1), w = nb.w*sc, h = nb.h*sc;
+    return { x: nb.x + (nb.w-w)/2 + d*5, y: nb.y + (nb.h-h)/2 - 9*ad, w:w, h:h, r: clamp(d*3,-9,9) };
+  }
+
+  /* ---------- state: spring on the scene index, plus scroll velocity ---------- */
+  var u = 0, uv = 0, target = 0, sv = 0, lastY = window.scrollY, lastT = 0;
+  var t0 = performance.now(), introDone = false;
+  var STIFF = 300, DAMP = 2*Math.sqrt(STIFF)*.95;
+  var railLinks = $$('#rail a'), railOn = -1;
+
+  function render(now){
+    var uu = clamp(u,0,N-1), i = Math.min(N-2, Math.floor(uu)), f = uu - i;
+    if(f < .0005) f = 0; else if(f > .9995) f = 1;
+
+    /* READ phase: every rect needed this frame */
+    live = [];
+    for(var k=0;k<K;k++){ slotRect(i,k); if(f>0) slotRect(i+1,k) }
+
+    var skew = clamp(sv/1600,-1,1) * 2.4;                     // velocity -> subtle shear
+    var bob  = 1 - ss(0,.35,uu);                              // idle float only near the hero
+    var introRunning = false;
+
+    /* WRITE phase */
+    for(k=0;k<K;k++){
+      var c = cards[k];
+      var pa = !!slotsByScene[i][k], pb = !!slotsByScene[i+1][k];
+      var type = pa&&pb ? 0 : pa ? 1 : pb ? 2 : 3;            // 0 move · 1 merge away · 2 emerge · 3 absent
+      var delay = type===0 ? k*.05 : type===1 ? (K-1-k)*.04 : type===2 ? k*.06 : 0;
+      var tk = clamp((f-delay)/.7, 0, 1), e = ease(tk);
+
+      var a = cardRect(k,i), b = f===0 ? a : cardRect(k,i+1);
+      var op = type===0 ? 1 : type===1 ? 1-ss(.35,1,tk) : type===2 ? ss(0,.45,tk) : 0;
+
+      /* page-load intro */
+      var ie = ease(clamp((now - t0 - 120 - k*90)/900, 0, 1));
+      if(ie < 1) introRunning = true;
+      op *= ie;
+
+      if(op < .004){
+        if(c.vis){ c.el.style.visibility = 'hidden'; c.vis = false }
+      } else {
+        if(!c.vis){ c.el.style.visibility = 'visible'; c.vis = true }
+        var x = lerp(a.x,b.x,e), y = lerp(a.y,b.y,e), w = lerp(a.w,b.w,e), h = lerp(a.h,b.h,e), r = lerp(a.r,b.r,e);
+        y += (1-ie)*28 + Math.sin(now/1000*.9 + k*1.7) * 5 * bob;
+        if(tk<=0 || tk>=1){ if(!bob){ x = Math.round(x); y = Math.round(y) } }
+        var st = c.el.style;
+        st.width = w + 'px'; st.height = h + 'px';
+        st.transform = 'translate3d(' + x.toFixed(2) + 'px,' + y.toFixed(2) + 'px,0) rotate(' + r.toFixed(2) + 'deg) skewY(' + (skew*(.6 + .15*k)).toFixed(2) + 'deg)';
+        st.opacity = op.toFixed(3);
+        c.lift.style.opacity = (Math.sin(Math.PI*tk)*.9).toFixed(3);
+        var z = type===0 ? 3 : 2;
+        if(z !== c.z){ st.zIndex = z; c.z = z }
+
+        /* faces: crossfade between the face of scene i and scene i+1 */
+        var ft = ss(.25,.75,tk);
+        for(var j=0;j<c.faces.length;j++){
+          var face = c.faces[j]; if(!face) continue;
+          var fo = 0;
+          if(j===i)   fo = pb ? 1-ft : 1-ss(0,.5,tk);
+          if(j===i+1) fo = pa ? ft   : ss(.45,.95,tk);
+          if(fo > .002){
+            var s = Math.min((w)/face.w, (h)/face.h);
+            if(Math.abs(s-1) < .004) s = 1;
+            face.el.style.transform = 'translate(-50%,-50%) scale(' + s.toFixed(4) + ')';
+          }
+          if(Math.abs(fo - face.op) > .002){ face.el.style.opacity = fo.toFixed(3); face.op = fo }
+          var act = fo > .5 && op > .5;
+          if(act !== face.act){
+            face.act = act; face.el.inert = !act;
+            if(act && !face.seen){ face.seen = true; revealFace(face.el) }
+          }
+          if(face.interactive){
+            var hit = act && fo > .92 && op > .92;
+            if(hit !== face.hit){ face.hit = hit; face.el.classList.toggle('hit', hit) }
+          }
+        }
+      }
+    }
+    if(!introRunning) introDone = true;
+
+    var ri = Math.round(uu);
+    if(ri !== railOn){ railOn = ri; railLinks.forEach(function(l,n){ l.classList.toggle('on', n===ri) }) }
+  }
+
+  /* ---------- loop: only runs while something is moving ---------- */
+  var raf = 0;
+  function kick(){ if(!raf){ lastT = performance.now(); raf = requestAnimationFrame(tick) } }
+  function tick(now){
+    raf = 0;
+    var dt = clamp((now-lastT)/1000, .001, .05); lastT = now;
+    var y = window.scrollY;
+    sv += ((y-lastY)/dt - sv) * (1 - Math.exp(-dt*10)); lastY = y;
+    target = targetU(y + vh/2);
+
+    /* journey card progress (read before writing) */
+    var jp;
+    if(pinned){
+      var jr = jsec.getBoundingClientRect(), tot = jr.height - vh;
+      jp = tot > 0 ? clamp(-jr.top/tot, 0, 1) : 1;
+    } else {
+      jp = clamp((vh*.9 - slotsByScene[1][0].el.getBoundingClientRect().top) / (vh*.7), 0, 1);
+    }
+
+    var n = Math.ceil(dt/.008), hdt = dt/n;
+    for(var s=0;s<n;s++){ uv += (STIFF*(target-u) - DAMP*uv)*hdt; u += uv*hdt }
+    if(u < 0){ u = 0; uv = 0 } else if(u > N-1){ u = N-1; uv = 0 }
+
+    render(now);
+    setPhase(phaseOf(jp));
+
+    var moving = Math.abs(target-u) > .0004 || Math.abs(uv) > .001 || Math.abs(sv) > 4 || !introDone || u < .4;
+    if(moving) raf = requestAnimationFrame(tick);
+  }
+
+  window.addEventListener('scroll', kick, {passive:true});
+  var rz = 0;
+  function remeasure(){ measure(); target = targetU(window.scrollY + vh/2); kick() }
+  window.addEventListener('resize', function(){ cancelAnimationFrame(rz); rz = requestAnimationFrame(remeasure) });
+  window.addEventListener('load', remeasure);
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(remeasure);
+
+  measure();
+  u = target = targetU(window.scrollY + vh/2);
+  kick();
+})();
+</script>
+</body>
+</html>
