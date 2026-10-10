@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { Logo } from "./Logo";
-import { DEMO_HREF, NAV_LINKS } from "@/lib/site";
+import { DEMO_HREF, LOGIN_HREF, NAV_LINKS } from "@/lib/site";
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -63,6 +63,12 @@ export function Navbar() {
         </ul>
 
         <div className="flex items-center gap-2">
+          <Link
+            href={LOGIN_HREF}
+            className="rounded-full px-3.5 py-2 text-sm text-ink-2 transition-colors hover:bg-surface hover:text-ink"
+          >
+            Sign in
+          </Link>
           <Link href={DEMO_HREF} className="btn btn-primary hidden h-10 sm:inline-flex">
             Book a demo
           </Link>
@@ -92,7 +98,12 @@ export function Navbar() {
               </Link>
             </li>
           ))}
-          <li className="pt-4 pb-2">
+          <li className="pt-4">
+            <Link href={LOGIN_HREF} onClick={() => setOpen(false)} className="btn btn-secondary w-full">
+              Sign in
+            </Link>
+          </li>
+          <li className="pt-3 pb-2">
             <Link href={DEMO_HREF} onClick={() => setOpen(false)} className="btn btn-primary w-full">
               Book a demo
             </Link>

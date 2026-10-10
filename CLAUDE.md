@@ -56,6 +56,11 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - The success UI must only appear on a genuine `{ ok: true }`.
 - `app/book-demo/page.tsx` is `force-dynamic` so its "delivery not connected" setup note reflects the runtime env.
 
+**Auth (prototype)**
+- `lib/auth.ts` (server-only) holds one hardcoded account and signs an `httpOnly` session cookie with HMAC. `/api/login` and `/api/logout` set and clear it; `/dashboard` is a placeholder that redirects to `/login` without a valid session.
+- `/signup` is a dummy form: it validates, creates nothing, and says so. Do not make it show a fake success.
+- `LOGIN_HREF`, `SIGNUP_HREF`, `DASHBOARD_HREF` live in `lib/site.ts`. Never import `lib/auth.ts` from a client component.
+
 ## Content rules
 
 These come from the original product brief:
