@@ -1,0 +1,1140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flightpath — Terracotta v3</title>
+<meta name="description" content="Flightpath orchestrates LinkedIn, email and follow-up into engagement-aware, benchmarked outreach workflows for SMB sales teams.">
+<script>document.documentElement.classList.add('js')</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F7F1E8;
+  --surface:#FFFBF5;
+  --surface-2:#F1E8DB;
+  --ink:#2B2118;
+  --ink-2:#4A3E33;
+  --muted:#6F6354;
+  --line:#E6DBCB;
+  --line-strong:#D5C6B0;
+  --accent:#B24E26;
+  --accent-ink:#8A3A19;
+  --accent-soft:#F4DFD2;
+  --hl:#C9922E;
+  --pos:#4F6B45;
+  --pos-soft:#E3EBDD;
+  --shadow:rgb(60 38 20 / .28);
+  --btn-bg:#2B2118;
+  --btn-ink:#FFFBF5;
+  --btn-hover:#B24E26;
+  --glow-1:rgb(244 223 210 / .85);
+  --glow-2:rgb(236 220 186 / .55);
+  --cta-bg:#F4E6D8;
+  --font-body:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --radius:14px; --radius-lg:20px;
+  --ease:cubic-bezier(.22,1,.36,1);
+  --nav-h:68px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:calc(var(--nav-h) + 16px);-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer}
+ul{list-style:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+::selection{background:var(--accent-soft);color:var(--accent-ink)}
+.wrap{width:100%;max-width:1200px;margin-inline:auto;padding-inline:20px}
+@media(min-width:768px){.wrap{padding-inline:32px}}
+.display{font-family:"Instrument Serif",Georgia,serif;font-weight:400;letter-spacing:-.015em;line-height:1.02}
+.display em{font-style:italic;color:var(--accent)}
+.eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:16px;top:16px;z-index:100;background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:999px}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:46px;padding-inline:22px;border-radius:999px;font-size:14.5px;font-weight:500;white-space:nowrap;transition:background .2s var(--ease),color .2s var(--ease),border-color .2s var(--ease),transform .2s var(--ease),box-shadow .2s var(--ease)}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--btn-bg);color:var(--btn-ink);box-shadow:0 10px 24px -12px var(--btn-bg)}
+.btn-primary:hover{background:var(--btn-hover)}
+.btn-ghost{color:var(--ink)}
+.btn-ghost:hover{color:var(--accent)}
+.btn-line{border:1px solid var(--line-strong);color:var(--ink)}
+.btn-line:hover{background:var(--surface);border-color:var(--ink)}
+.btn svg{width:16px;height:16px;transition:transform .2s var(--ease)}
+.btn:hover svg{transform:translateX(3px)}
+.btn-sm{height:40px;padding-inline:18px;font-size:14px}
+
+/* ---------- nav ---------- */
+header.nav{position:sticky;top:0;z-index:50;border-bottom:1px solid transparent;transition:background .3s,border-color .3s,backdrop-filter .3s}
+header.nav.solid{background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-color:var(--line)}
+.nav-in{height:var(--nav-h);display:flex;align-items:center;justify-content:space-between;gap:16px}
+.logo{display:inline-flex;align-items:center;gap:9px;font-weight:600;font-size:18px;letter-spacing:-.01em}
+.logo-mark{width:26px;height:26px;border-radius:8px;background:var(--accent);display:grid;place-items:center}
+.logo-mark svg{width:15px;height:15px;color:#fff}
+.nav-links{display:none;gap:4px}
+.nav-links a{padding:8px 14px;border-radius:999px;font-size:14.5px;color:var(--ink-2);transition:background .2s,color .2s}
+.nav-links a:hover{background:var(--surface-2);color:var(--ink)}
+.nav-cta{display:flex;align-items:center;gap:6px}
+.nav-cta .signin{padding:8px 14px;font-size:14.5px;color:var(--ink-2);border-radius:999px}
+.nav-cta .signin:hover{background:var(--surface-2);color:var(--ink)}
+@media(min-width:860px){.nav-links{display:flex}}
+
+/* ---------- hero (fits exactly one viewport on desktop) ---------- */
+.hero{position:relative;overflow:hidden}
+.hero-glow{position:absolute;inset:0;pointer-events:none;background:
+  radial-gradient(900px 520px at 50% 40%,var(--glow-1),transparent 70%),
+  radial-gradient(520px 380px at 12% 8%,var(--glow-2),transparent 70%),
+  radial-gradient(520px 380px at 90% 12%,var(--glow-2),transparent 70%)}
+:root{--vu:min(1svh,.62vw)}
+.stage{position:relative;display:flex;flex-direction:column;gap:26px;padding-block:44px 64px}
+.center{order:-1;text-align:center;display:flex;flex-direction:column;align-items:center;padding-block:12px}
+.center h1{font-size:clamp(2.6rem,10vw,4.7rem);max-width:15ch;text-wrap:balance}
+.center h1 .u{position:relative;display:inline-block}
+.center h1 .u svg{position:absolute;left:-1%;bottom:-.14em;width:102%;height:.24em;overflow:visible;color:var(--hl)}
+.cta-row{display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:center;margin-top:34px}
+.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.imp-wrap{will-change:transform;transform:translate3d(0,var(--py,0px),0)}
+.imp{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px 18px;box-shadow:0 1px 0 rgb(0 0 0/.02),0 22px 44px -26px var(--shadow)}
+.imp-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.imp-label{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.imp-tag{font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border:1px dashed var(--line-strong);border-radius:999px;padding:1px 7px}
+.imp-val{margin-top:8px;font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:clamp(1.9rem,6vw,2.5rem);letter-spacing:-.01em;line-height:1;display:flex;align-items:baseline;gap:8px}
+.imp-val small{font-family:var(--font-body);font-size:13px;font-weight:600;color:var(--pos);letter-spacing:0}
+.imp-note{margin-top:6px;font-size:12.5px;color:var(--muted)}
+.imp svg.spark{display:block;width:100%;height:30px;margin-top:10px}
+.bar{height:6px;border-radius:999px;background:var(--line);margin-top:12px;position:relative;overflow:hidden}
+.bar i{position:absolute;inset:0;transform-origin:left;border-radius:inherit;background:var(--pos)}
+.imp .chip{display:inline-flex;align-items:center;gap:6px;margin-top:10px;border-radius:999px;background:var(--pos-soft);color:var(--pos);padding:4px 11px;font-family:var(--font-mono);font-size:11.5px}
+.imp .chip svg{width:12px;height:12px}
+
+@media(min-width:900px) and (min-height:560px){
+  .hero{min-height:calc(100svh - var(--nav-h))}
+  .stage{min-height:calc(100svh - var(--nav-h));display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:0;padding-block:calc(var(--vu)*2.4) calc(var(--vu)*2.6)}
+  .center{order:0;justify-content:center;padding-block:calc(var(--vu)*1.5)}
+  .center h1{font-size:clamp(2.3rem,calc(var(--vu)*8.4),4.9rem)}
+  .cta-row{margin-top:calc(var(--vu)*3.2)}
+  .row{grid-template-columns:repeat(3,minmax(0,1fr));gap:calc(var(--vu)*3);align-items:start}
+  .imp-wrap .imp{max-width:clamp(210px,calc(var(--vu)*40),330px)}
+  .imp{padding:calc(var(--vu)*1.9) calc(var(--vu)*2.2)}
+  .imp-label{font-size:max(9px,calc(var(--vu)*1.35))}
+  .imp-tag{font-size:max(8px,calc(var(--vu)*1.1))}
+  .imp-val{font-size:clamp(1.5rem,calc(var(--vu)*4.5),2.6rem);margin-top:calc(var(--vu)*1)}
+  .imp-note{font-size:max(11px,calc(var(--vu)*1.6));margin-top:calc(var(--vu)*.7)}
+  .imp svg.spark{height:calc(var(--vu)*3.6);margin-top:calc(var(--vu)*1.1)}
+  .bar{margin-top:calc(var(--vu)*1.4)}
+  .imp .chip{margin-top:calc(var(--vu)*1.2)}
+  .row.top .imp-wrap:nth-child(2){justify-self:center;margin-top:calc(var(--vu)*-.4)}
+  .row.top .imp-wrap:nth-child(3){justify-self:end;margin-top:calc(var(--vu)*1.2)}
+  .row.top .imp-wrap:nth-child(1){margin-top:calc(var(--vu)*.4)}
+  .row.bottom .imp-wrap:nth-child(1){margin-left:2%}
+  .row.bottom .imp-wrap:nth-child(2){margin-top:calc(var(--vu)*1.4);justify-self:center}
+  .row.bottom .imp-wrap:nth-child(3){justify-self:end;margin-right:2%}
+  .row.top .imp-wrap:nth-child(1) .imp{transform:rotate(-4deg)}
+  .row.top .imp-wrap:nth-child(2) .imp{transform:rotate(2.5deg)}
+  .row.top .imp-wrap:nth-child(3) .imp{transform:rotate(3.5deg)}
+  .row.bottom .imp-wrap:nth-child(1) .imp{transform:rotate(-3deg)}
+  .row.bottom .imp-wrap:nth-child(2) .imp{transform:rotate(2deg)}
+  .row.bottom .imp-wrap:nth-child(3) .imp{transform:rotate(-2.5deg)}
+  .imp{animation:bob 7s ease-in-out infinite}
+  .imp-wrap:nth-child(2) .imp{animation-delay:-2s}
+  .imp-wrap:nth-child(3) .imp{animation-delay:-4s}
+}
+@keyframes bob{0%,100%{translate:0 0}50%{translate:0 -7px}}
+
+/* ---------- reveal ---------- */
+.js .reveal{opacity:0;transform:translateY(16px);transition:opacity .7s var(--ease),transform .7s var(--ease);transition-delay:var(--d,0ms)}
+.js .reveal.in{opacity:1;transform:none}
+.js .imp-wrap.reveal{transform:translate3d(0,calc(var(--py,0px) + 16px),0)}
+.js .imp-wrap.reveal.in{transform:translate3d(0,var(--py,0px),0)}
+
+/* ---------- flow canvas (n8n-style) ---------- */
+@property --dim{syntax:'<number>';inherits:true;initial-value:.55}
+.flow{position:relative;border-top:1px solid var(--line);padding-block:84px}
+.flow.pinned{height:400vh;padding:0}
+.flow.pinned .flow-pin{position:sticky;top:0;min-height:100vh;display:flex;align-items:center;padding-block:calc(var(--nav-h) + 8px) 14px}
+.flow-pin>.wrap{width:100%}
+.shell{position:relative;border:1px solid var(--line-strong);border-radius:28px;background:var(--surface);box-shadow:0 40px 90px -50px var(--shadow);padding:clamp(10px,1.4vw,20px);opacity:var(--c,1);transform:translateY(calc((1 - var(--c,1))*26px))}
+.fade{opacity:1}
+.cv-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 18px;padding:2px 8px 12px}
+.cvb-l{display:flex;align-items:baseline;gap:10px}
+.cvb-l b{font-weight:600;font-size:15px}
+.cvb-m{font-size:13px;color:var(--muted)}
+.cvb-r{display:flex;align-items:center;gap:12px}
+.tagd{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border:1px dashed var(--line-strong);border-radius:999px;padding:2px 9px}
+.live{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:11.5px;color:var(--pos)}
+.live i{width:7px;height:7px;border-radius:50%;background:var(--pos);box-shadow:0 0 0 4px var(--pos-soft)}
+.cv-scroll{overflow-x:auto;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+.cv{position:relative;aspect-ratio:1100/540;width:min(100%,calc((100svh - var(--nav-h) - 128px)*2.036));min-width:900px;margin-inline:auto;container-type:inline-size;border:1px solid var(--line);border-radius:20px;background-color:var(--bg);background-image:radial-gradient(color-mix(in srgb,var(--ink) 16%,transparent) 1px,transparent 1.3px);background-size:16px 16px;overflow:hidden}
+.col{position:absolute;top:1.85%;bottom:1.85%;border:1px solid var(--line);border-radius:20px;background:color-mix(in srgb,var(--surface) 55%,transparent)}
+.col .pill{position:absolute;left:1.8cqw;top:1.7cqw;font-size:max(10px,1.15cqw);border:1px solid var(--line-strong);border-radius:999px;padding:.35cqw 1.3cqw;background:var(--surface);color:var(--ink-2)}
+.col .cnt{position:absolute;right:1.8cqw;top:2cqw;font-size:max(10px,1.15cqw);color:var(--muted);font-variant-numeric:tabular-nums}
+.edges{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.eb{fill:none;stroke:#D9AF93;stroke-width:1.6;stroke-dasharray:5 5}
+.eh{fill:none;stroke:var(--accent);stroke-width:2.6;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1}
+.eh.full{marker-end:url(#ah)}
+.pt{fill:var(--surface);stroke:#C9926F;stroke-width:1.5}
+#token{will-change:transform}
+.elabel{position:absolute;transform:translate(-50%,-50%);font-size:max(9.5px,.98cqw);font-family:var(--font-mono);background:var(--surface);border:1px solid var(--line-strong);color:var(--muted);border-radius:999px;padding:.2cqw .8cqw;white-space:nowrap;transition:background .4s,color .4s,border-color .4s}
+.elabel.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.node{--dim:.55;position:absolute;display:flex;align-items:center;gap:1.1cqw;padding:0 1.2cqw;background:var(--surface);border:1.5px solid var(--line-strong);border-radius:1.4cqw;box-shadow:0 10px 24px -18px var(--shadow);transition:--dim .6s var(--ease),border-color .5s,box-shadow .5s,opacity .5s;opacity:.62}
+.node.on{--dim:1;opacity:1;border-color:var(--accent);box-shadow:0 0 0 .55cqw color-mix(in srgb,var(--accent) 16%,transparent),0 14px 30px -18px var(--shadow)}
+.node.done{border-color:color-mix(in srgb,var(--pos) 55%,var(--line-strong));box-shadow:0 10px 24px -18px var(--shadow)}
+.node.skip{border-style:dashed;opacity:.5}
+.ico{width:3.7cqw;height:3.7cqw;border-radius:1.1cqw;display:grid;place-items:center;flex-shrink:0;background:var(--accent-soft);color:var(--accent-ink)}
+.ico svg{width:55%;height:55%}
+.t-if .ico{background:color-mix(in srgb,var(--hl) 26%,var(--surface));color:#7A5410}
+.t-trigger .ico{background:var(--pos-soft);color:var(--pos)}
+.t-task .ico{background:var(--pos);color:#fff}
+.t-end .ico{background:var(--surface-2);color:var(--muted)}
+.nt{display:flex;flex-direction:column;min-width:0}
+.nt b{font-size:max(11.5px,1.28cqw);font-weight:600;line-height:1.2}
+.nt small{font-size:max(10px,1.02cqw);color:var(--muted);margin-top:.25cqw;line-height:1.25}
+.ok{margin-left:auto;width:2.2cqw;height:2.2cqw;border-radius:50%;background:var(--pos);color:#fff;display:grid;place-items:center;flex-shrink:0;transform:scale(0);transition:transform .35s var(--ease)}
+.ok svg{width:62%;height:62%}
+.node.done .ok{transform:scale(1)}
+.stat{position:absolute;display:flex;align-items:baseline;gap:.6cqw;background:var(--surface);border:1px solid var(--line-strong);border-radius:999px;padding:.35cqw 1cqw;box-shadow:0 8px 18px -12px var(--shadow);white-space:nowrap;opacity:calc(var(--o,1)*var(--dim));z-index:2}
+.stat.tr{right:-1.2cqw;top:-2.9cqw}
+.stat.bl{left:-1.2cqw;bottom:-2.9cqw}
+.stat i{font-style:normal;font-family:var(--font-mono);font-size:max(8.5px,.82cqw);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.stat b{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:max(12px,1.5cqw);letter-spacing:-.005em}
+.swipe{display:none;margin-top:8px;text-align:center;font-size:12px;color:var(--muted)}
+@media(max-width:940px){.swipe{display:block}}
+.fly{position:fixed;inset:0;z-index:40;pointer-events:none;overflow:hidden}
+.fly .imp{position:absolute;left:0;top:0;margin:0;animation:none!important;transform-origin:center center;will-change:transform,opacity;visibility:hidden}
+
+/* ---------- channels ---------- */
+.channels{border-block:1px solid var(--line);background:color-mix(in srgb,var(--surface) 70%,transparent)}
+.channels-in{display:flex;flex-direction:column;gap:22px;padding-block:30px}
+@media(min-width:1000px){.channels-in{flex-direction:row;align-items:center;gap:40px}.channels-in>div:first-child{width:230px;flex-shrink:0}}
+.chan-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 20px;flex:1}
+@media(min-width:640px){.chan-list{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(min-width:1000px){.chan-list{grid-template-columns:repeat(6,minmax(0,1fr))}}
+.chan{display:flex;align-items:center;gap:10px}
+.chan .ci{width:34px;height:34px;border-radius:10px;border:1px solid var(--line-strong);background:var(--surface);display:grid;place-items:center;color:var(--ink);flex-shrink:0}
+.chan.planned .ci{border-style:dashed;color:var(--muted);background:transparent}
+.chan .ci svg{width:16px;height:16px}
+.chan b{display:block;font-weight:500;font-size:14px}
+.chan small{display:block;font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--pos)}
+.chan.planned small{color:var(--muted)}
+.chan.planned b{color:var(--ink-2)}
+
+/* ---------- section scaffolding ---------- */
+section.s{padding-block:88px}
+@media(min-width:900px){section.s{padding-block:120px}}
+.sh{max-width:46rem}
+.sh.c{margin-inline:auto;text-align:center}
+.sh h2{font-size:clamp(2.1rem,4.6vw,3.6rem);margin-top:14px}
+.sh p.lede{margin-top:18px;font-size:17px;color:var(--ink-2);max-width:36rem}
+.sh.c p.lede{margin-inline:auto}
+
+/* ---------- problem ---------- */
+.problem-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:22px;margin-top:56px}
+@media(min-width:900px){.problem-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:28px}}
+.panel{border:1px solid var(--line);border-radius:var(--radius-lg);padding:28px;background:var(--surface)}
+.panel.bad{background:var(--surface-2)}
+.panel h3{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:500}
+.panel.bad h3{color:color-mix(in srgb,var(--hl) 55%,var(--ink))}
+.panel.good h3{color:var(--pos)}
+.tools{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}
+.tool{border:1px solid var(--line-strong);border-radius:999px;padding:7px 14px;font-size:13.5px;background:var(--surface);transform:rotate(var(--r,0deg))}
+.quotes{margin-top:22px;display:grid;gap:9px}
+.quote{border-left:3px solid var(--hl);padding:2px 0 2px 13px;font-size:14.5px;color:var(--ink-2)}
+.flow-one{margin-top:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.flow-one span.n{display:inline-flex;align-items:center;gap:7px;border-radius:999px;background:var(--accent-soft);color:var(--accent-ink);padding:7px 14px;font-size:13.5px;font-weight:500}
+.flow-one i{color:var(--muted);font-style:normal}
+.panel p.t{margin-top:22px;font-size:15.5px;color:var(--ink-2)}
+.panel h4{margin-top:22px;font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:1.7rem;line-height:1.1;letter-spacing:-.015em}
+.pains{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;margin-top:22px}
+@media(min-width:760px){.pains{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.pain{border-top:2px solid var(--line-strong);padding-top:14px}
+.pain .k{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;color:var(--accent);text-transform:uppercase}
+.pain h5{margin-top:8px;font-size:16.5px;font-weight:600;line-height:1.3}
+.pain p{margin-top:6px;font-size:14.5px;color:var(--ink-2)}
+
+/* ---------- how it works ---------- */
+.how{background:color-mix(in srgb,var(--surface) 60%,transparent);border-block:1px solid var(--line)}
+.how-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;margin-top:56px}
+@media(min-width:760px){.how-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:1100px){.how-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.how-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:26px 24px;display:flex;flex-direction:column}
+.how-card .k{font-family:var(--font-mono);font-size:12px;color:var(--accent)}
+.how-card h3{margin-top:14px;font-size:19px;font-weight:600;line-height:1.25}
+.how-card p{margin-top:10px;font-size:14.5px;color:var(--ink-2);flex:1}
+.tags{display:flex;flex-wrap:wrap;gap:7px;margin-top:18px}
+.tags span{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);border:1px solid var(--line-strong);border-radius:999px;padding:3px 10px}
+
+/* ---------- product window (app mock) ---------- */
+.app{margin-top:52px;display:grid;grid-template-columns:minmax(0,1fr);border:1px solid var(--line-strong);border-radius:34px;background:var(--surface);box-shadow:0 40px 90px -50px var(--shadow);overflow:hidden}
+@media(min-width:900px){.app{grid-template-columns:68px minmax(0,1fr)}}
+.rail{display:none;flex-direction:column;align-items:center;gap:6px;padding:18px 0;background:var(--surface-2);border-right:1px solid var(--line)}
+@media(min-width:900px){.rail{display:flex}}
+.rail .rk{width:36px;height:36px;border-radius:11px;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-weight:600;font-size:14px;margin-bottom:12px}
+.rail a{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;color:var(--muted);transition:background .2s,color .2s}
+.rail a:hover{background:var(--surface);color:var(--ink)}
+.rail a.act{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgb(0 0 0/.08),0 6px 14px -8px var(--shadow)}
+.rail svg{width:19px;height:19px}
+.app-main{padding:26px 20px 30px;position:relative}
+@media(min-width:900px){.app-main{padding:34px 44px 40px}}
+.app-note{display:flex;justify-content:flex-end}
+.app-note span{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);border:1px dashed var(--line-strong);border-radius:999px;padding:3px 11px}
+.ask{margin:14px auto 0;max-width:640px;display:flex;align-items:center;gap:12px;border:1px solid var(--line-strong);border-radius:999px;padding:8px 10px 8px 8px;background:var(--surface);box-shadow:0 10px 26px -20px var(--shadow)}
+.ask .sp{width:36px;height:36px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;flex-shrink:0}
+.ask .sp svg{width:17px;height:17px}
+.ask span.t{flex:1;color:var(--muted);font-size:16px}
+.ask .kb{font-family:var(--font-mono);font-size:11px;color:var(--muted);border:1px solid var(--line-strong);border-radius:7px;padding:2px 8px;margin-right:6px}
+.chips{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-top:14px}
+.chips span{border:1px solid var(--line-strong);border-radius:999px;padding:7px 15px;font-size:14px;color:var(--ink-2);background:var(--surface)}
+.snap-label{margin-top:34px}
+.snap{margin-top:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media(min-width:900px){.snap{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:auto auto}}
+.sc{border-radius:20px;padding:16px 20px;background:var(--surface-2);display:flex;flex-direction:column}
+.sc.big{background:var(--surface);border:1px solid var(--line-strong);grid-column:span 2;padding:20px 24px;box-shadow:0 18px 34px -28px var(--shadow)}
+@media(min-width:900px){.sc.big{grid-column:span 1;grid-row:span 2}.sc.big .v{font-size:clamp(2.2rem,3.3vw,3rem)}}
+.sc .l{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.sc .l i{width:8px;height:8px;border-radius:50%;background:var(--line-strong);display:inline-block;flex-shrink:0}
+.sc .v{margin-top:8px;font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:2rem;line-height:1.05;letter-spacing:-.015em;display:flex;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums}
+.sc.big .v{font-size:clamp(2.6rem,4.6vw,3.6rem);margin-top:12px}
+.sc .v small{font-family:var(--font-body);font-size:15px;color:var(--pos);font-weight:600}
+.sc .d{margin-top:6px;font-size:13.5px;color:var(--pos)}
+.sc .d.m{color:var(--muted)}
+.sc .spark{display:block;width:100%;height:46px;margin-top:20px;clip-path:inset(0 100% 0 0);transition:clip-path 1.3s var(--ease) .3s}
+.app.in .sc .spark{clip-path:inset(0 0 0 0)}
+.sc .f{margin-top:auto;padding-top:14px;font-size:12.5px;color:var(--muted)}
+.sc .f.sm{padding-top:8px;font-size:12px}
+.lists{margin-top:34px;display:grid;grid-template-columns:minmax(0,1fr);gap:30px}
+@media(min-width:900px){.lists{grid-template-columns:repeat(3,minmax(0,1fr));gap:44px}}
+.lists h4{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:500;color:var(--muted)}
+.lists h4 svg{width:15px;height:15px}
+.na{margin-top:16px;display:grid;gap:13px}
+.na li{display:flex;align-items:center;gap:12px;font-size:15.5px}
+.na li i{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0}
+.na li.z i{background:var(--line-strong)}
+.na li.z{color:var(--muted)}
+.na li b{margin-left:auto;font-weight:500;font-variant-numeric:tabular-nums}
+.run-top{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;font-size:15px}
+.run-top .p{font-size:17px}
+.run-top span:last-child{color:var(--muted);font-size:14px}
+.rbar{height:7px;border-radius:99px;background:var(--line);margin-top:9px;overflow:hidden}
+.rbar i{display:block;height:100%;width:33%;background:var(--accent-ink);border-radius:inherit;transform-origin:left;transform:scaleX(0);transition:transform 1.2s var(--ease) .5s}
+.app.in .rbar i{transform:scaleX(1)}
+.run{margin-top:14px;display:grid;gap:11px}
+.run li{display:flex;align-items:center;gap:11px;font-size:15px}
+.run li .c{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line-strong);flex-shrink:0;display:grid;place-items:center}
+.run li.done .c{background:var(--pos);border-color:var(--pos);color:#fff}
+.run li.now .c{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.run li.done .c svg{width:11px;height:11px}
+.pill{margin-left:auto;font-family:var(--font-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;background:var(--surface-2);color:var(--muted);border-radius:7px;padding:3px 9px;white-space:nowrap}
+.run li.done .pill{background:var(--pos-soft);color:var(--pos)}
+.run li.now .pill{background:var(--accent-soft);color:var(--accent-ink)}
+.pin{margin-top:14px;display:grid;gap:4px}
+.pin li{display:flex;align-items:center;gap:12px;padding:8px 0;font-size:15px}
+.pin li span.n{flex:1}
+.pin li span.v{font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:14px}
+.pin li span.v.low{color:var(--alert)}
+.pin li svg{width:15px;height:15px;color:var(--muted)}
+.pin li.add{color:var(--muted)}
+
+
+/* ---------- closing cta ---------- */
+.cta-card{position:relative;overflow:hidden;border-radius:26px;background:var(--cta-bg);border:1px solid var(--line);padding:72px 24px;text-align:center}
+@media(min-width:768px){.cta-card{padding:104px 48px}}
+.cta-card::before{content:"";position:absolute;inset:0;background:radial-gradient(520px 300px at 50% 0%,var(--glow-1),transparent 70%);pointer-events:none}
+.cta-card>*{position:relative}
+.cta-card h2{font-size:clamp(2.2rem,5.6vw,4.2rem);max-width:15ch;margin:16px auto 0;text-wrap:balance}
+.cta-card p.lede{margin:22px auto 0;max-width:30rem;font-size:16.5px;color:var(--ink-2)}
+.cta-card .cta-row{margin-top:34px}
+.cta-card .fine2{margin-top:20px;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--line)}
+.foot{display:grid;grid-template-columns:minmax(0,1fr);gap:36px;padding-block:56px}
+@media(min-width:800px){.foot{grid-template-columns:1.4fr 1fr 1fr}}
+.foot p.about{margin-top:14px;max-width:20rem;font-size:14px;color:var(--muted)}
+.foot ul{margin-top:14px;display:grid;gap:10px;font-size:14px}
+.foot ul a{color:var(--ink-2)}
+.foot ul a:hover{color:var(--accent)}
+.legal{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-block:22px;font-size:12.5px;color:var(--muted)}
+@media(min-width:700px){.legal{flex-direction:row;justify-content:space-between}}
+
+/* mascot */
+/* ---------- Pip, the co-pilot mascot (travels with the cursor) ---------- */
+.pip{position:fixed;left:0;top:0;z-index:60;width:76px;height:76px;pointer-events:none;will-change:transform}
+.pip>*{pointer-events:auto}
+.pip-fly{position:absolute;inset:0;transform:rotate(var(--rot,0deg))}
+.pip-body{display:block;width:76px;height:76px;background:none;border:0;padding:0;cursor:pointer;border-radius:50%}
+.pip-body svg{width:100%;height:100%;overflow:visible;animation:pipbob 3.6s ease-in-out infinite}
+.pip-body.hop svg{animation:pophop .7s var(--ease)}
+.pip-body.spin svg{animation:pipspin 1s var(--ease)}
+@keyframes pipbob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes pophop{0%{transform:translateY(0) scale(1,1)}25%{transform:translateY(2px) scale(1.08,.9)}55%{transform:translateY(-26px) scale(.94,1.08)}100%{transform:translateY(0) scale(1,1)}}
+@keyframes pipspin{0%{transform:rotate(0)}100%{transform:rotate(720deg)}}
+.pip .wing{transform-box:fill-box}
+.pip .wing.l{transform-origin:100% 40%}
+.pip .wing.r{transform-origin:0% 40%}
+.pip.fly .wing.l,.pip-body:hover .wing.l{animation:flapl .2s ease-in-out infinite}
+.pip.fly .wing.r,.pip-body:hover .wing.r{animation:flapr .2s ease-in-out infinite}
+@keyframes flapl{0%,100%{transform:rotate(0)}50%{transform:rotate(-38deg)}}
+@keyframes flapr{0%,100%{transform:rotate(0)}50%{transform:rotate(38deg)}}
+.pip .lid{transform-box:fill-box;transform-origin:50% 0;transform:scaleY(0);animation:blink 4.6s infinite}
+.pip .lid.r{animation-delay:.02s}
+@keyframes blink{0%,93%,100%{transform:scaleY(0)}96%{transform:scaleY(1)}}
+.pip .tail{transform-box:fill-box;transform-origin:0% 50%;animation:tail 1.8s ease-in-out infinite}
+@keyframes tail{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(10deg)}}
+.pip .pupil{transition:transform .12s linear}
+.pip-bubble{position:absolute;bottom:6px;width:max-content;max-width:min(244px,calc(100vw - 120px));background:var(--surface);border:1px solid var(--line-strong);border-radius:16px;padding:10px 14px;font-size:13.5px;line-height:1.4;color:var(--ink);box-shadow:0 18px 40px -22px var(--shadow);display:flex;flex-direction:column;align-items:flex-start;opacity:0;transform:scale(.94);transition:opacity .22s var(--ease),transform .22s var(--ease);pointer-events:none}
+.pip.bub-r .pip-bubble{left:86px;transform-origin:left bottom}
+.pip.bub-l .pip-bubble{right:86px;transform-origin:right bottom}
+.pip-bubble.show{opacity:1;transform:none}
+.pip-bubble.has-act{pointer-events:auto}
+.pip-bubble::after{content:"";position:absolute;bottom:18px;width:11px;height:11px;background:var(--surface);border:1px solid var(--line-strong);transform:rotate(45deg)}
+.pip.bub-r .pip-bubble::after{left:-6px;border-right:0;border-top:0}
+.pip.bub-l .pip-bubble::after{right:-6px;border-left:0;border-bottom:0}
+.pip-act{display:none;margin-top:9px;align-items:center;justify-content:center;gap:6px;height:34px;border-radius:999px;background:var(--btn-bg);color:var(--btn-ink);font-size:13px;font-weight:500;padding:0 16px;white-space:nowrap}
+.pip-act:hover{background:var(--btn-hover)}
+.pip-bubble.has-act .pip-act{display:inline-flex}
+.pip-hide{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:1px solid var(--line-strong);background:var(--surface);color:var(--muted);font-size:13px;line-height:1;display:grid;place-items:center;opacity:0;transition:opacity .2s}
+.pip:hover .pip-hide,.pip:focus-within .pip-hide{opacity:1}
+@media(hover:none){.pip-hide{opacity:.75}}
+.pip.gone{display:none}
+@media(max-width:640px){.pip,.pip-body{width:62px;height:62px}.pip-bubble{bottom:4px}.pip.bub-r .pip-bubble{left:70px}.pip.bub-l .pip-bubble{right:70px}}
+@media(prefers-reduced-motion:reduce){.pip-body svg,.pip .lid,.pip .tail,.pip .wing{animation:none!important}.pip-fly{transform:none!important}}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition-duration:0s!important;transition-delay:0s!important}
+  html{scroll-behavior:auto}
+  .js .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="nav">
+  <nav class="wrap nav-in" aria-label="Primary">
+    <a class="logo" href="#top" aria-label="Flightpath home">
+      <span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18c4-1 6-6 9-9 2-2 4-3 7-4-1 3-2 5-4 7-3 3-8 5-12 6z"/></svg></span>
+      Flightpath
+    </a>
+    <ul class="nav-links">
+      <li><a href="#product">Product</a></li>
+      <li><a href="#how-it-works">How it works</a></li>
+      <li><a href="#why">Why Flightpath</a></li>
+    </ul>
+    <div class="nav-cta">
+      <a class="signin" href="#">Sign in</a>
+      <a class="btn btn-primary btn-sm" href="#demo">Book a demo</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+<!-- ================= HERO ================= -->
+<section class="hero" id="top" aria-labelledby="hero-title">
+  <div class="hero-glow" aria-hidden="true"></div>
+  <div class="wrap stage">
+    <div class="row top">
+      <div class="imp-wrap reveal" data-speed="-0.06" style="--d:200ms">
+        <div class="imp">
+          <div class="imp-head"><span class="imp-label">Leads in motion</span><span class="imp-tag">Sample</span></div>
+          <div class="imp-val"><span data-count="1284">1,284</span></div>
+          <svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path d="M0,24 L11,21 L22,22 L33,16 L44,15 L55,16 L66,10 L77,8 L88,9 L100,4" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>
+          <p class="imp-note">across 3 workflows</p>
+        </div>
+      </div>
+      <div class="imp-wrap reveal" data-speed="-0.1" style="--d:300ms">
+        <div class="imp">
+          <div class="imp-head"><span class="imp-label">Positive reply rate</span><span class="imp-tag">Sample</span></div>
+          <div class="imp-val"><span data-count="6.4" data-dec="1" data-suf="%">6.4%</span><small>↗</small></div>
+          <div class="bar" aria-hidden="true"><i style="transform:scaleX(.64)"></i></div>
+          <p class="imp-note">benchmark range 4–7%</p>
+        </div>
+      </div>
+      <div class="imp-wrap reveal" data-speed="-0.05" style="--d:400ms">
+        <div class="imp">
+          <div class="imp-head"><span class="imp-label">Meetings booked</span><span class="imp-tag">Sample</span></div>
+          <div class="imp-val"><span data-count="38">38</span><small>↗</small></div>
+          <svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path d="M0,26 L12,24 L24,24 L36,18 L48,20 L60,13 L72,10 L84,12 L100,5" fill="none" stroke="var(--pos)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>
+          <p class="imp-note">last 30 days</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="center">
+      <h1 id="hero-title" class="display reveal">Your GTM motion, <em class="u">on autopilot.<svg viewBox="0 0 300 24" preserveAspectRatio="none" aria-hidden="true"><path d="M2 17 C 60 7, 110 4, 160 11 S 250 22, 298 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".75"/></svg></em></h1>
+      <div class="cta-row reveal" style="--d:140ms">
+        <a class="btn btn-primary" href="#demo">Book a demo <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="btn btn-ghost" href="#flow">See how it works <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </div>
+    </div>
+
+    <div class="row bottom">
+      <div class="imp-wrap reveal" data-speed="0.05" style="--d:450ms">
+        <div class="imp">
+          <div class="imp-head"><span class="imp-label">Touches to meeting</span><span class="imp-tag">Sample</span></div>
+          <div class="imp-val"><span data-count="4.2" data-dec="1">4.2</span></div>
+          <p class="imp-note">median across workflows</p>
+        </div>
+      </div>
+      <div class="imp-wrap reveal" data-speed="0.09" style="--d:550ms">
+        <div class="imp">
+          <div class="imp-head"><span class="imp-label">Engagement score</span><span class="imp-tag">Sample</span></div>
+          <div class="imp-val"><span data-count="76">76</span></div>
+          <div class="bar" aria-hidden="true"><i style="transform:scaleX(.76)"></i></div>
+          <p class="imp-note">Route to a call when score &gt; 70</p>
+        </div>
+      </div>
+      <div class="imp-wrap reveal" data-speed="0.04" style="--d:650ms">
+        <div class="imp">
+          <div class="imp-head"><span class="imp-label">Next action</span><span class="imp-tag">Sample</span></div>
+          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>Call task → owner</span>
+          <p class="imp-note">Chosen by engagement, not a timer</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FLOW (hero cards dock into the workflow; scroll runs a sample lead through it) ================= -->
+<section class="flow" id="flow" aria-labelledby="flow-title" data-quip="Scroll slowly. Watch Maya travel the workflow. She's a sample lead.">
+ <div class="flow-pin"><div class="wrap">
+  <h2 id="flow-title" class="sr-only">A sample lead moving through a Flightpath workflow</h2>
+  <div class="shell" id="shell">
+   <div class="cv-bar fade"><div class="cvb-l"><span class="eyebrow">Workflow</span><b>Net-new outbound</b></div><div class="cvb-m">Sample run: Maya Reyes, Head of RevOps · Example Co.</div><div class="cvb-r"><span class="tagd">Sample data</span><span class="live"><i></i>Live</span></div></div>
+   <div class="cv-scroll"><div class="cv fade" id="cv" aria-hidden="true">
+    <div class="col" style="left:0.9091%;width:31.8182%"><span class="pill">Reach out</span><span class="cnt">1/3</span></div>
+    <div class="col" style="left:34.0909%;width:31.8182%"><span class="pill">Follow up</span><span class="cnt">2/3</span></div>
+    <div class="col" style="left:67.2727%;width:31.8182%"><span class="pill">Route</span><span class="cnt">3/3</span></div>
+    <svg class="edges" viewBox="0 0 1100 540" preserveAspectRatio="none">
+     <defs><marker id="ab" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M1.5 1.5L8.5 5L1.5 8.5" fill="none" stroke="#C9926F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+     <marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M1.5 1.5L8.5 5L1.5 8.5" fill="none" stroke="var(--accent)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+     <path class="eb" data-e="e12" d="M180,140 L180,185" marker-end="url(#ab)"/>
+     <path class="eb" data-e="e23" d="M180,255 L180,300" marker-end="url(#ab)"/>
+     <path class="eb" data-e="e3y" d="M305,322 C365,322 365,105 425,105" marker-end="url(#ab)"/>
+     <path class="eb" data-e="e3n" d="M305,348 C345,348 385,335 425,335" marker-end="url(#ab)"/>
+     <path class="eb" data-e="e45" d="M550,140 L550,185" marker-end="url(#ab)"/>
+     <path class="eb" data-e="e5n" d="M550,255 L550,300" marker-end="url(#ab)"/>
+     <path class="eb" data-e="e5y" d="M675,220 L795,220" marker-end="url(#ab)"/>
+     <path class="eb" data-e="e67" d="M550,370 L550,415" marker-end="url(#ab)"/>
+     <path class="eb" data-e="e7y" d="M675,437 C735,437 735,220 795,220" marker-end="url(#ab)"/>
+     <path class="eb" data-e="e7n" d="M675,463 C735,463 735,335 795,335" marker-end="url(#ab)"/>
+     <path class="eb" data-e="e8y" d="M920,185 L920,140" marker-end="url(#ab)"/>
+     <path class="eb" data-e="e8n" d="M920,255 L920,300" marker-end="url(#ab)"/>
+     <path class="eh" data-e="e12" d="M180,140 L180,185" pathLength="1"/>
+     <path class="eh" data-e="e23" d="M180,255 L180,300" pathLength="1"/>
+     <path class="eh" data-e="e3y" d="M305,322 C365,322 365,105 425,105" pathLength="1"/>
+     <path class="eh" data-e="e45" d="M550,140 L550,185" pathLength="1"/>
+     <path class="eh" data-e="e5n" d="M550,255 L550,300" pathLength="1"/>
+     <path class="eh" data-e="e67" d="M550,370 L550,415" pathLength="1"/>
+     <path class="eh" data-e="e7y" d="M675,437 C735,437 735,220 795,220" pathLength="1"/>
+     <path class="eh" data-e="e8y" d="M920,185 L920,140" pathLength="1"/>
+     <circle class="pt" cx="180" cy="140" r="3.6"/>
+     <circle class="pt" cx="180" cy="255" r="3.6"/>
+     <circle class="pt" cx="305" cy="322" r="3.6"/>
+     <circle class="pt" cx="305" cy="348" r="3.6"/>
+     <circle class="pt" cx="550" cy="140" r="3.6"/>
+     <circle class="pt" cx="550" cy="255" r="3.6"/>
+     <circle class="pt" cx="675" cy="220" r="3.6"/>
+     <circle class="pt" cx="550" cy="370" r="3.6"/>
+     <circle class="pt" cx="675" cy="437" r="3.6"/>
+     <circle class="pt" cx="675" cy="463" r="3.6"/>
+     <circle class="pt" cx="920" cy="185" r="3.6"/>
+     <circle class="pt" cx="920" cy="255" r="3.6"/>
+     <g id="token" transform="translate(180,140)"><circle r="15" fill="var(--accent)" stroke="var(--surface)" stroke-width="3"/><text y="4" text-anchor="middle" font-size="11" font-weight="600" fill="#fff" font-family="Inter,sans-serif">MR</text></g>
+    </svg>
+    <span class="elabel tk" data-e="e3y" style="left:33.1818%;top:39.2593%">Yes</span>
+    <span class="elabel" data-e="e3n" style="left:33.1818%;top:64.0741%">No · 5 days</span>
+    <span class="elabel tk" data-e="e5n" style="left:50.0000%;top:51.2963%">Not seen</span>
+    <span class="elabel" data-e="e5y" style="left:66.8182%;top:40.7407%">Seen</span>
+    <span class="elabel tk" data-e="e7y" style="left:66.8182%;top:61.1111%">Opened</span>
+    <span class="elabel" data-e="e7n" style="left:66.8182%;top:75.5556%">Not opened</span>
+    <span class="elabel tk" data-e="e8y" style="left:83.6364%;top:30.0000%">Yes · 76</span>
+    <span class="elabel" data-e="e8n" style="left:83.6364%;top:51.2963%">No</span>
+    <div class="node t-trigger" data-n="n1" data-tip="Every lead starts here. One door in, one workflow." style="left:5.0000%;top:12.9630%;width:22.7273%;height:12.9630%"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></span><span class="nt"><b>Lead enters workflow</b><small>Trigger · list or form fill</small></span><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span class="stat slot tr" data-slot="leads" data-tip="Sample number. Yours come from your own workflows."><b>1,284</b><i>leads</i></span></div>
+    <div class="node t-action" data-n="n2" data-tip="First touch: a LinkedIn connection request. Polite, not pushy." style="left:5.0000%;top:34.2593%;width:22.7273%;height:12.9630%"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 11v5M8 8v.01M12 16v-5M12 13a3 3 0 016 0v3"/></svg></span><span class="nt"><b>Send connection request</b><small>Action · LinkedIn</small></span><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span></div>
+    <div class="node t-if" data-n="n3" data-tip="A fork! Accepted: carry on over LinkedIn. Silent for 5 days: email takes over." style="left:5.0000%;top:55.5556%;width:22.7273%;height:12.9630%"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 9-9 9-9-9z"/></svg></span><span class="nt"><b>Request accepted?</b><small>Condition · waits up to 5 days</small></span><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span></div>
+    <div class="node t-action" data-n="n4" data-tip="Accepted? Now the personalised message goes out." style="left:38.6364%;top:12.9630%;width:22.7273%;height:12.9630%"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 11v5M8 8v.01M12 16v-5M12 13a3 3 0 016 0v3"/></svg></span><span class="nt"><b>Send LinkedIn message</b><small>Action · LinkedIn</small></span><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span class="stat slot tr" data-slot="reply" data-tip="Sample number. Yours come from your own workflows."><b>6.4%</b><i>replies</i></span></div>
+    <div class="node t-if" data-n="n5" data-tip="Seen it? Great. Not seen? We don't nag on LinkedIn, we switch channels." style="left:38.6364%;top:34.2593%;width:22.7273%;height:12.9630%"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span><span class="nt"><b>Message seen?</b><small>Condition · waits 2 days</small></span><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span></div>
+    <div class="node t-action" data-n="n6" data-tip="Channel switch: a problem-led email. Never a double send." style="left:38.6364%;top:55.5556%;width:22.7273%;height:12.9630%"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span><span class="nt"><b>Send email</b><small>Action · problem-led intro</small></span><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span class="stat slot tr" data-slot="touch" data-tip="Sample number. Yours come from your own workflows."><b>4.2</b><i>touches</i></span></div>
+    <div class="node t-if" data-n="n7" data-tip="Opens and clicks are signals, not vanity stats. They steer what happens next." style="left:38.6364%;top:76.8519%;width:22.7273%;height:12.9630%"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-6 9 6v9a1 1 0 01-1 1H4a1 1 0 01-1-1z"/><path d="M3 10l9 6 9-6"/></svg></span><span class="nt"><b>Email opened or clicked?</b><small>Condition · engagement signal</small></span><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span></div>
+    <div class="node t-if" data-n="n8" data-tip="Every signal adds to a score. Cross 70 and a human gets pulled in." style="left:72.2727%;top:34.2593%;width:22.7273%;height:12.9630%"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18a8 8 0 1116 0"/><path d="M12 18l4-6"/></svg></span><span class="nt"><b>Score above 70?</b><small>Condition · engagement score</small></span><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span class="stat slot tr" data-slot="score" data-tip="Sample number. Yours come from your own workflows."><b>76</b><i>score</i></span></div>
+    <div class="node t-task" data-n="n9" data-tip="The payoff: the owner gets a call task. Chosen by behaviour, not a timer. Want this on your leads?" data-cta="1" style="left:72.2727%;top:12.9630%;width:22.7273%;height:12.9630%"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg></span><span class="nt"><b>Create call task</b><small>Action · assigned to owner</small></span><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span class="stat slot tr" data-slot="meet" data-tip="Sample number. Yours come from your own workflows."><b>38</b><i>meetings</i></span><span class="stat slot bl" data-slot="next" data-tip="Sample number. Yours come from your own workflows."><b>Call task</b><i>next</i></span></div>
+    <div class="node t-end skip" data-n="n10" data-tip="Silent leads rest for 30 days. No guilt trips, no spam." style="left:72.2727%;top:55.5556%;width:22.7273%;height:12.9630%"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span class="nt"><b>Pause and recycle</b><small>End · re-enters in 30 days</small></span><span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span></div>
+   </div></div>
+   <p class="swipe">Swipe sideways to pan the workflow</p>
+  </div>
+  <ol class="sr-only"><li>Lead enters the workflow.</li><li>A LinkedIn connection request is sent.</li><li>If accepted, a LinkedIn message is sent. If not accepted within 5 days, an email is sent instead.</li><li>If the message is seen, the lead goes to the score check. If not seen after 2 days, an email is sent.</li><li>If the email is opened or clicked, the lead goes to the score check. If not, the lead is paused and recycled after 30 days.</li><li>If the engagement score is above 70, a call task is created for the owner. Otherwise the lead is paused and recycled after 30 days.</li></ol>
+ </div></div>
+</section>
+<!-- ================= CHANNELS ================= -->
+<section class="channels" id="channels" aria-labelledby="channels-title" data-quip="LinkedIn and email today. The rest say “Planned”. I don’t promise what I can’t fly.">
+  <div class="wrap channels-in reveal">
+    <div><h2 id="channels-title" class="eyebrow">Channels Flightpath coordinates</h2><p style="margin-top:6px;font-size:12.5px;color:var(--muted)">Availability varies. We'll confirm coverage on your demo.</p></div>
+    <ul class="chan-list">
+      <li class="chan"><span class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 11v5M8 8v.01M12 16v-5M12 13a3 3 0 016 0v3"/></svg></span><span><b>LinkedIn</b><small>Core channel</small></span></li>
+      <li class="chan"><span class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span><span><b>Email</b><small>Core channel</small></span></li>
+      <li class="chan planned"><span class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></span><span><b>CRM sync</b><small>Planned</small></span></li>
+      <li class="chan planned"><span class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg></span><span><b>Calendar</b><small>Planned</small></span></li>
+      <li class="chan planned"><span class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg></span><span><b>Phone tasks</b><small>Planned</small></span></li>
+      <li class="chan planned"><span class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 01-11.5 7.2L4 20l1-4.6A8 8 0 1121 12z"/></svg></span><span><b>SMS</b><small>Planned</small></span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= WHY / STATUS QUO ================= -->
+<section class="s" id="why" aria-labelledby="why-title" data-quip="Twelve tabs open? I counted. I’m not judging. (I’m judging.)">
+  <div class="wrap">
+    <div class="sh c reveal">
+      <p class="eyebrow">Why Flightpath · The status quo</p>
+      <h2 id="why-title" class="display">Outbound is fragmented, manual, and <em>broken.</em></h2>
+      <p class="lede">See what a rep's day actually looks like, then watch it untangle.</p>
+    </div>
+    <div class="problem-grid">
+      <div class="panel bad reveal">
+        <h3>Today · five tools, five clocks</h3>
+        <div class="tools" aria-hidden="true">
+          <span class="tool" style="--r:-3deg">Lead lists</span><span class="tool" style="--r:2deg">Sequencer</span><span class="tool" style="--r:-1.5deg">LinkedIn</span><span class="tool" style="--r:3deg">Call list</span><span class="tool" style="--r:-2deg">CRM</span>
+        </div>
+        <div class="quotes">
+          <p class="quote">12 tabs open, lost track of Priya's thread.</p>
+          <p class="quote">Omar opened the email 3×. Call, DM, or wait?</p>
+          <p class="quote">He replied on LinkedIn, but email step 4 still went out.</p>
+          <p class="quote">Two reps messaged the same lead.</p>
+        </div>
+      </div>
+      <div class="panel good reveal" style="--d:120ms">
+        <h3>With Flightpath · one workflow, one clock</h3>
+        <div class="flow-one" aria-hidden="true"><span class="n">Lead sources</span><i>→</i><span class="n">One workflow per lead</span><i>→</i><span class="n">Every channel</span></div>
+        <h4>One workflow. One clock. Every channel.</h4>
+        <p class="t">Sources in, coordinated touches out. The next step follows engagement, not guesswork.</p>
+      </div>
+    </div>
+    <div class="pains">
+      <div class="pain reveal"><span class="k">01 · Tool fatigue</span><h5>Your reps are drowning in tabs.</h5><p>Lists, a sequencer, LinkedIn, a call list and the CRM. Every lead lives in five places at once.</p></div>
+      <div class="pain reveal" style="--d:100ms"><span class="k">02 · The “if/then” problem</span><h5>Did they open it? Call, DM, or wait?</h5><p>Checking whether a prospect engaged before choosing the next channel is manual, and it doesn't scale.</p></div>
+      <div class="pain reveal" style="--d:200ms"><span class="k">03 · Every tool, its own clock</span><h5>Touches collide. Or go silent.</h5><p>Timers fire regardless of what the lead just did, so replies get ignored and follow-ups get missed.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HOW IT WORKS ================= -->
+<section class="s how" id="how-it-works" aria-labelledby="how-title" data-quip="Four steps. Even a bird can follow this.">
+  <div class="wrap">
+    <div class="sh reveal">
+      <p class="eyebrow">How it works</p>
+      <h2 id="how-title" class="display">From workflow to next action, <em>automatically.</em></h2>
+      <p class="lede">Four moves, from picking a motion to routing the next step by behaviour.</p>
+    </div>
+    <div class="how-grid">
+      <article class="how-card reveal"><span class="k">01</span><h3>Pick a proven workflow</h3><p>Start from the Workflow Library: outbound, inbound and re-engagement motions with channel order and guardrails already set.</p><div class="tags"><span>Outbound · Inbound · Re-engage</span><span>Channel order preset</span></div></article>
+      <article class="how-card reveal" style="--d:90ms"><span class="k">02</span><h3>Flightpath runs the first touches</h3><p>Each lead moves through LinkedIn and email in a coordinated order. Touches never collide, and nothing is sent twice from two tools.</p><div class="tags"><span>One sequence per lead</span><span>No double sends</span></div></article>
+      <article class="how-card reveal" style="--d:180ms"><span class="k">03</span><h3>It listens for engagement</h3><p>Accepts, opens, clicks and replies are read as signals in real time, across every channel the workflow uses.</p><div class="tags"><span>Opens · clicks · replies</span><span>Engagement score</span></div></article>
+      <article class="how-card reveal" style="--d:270ms"><span class="k">04</span><h3>The next action is routed, not scheduled</h3><p>Instead of “wait three days, send step 4”, the engine checks each branch and picks the one that matches what the lead actually did.</p><div class="tags"><span>Branch by behaviour</span><span>No fixed timers</span></div></article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PRODUCT (app window) ================= -->
+<section class="s" id="product" aria-labelledby="outcomes-title" data-quip="Demo data, all of it. Book a demo to see it on your own numbers.">
+  <div class="wrap">
+    <div class="sh reveal">
+      <p class="eyebrow">Product · Outcomes</p>
+      <h2 id="outcomes-title" class="display">See what's working, <em>against a benchmark.</em></h2>
+      <p class="lede">One home screen for every workflow: what needs you, what's running, and how each motion compares to its range.</p>
+    </div>
+    <div class="app reveal" id="app">
+      <aside class="rail" aria-hidden="true">
+        <span class="rk">F</span>
+        <a href="#" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></a>
+        <a class="act" href="#" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v9a1 1 0 01-1 1h-4v-6H9v6H5a1 1 0 01-1-1z"/></svg></a>
+        <a href="#" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10M18 11c0 4-6 3-12 6"/></svg></a>
+        <a href="#" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></a>
+        <a href="#" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V10M12 20V4M19 20v-7"/></svg></a>
+        <a href="#" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></svg></a>
+      </aside>
+      <div class="app-main">
+        <div class="app-note"><span>Illustrative demo data, not customer results</span></div>
+        <div class="ask" aria-hidden="true"><span class="sp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></span><span class="t">Search leads, workflows or benchmarks</span><span class="kb">⌘K</span></div>
+        <div class="chips" aria-hidden="true"><span>Start from the Workflow Library</span><span>Leads that need a call today</span><span>Compare against benchmark</span></div>
+
+        <p class="eyebrow snap-label">Snapshot</p>
+        <div class="snap">
+          <div class="sc big"><p class="l"><i></i>Leads in motion</p><p class="v"><span data-count="1284">1,284</span><small>↗</small></p><p class="d m">across 3 workflows</p><svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".22"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs><path d="M0,24 L11,21 L22,22 L33,16 L44,15 L55,16 L66,10 L77,8 L88,9 L100,4 L100,30 L0,30Z" fill="url(#g1)"/><path d="M0,24 L11,21 L22,22 L33,16 L44,15 L55,16 L66,10 L77,8 L88,9 L100,4" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg><p class="f">Sample data · last 30 days</p></div>
+          <div class="sc big"><p class="l"><i></i>Positive reply rate</p><p class="v"><span data-count="6.4" data-dec="1" data-suf="%">6.4%</span><small>↗</small></p><p class="d">benchmark range 4–7%</p><svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--pos)" stop-opacity=".22"/><stop offset="1" stop-color="var(--pos)" stop-opacity="0"/></linearGradient></defs><path d="M0,24 L11,22 L22,23 L33,17 L44,18 L55,13 L66,11 L77,12 L88,8 L100,5 L100,30 L0,30Z" fill="url(#g2)"/><path d="M0,24 L11,22 L22,23 L33,17 L44,18 L55,13 L66,11 L77,12 L88,8 L100,5" fill="none" stroke="var(--pos)" stroke-width="1.8" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg><p class="f">Sample data · vs. the same period last month</p></div>
+          <div class="sc"><p class="l">Meetings booked</p><p class="v"><span data-count="38">38</span><small>↗</small></p><p class="f sm">Sample · last 30 days</p></div>
+          <div class="sc"><p class="l">Touches to meeting</p><p class="v"><span data-count="4.2" data-dec="1">4.2</span></p><p class="f sm">Sample · median</p></div>
+          <div class="sc"><p class="l">Call tasks open</p><p class="v"><span data-count="7">7</span></p><p class="f sm">Sample · for owners</p></div>
+          <div class="sc"><p class="l">Workflows live</p><p class="v"><span data-count="3">3</span></p><p class="f sm">Sample · outbound, inbound, re-engage</p></div>
+        </div>
+
+        <div class="lists">
+          <div>
+            <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Needs action</h4>
+            <ul class="na">
+              <li><i></i>Call tasks to complete<b>7</b></li>
+              <li><i></i>Replies to review<b>5</b></li>
+              <li><i></i>Connection requests pending<b>16</b></li>
+              <li><i></i>Leads paused, no engagement<b>24</b></li>
+              <li class="z"><i></i>Opt-outs to confirm<b>0</b></li>
+            </ul>
+          </div>
+          <div>
+            <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10M18 11c0 4-6 3-12 6"/></svg>Workflow run · Net-new outbound</h4>
+            <div class="run-top"><span class="p">33%</span><span>2 / 6 steps</span></div>
+            <div class="rbar"><i></i></div>
+            <ul class="run">
+              <li class="done"><span class="c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg></span>Connection request<span class="pill">Done</span></li>
+              <li class="done"><span class="c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg></span>Email · problem-led intro<span class="pill">Done</span></li>
+              <li class="now"><span class="c"></span>Route by engagement<span class="pill">Running</span></li>
+            </ul>
+          </div>
+          <div>
+            <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg>Pinned benchmarks</h4>
+            <ul class="pin">
+              <li><span class="n">Net-new outbound</span><span class="v">5.8% · in range</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></li>
+              <li><span class="n">Inbound follow-up</span><span class="v">21.5% · in range</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></li>
+              <li><span class="n">Closed-lost re-engage</span><span class="v low">2.1% · below</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></li>
+              <li class="add"><span class="n">+ Add benchmark</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CLOSING CTA ================= -->
+<section class="s" id="demo" aria-labelledby="demo-title" data-quip="Go on, click it. I’ll pretend I’m not watching.">
+  <div class="wrap">
+    <div class="cta-card reveal">
+      <p class="eyebrow">Ready when you are</p>
+      <h2 id="demo-title" class="display">Put your GTM motion <em>on autopilot.</em></h2>
+      <p class="lede">See a workflow from the library run end to end on your use case, and how the engine decides each lead's next step.</p>
+      <div class="cta-row"><a class="btn btn-primary" href="#">Book a demo <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a><a class="btn btn-line" href="#journey">Revisit how it works</a></div>
+      <p class="fine2">30-minute walkthrough · no commitment</p>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div><a class="logo" href="#top"><span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18c4-1 6-6 9-9 2-2 4-3 7-4-1 3-2 5-4 7-3 3-8 5-12 6z"/></svg></span>Flightpath</a><p class="about">GTM workflow orchestration for SMB sales teams. Coordinated, engagement-aware, benchmarked.</p></div>
+    <nav aria-label="Footer"><p class="eyebrow">Explore</p><ul><li><a href="#product">Product</a></li><li><a href="#how-it-works">How it works</a></li><li><a href="#why">Why Flightpath</a></li></ul></nav>
+    <div><p class="eyebrow">Talk to us</p><ul><li><a href="#demo">Book a demo</a></li><li><a href="#top">Back to top</a></li></ul></div>
+  </div>
+  <div class="wrap legal"><p>© 2026 Flightpath. All rights reserved.</p><p>Product visuals use illustrative sample data.</p></div>
+</footer>
+
+<div class="fly" id="fly" aria-hidden="true"></div>
+
+<div class="pip bub-r" id="pip">
+  <div class="pip-bubble" id="pipBubble"><span id="pipText"></span><a class="pip-act" id="pipAct" href="#demo">Book a demo →</a></div>
+  <div class="pip-fly" id="pipFly">
+    <button class="pip-body" id="pipBtn" type="button" aria-label="Pip, your co-pilot. Press for a joke.">
+      <svg viewBox="0 0 80 80" aria-hidden="true">
+        <ellipse cx="40" cy="75" rx="19" ry="3" fill="#000" opacity=".12"/>
+        <path class="wing l" d="M16 40c-9 1-13 8-12 15 8 1 15-3 17-10z" fill="var(--accent-ink)"/>
+        <path class="wing r" d="M64 40c9 1 13 8 12 15-8 1-15-3-17-10z" fill="var(--accent-ink)"/>
+        <ellipse cx="33" cy="72" rx="6" ry="2.6" fill="var(--hl)"/><ellipse cx="47" cy="72" rx="6" ry="2.6" fill="var(--hl)"/>
+        <path d="M40 9C58 9 67 25 67 44c0 18-12 27-27 27S13 62 13 44C13 25 22 9 40 9z" fill="var(--accent)"/>
+        <ellipse cx="40" cy="55" rx="14" ry="12" fill="var(--accent-soft)"/>
+        <path d="M40 10q-3-8 4-8" stroke="var(--accent-ink)" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <path d="M14 33q26-12 52 0" stroke="var(--ink)" stroke-width="5" fill="none" stroke-linecap="round"/>
+        <circle cx="29" cy="35" r="10.5" fill="#FFFBF5" stroke="var(--ink)" stroke-width="3.4"/>
+        <circle cx="51" cy="35" r="10.5" fill="#FFFBF5" stroke="var(--ink)" stroke-width="3.4"/>
+        <g class="pupil" id="pupilL"><circle cx="29" cy="35" r="4.2" fill="var(--ink)"/><circle cx="30.4" cy="33.6" r="1.3" fill="#fff"/></g>
+        <g class="pupil" id="pupilR"><circle cx="51" cy="35" r="4.2" fill="var(--ink)"/><circle cx="52.4" cy="33.6" r="1.3" fill="#fff"/></g>
+        <circle class="lid l" cx="29" cy="35" r="9.2" fill="var(--accent)"/><circle class="lid r" cx="51" cy="35" r="9.2" fill="var(--accent)"/>
+        <path d="M35 47h10l-5 8z" fill="var(--hl)"/>
+        <circle cx="21" cy="49" r="3.4" fill="#E58E6E" opacity=".55"/><circle cx="59" cy="49" r="3.4" fill="#E58E6E" opacity=".55"/>
+        <path d="M22 58q18 9 36 0v5q-18 9-36 0z" fill="var(--hl)"/>
+        <path class="tail" d="M56 61l15 5-5 6-13-6z" fill="var(--hl)"/>
+      </svg>
+    </button>
+    <button class="pip-hide" id="pipHide" type="button" aria-label="Hide Pip">×</button>
+  </div>
+  <span class="sr-only" id="pipLive" aria-live="polite"></span>
+</div>
+
+<script>
+(function(){
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var deskMQ = window.matchMedia('(min-width: 960px) and (min-height: 640px)');
+  var hoverCap = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  var $ = function(s,r){return (r||document).querySelector(s)};
+  var $$ = function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+  var clamp = function(v,a,b){return Math.min(b,Math.max(a,v))};
+  var lerp = function(a,b,t){return a+(b-a)*t};
+  var ease = function(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2};
+
+  /* ---- nav, reveal, count-up ---- */
+  var nav = $('#nav');
+  var onNav = function(){ nav.classList.toggle('solid', window.scrollY > 8) };
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target) } });
+  }, {threshold:.12, rootMargin:'0px 0px -6% 0px'});
+  $$('.reveal').forEach(function(el){ io.observe(el) });
+  var fmt = function(v,d,s){ return v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}) + s };
+  var cio = new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if(!e.isIntersecting) return; cio.unobserve(e.target);
+      var el = e.target, to = parseFloat(el.dataset.count), d = +(el.dataset.dec||0), s = el.dataset.suf||'';
+      if(reduce){ el.textContent = fmt(to,d,s); return }
+      var t0 = performance.now();
+      (function tick(now){
+        var t = Math.min(1,(now-t0)/1300), k = 1-Math.pow(1-t,4);
+        el.textContent = fmt(to*k,d,s);
+        if(t<1) requestAnimationFrame(tick);
+      })(t0);
+    });
+  },{threshold:.5});
+  $$('[data-count]').forEach(function(el){ cio.observe(el) });
+
+  /* ================= workflow run ================= */
+  var flow = $('#flow'), shell = $('#shell'), cv = $('#cv');
+  var TAKEN = [['e12',.03,.12],['e23',.15,.24],['e3y',.27,.38],['e45',.41,.48],['e5n',.53,.60],['e67',.63,.70],['e7y',.73,.84],['e8y',.87,.96]];
+  var ARRIVE = {n1:0,n2:.12,n3:.24,n4:.38,n5:.48,n6:.60,n7:.70,n8:.84,n9:.96};
+  var LEAVE  = {n1:.03,n2:.15,n3:.27,n4:.41,n5:.53,n6:.63,n7:.73,n8:.87};
+  var ORDER = ['n1','n2','n3','n4','n5','n6','n7','n8','n9'];
+  var STEP_SAY = {
+    n2:"Step one: a connection request goes out.",
+    n3:"Maya accepted. Nice.",
+    n4:"So a LinkedIn message follows.",
+    n5:"Seen it? Not yet. We don't nag, we switch channels.",
+    n6:"Channel switch: an email, not another ping.",
+    n7:"Opened twice and clicked. Interesting...",
+    n8:"Score: 76. That's over 70!",
+    n9:"A call task lands with the owner. That's a lead becoming a conversation. Want this on your leads?"
+  };
+  var nodeEl = {}, edgeB = {}, edgeH = {}, edgeL = {};
+  $$('.node',cv).forEach(function(n){ nodeEl[n.dataset.n] = n });
+  $$('.eb',cv).forEach(function(p){ edgeB[p.dataset.e] = p });
+  $$('.eh',cv).forEach(function(p){ edgeH[p.dataset.e] = p });
+  $$('.elabel',cv).forEach(function(p){ edgeL[p.dataset.e] = p });
+  var token = $('#token'), tokLen = {};
+  var cur = -1, narrate = null, narrOff = null, narrCta = false;
+
+  var setRun = function(p){
+    var idx = -1;
+    ORDER.forEach(function(id,i){
+      var n = nodeEl[id], on = p >= ARRIVE[id] - 0.0001, done = LEAVE[id] != null && p >= LEAVE[id];
+      n.classList.toggle('on', on); n.classList.toggle('done', done && id !== 'n9');
+      if(on) idx = i;
+    });
+    if(p >= .99) nodeEl.n9.classList.add('done');
+    TAKEN.forEach(function(t){
+      var ep = clamp((p - t[1]) / (t[2] - t[1]), 0, 1), h = edgeH[t[0]];
+      h.style.strokeDashoffset = (1 - ep).toFixed(4);
+      h.classList.toggle('full', ep >= .999);
+      if(edgeL[t[0]]) edgeL[t[0]].classList.toggle('on', ep > .5);
+    });
+    /* token travels along the taken edge; sits at the arrival port while a node dwells */
+    var pt = null;
+    for(var i=0;i<TAKEN.length;i++){
+      var t = TAKEN[i], path = edgeB[t[0]];
+      if(!tokLen[t[0]]) tokLen[t[0]] = path.getTotalLength();
+      if(p < t[1]){ pt = path.getPointAtLength(0); break }
+      if(p <= t[2]){ pt = path.getPointAtLength(tokLen[t[0]] * clamp((p - t[1])/(t[2]-t[1]),0,1)); break }
+      if(i === TAKEN.length - 1) pt = path.getPointAtLength(tokLen[t[0]]);
+    }
+    if(pt){
+      token.setAttribute('transform','translate(' + pt.x.toFixed(1) + ',' + pt.y.toFixed(1) + ')');
+      var sc2 = $('.cv-scroll');   /* small screens: pan the canvas so the token stays in view */
+      if(!pinned && sc2 && sc2.scrollWidth > sc2.clientWidth + 4){
+        var want = pt.x * (cv.offsetWidth / 1100) - sc2.clientWidth / 2;
+        sc2.scrollLeft += (clamp(want, 0, sc2.scrollWidth - sc2.clientWidth) - sc2.scrollLeft) * .12;
+      }
+    }
+    if(idx > cur){ var prev = cur; cur = idx; if(prev >= 0 && narrate) narrate(ORDER[idx]) } else if(idx < cur){ cur = idx; if(narrOff) narrOff() }
+  };
+
+  /* non-pinned: run the sample once when it scrolls into view */
+  var played = false;
+  new IntersectionObserver(function(es,o){
+    es.forEach(function(e){
+      if(!e.isIntersecting || pinned || played) return;
+      played = true; o.disconnect();
+      if(reduce){ setRun(1); return }
+      var t0 = performance.now(), dur = 11000;
+      (function tick(now){ var p = clamp((now - t0)/dur,0,1); setRun(p); if(p < 1) requestAnimationFrame(tick) })(t0);
+    });
+  },{threshold:.35}).observe(document.querySelector('.cv-scroll'));
+  setRun(reduce ? 1 : 0);
+
+  /* ================= hero cards fly into the workflow chips ================= */
+  var heroCards = $$('.stage .imp');   /* leads, reply, meetings, touches, score, next */
+  var slotNames = ['leads','reply','meet','touch','score','next'];
+  var slots = slotNames.map(function(n){ return $('[data-slot="'+n+'"]') });
+  var layer = $('#fly'), clones = [], cloneSynced = [], pinned = false;
+  var ARC = [-46,-60,-40,44,56,40];
+  var buildClones = function(){
+    layer.innerHTML = ''; clones = []; cloneSynced = [];
+    heroCards.forEach(function(src){ var c = src.cloneNode(true); layer.appendChild(c); clones.push(c); cloneSynced.push(false) });
+  };
+  var resetFlight = function(){
+    heroCards.forEach(function(h){ h.style.visibility = '' });
+    slots.forEach(function(s){ s.style.removeProperty('--o') });
+    shell.style.removeProperty('--c');
+    clones.forEach(function(c){ c.style.visibility = 'hidden' });
+  };
+  var angleOf = function(el){
+    var m = getComputedStyle(el).transform; if(!m || m === 'none') return 0;
+    var v = m.match(/matrix\(([^)]+)\)/); if(!v) return 0;
+    var p = v[1].split(',').map(parseFloat); return Math.atan2(p[1], p[0]) * 180 / Math.PI;
+  };
+  var flight = function(jt, vh){
+    var T = clamp((vh*.92 - jt) / (vh*.92), 0, 1);
+    var Te = clamp((T - .12) / .88, 0, 1);
+    shell.style.setProperty('--c', clamp((Te - .35) / .45, 0, 1).toFixed(3));
+    for(var i=0;i<6;i++){
+      var src = heroCards[i], tgt = slots[i], cl = clones[i];
+      var t = ease(clamp((Te - i*.035) / .82, 0, 1));
+      var c = clamp((t - .78) / .22, 0, 1);
+      tgt.style.setProperty('--o', c.toFixed(3));
+      if(t <= 0.001){ src.style.visibility = ''; cl.style.visibility = 'hidden'; cloneSynced[i] = false; continue }
+      if(!cloneSynced[i]){ cl.innerHTML = src.innerHTML; cloneSynced[i] = true }
+      var w = src.offsetWidth, h = src.offsetHeight;
+      var sr = src.getBoundingClientRect(), tr = tgt.getBoundingClientRect();
+      var sx = sr.left + sr.width/2, sy = sr.top + sr.height/2, tx = tr.left + tr.width/2, ty = tr.top + tr.height/2;
+      var x = lerp(sx, tx, t), y = lerp(sy, ty, t) + Math.sin(Math.PI*t) * ARC[i];
+      var rot = (+src.dataset.rot || 0) * (1 - t);
+      var sc = lerp(1, clamp(tr.width / w, .26, 1), t);
+      cl.style.width = w + 'px'; cl.style.height = h + 'px';
+      cl.style.transform = 'translate3d(' + (x - w/2).toFixed(1) + 'px,' + (y - h/2).toFixed(1) + 'px,0) rotate(' + rot.toFixed(2) + 'deg) scale(' + sc.toFixed(3) + ')';
+      cl.style.opacity = (1 - c).toFixed(3);
+      cl.style.visibility = c >= 1 ? 'hidden' : 'visible';
+      src.style.visibility = 'hidden';
+    }
+  };
+  var configure = function(){
+    var want = deskMQ.matches && !reduce;
+    if(want !== pinned){
+      pinned = want; flow.classList.toggle('pinned', pinned);
+      if(pinned) buildClones(); else { resetFlight(); layer.innerHTML = ''; clones = [] }
+    }
+    heroCards.forEach(function(h){ h.dataset.rot = angleOf(h).toFixed(2) });
+    update();
+  };
+
+  var wraps = $$('.imp-wrap[data-speed]');
+  var parallax = function(){
+    var y = Math.min(window.scrollY, 900);
+    wraps.forEach(function(c){ c.style.setProperty('--py', (y * parseFloat(c.dataset.speed) * 3).toFixed(1) + 'px') });
+  };
+  var ticking = false;
+  function update(){
+    ticking = false; onNav();
+    var vh = window.innerHeight, r = flow.getBoundingClientRect();
+    if(!reduce) parallax();
+    if(pinned){
+      flight(r.top, vh);
+      var total = r.height - vh, p = total > 0 ? clamp(-r.top / total, 0, 1) : 1;
+      setRun(clamp((p - .05) / .88, 0, 1));
+    }
+    if(pipReady) onScrollPip();
+  }
+  var req = function(){ if(!ticking){ ticking = true; requestAnimationFrame(update) } };
+  window.addEventListener('scroll', req, {passive:true});
+  window.addEventListener('resize', function(){ configure(); if(pipReady) wake() });
+  deskMQ.addEventListener && deskMQ.addEventListener('change', configure);
+
+  /* ================= Pip ================= */
+  var pipReady = false;
+  var pip = $('#pip'), pipFly = $('#pipFly'), pipBtn = $('#pipBtn'), bubble = $('#pipBubble'),
+      bText = $('#pipText'), bAct = $('#pipAct'), live = $('#pipLive'), pL = $('#pupilL'), pR = $('#pupilR');
+  try{ if(localStorage.getItem('fp_pip_hidden') === '1') pip.classList.add('gone') }catch(e){}
+  $('#pipHide').addEventListener('click', function(){ pip.classList.add('gone'); try{ localStorage.setItem('fp_pip_hidden','1') }catch(e){} });
+  var gone = function(){ return pip.classList.contains('gone') };
+
+  /* one-liners for hovered components (matched in DOM order when an array) */
+  var TIPS = [
+    ['.nav-cta .signin', "Welcome back, captain."],
+    ['.nav-cta .btn-primary', "That's the big one. Book a demo."],
+    ['#hero-title', "One line. Zero tabs. That's the whole pitch."],
+    ['.cta-row .btn-primary', "Do it. I'll wait. I'm a bird, I have time."],
+    ['.cta-row .btn-ghost', "Scroll on. I'll walk you through the flow."],
+    ['.stage .imp', [
+      "1,284 leads, one workflow each. Sample data. I counted twice.",
+      "Reply rate next to its benchmark. A lone 6% means nothing.",
+      "Meetings booked. A sample number, but a bird can dream.",
+      "Touches until a meeting. Fewer is the goal.",
+      "Engagement score. Cross 70 and a human takes over.",
+      "The next step is picked by behaviour, not by a timer."]],
+    ['.chan:not(.planned)', ["LinkedIn: live today. Requests, messages, the lot.", "Email: live today. Sequenced with LinkedIn, never duplicated."]],
+    ['.chan.planned', "Planned. I don't promise what I can't fly."],
+    ['.tool', ["Lead lists: tab one of twelve.", "Sequencer: has its own clock.", "LinkedIn: tab three. Or seven.", "Call list: updated, sometimes.", "CRM: last updated nine days ago."]],
+    ['.quote', "A real day in outbound. Sound familiar?"],
+    ['.panel.good', "Sources in, coordinated touches out. This is the fun bit."],
+    ['.pain', ["Five tools, five places per lead. Exhausting.", "The if/then problem: checking engagement by hand, forever.", "Every tool has its own clock. Nobody agrees on the time."]],
+    ['.how-card', ["Start from a proven motion. Skip the blank page.", "Touches go out in order. Nothing is sent twice.", "Accepts, opens, clicks and replies all become signals.", "The engine picks the branch the lead earned. No fixed timers."]],
+    ['.rail', "Home, workflows, inbox, benchmarks. Tidy."],
+    ['.ask', "Search leads, workflows or benchmarks. Imaginary shortcut, real intentions."],
+    ['.chips span', ["Pick a proven workflow and go.", "Your call list, ranked by what leads actually did.", "See where you sit against the range."]],
+    ['.sc.big', ["Every lead in motion, in one number. Sample data, sleep easy.", "Reply rate beside its benchmark. Context is everything."]],
+    ['.sc:not(.big)', ["Meetings booked, sample numbers.", "Touches to meeting. Fewer is better.", "Call tasks waiting on an owner.", "Workflows currently live."]],
+    ['.lists > div', ["Your to-do list, ranked by lead behaviour.", "A live run: which step is it on?", "Benchmarks you pinned. Red means check the copy."]],
+    ['.cta-card h2', "Last stop. Mind the gap between demo and decision."]
+  ];
+  TIPS.forEach(function(t){
+    var els = $$(t[0]);
+    els.forEach(function(el,i){ if(!el.dataset.tip) el.dataset.tip = Array.isArray(t[1]) ? (t[1][i] || t[1][t[1].length-1]) : t[1] });
+  });
+
+  var pos = {x: window.innerWidth - 100, y: window.innerHeight - 100}, ptr = {x:-1,y:-1,active:false};
+  var VW = window.innerWidth, VH = window.innerHeight, S = 76, rot = 0, loop = 0, flyT = 0;
+  var curEl = null, tipT = 0, hideT = 0, finale = null, freeze = false, frozenUntil = 0, look = {x:0,y:0};
+  var measure = function(){ VW = window.innerWidth; VH = window.innerHeight; S = pipBtn.offsetWidth || 76 };
+
+  var calcTarget = function(){
+    var m = 10;
+    if(finale){
+      var r = finale.getBoundingClientRect();
+      return {x: clamp(r.left - 12 - S, m, VW - S - m), y: clamp(r.top + r.height/2 - S/2, m, VH - S - m)};
+    }
+    if(freeze) return {x: pos.x, y: pos.y};
+    if(hoverCap && ptr.active){
+      var x = ptr.x + 30, y = ptr.y + 30;
+      if(x + S > VW - m) x = ptr.x - 30 - S;
+      if(y + S > VH - m) y = ptr.y - 30 - S;
+      return {x: clamp(x, m, VW - S - m), y: clamp(y, m, VH - S - m)};
+    }
+    return {x: VW - S - 16, y: VH - S - 16};
+  };
+  var frame = function(){
+    loop = 0;
+    var t = calcTarget(), k = reduce ? 1 : .13, ox = pos.x, oy = pos.y;
+    pos.x += (t.x - pos.x) * k; pos.y += (t.y - pos.y) * k;
+    var vx = pos.x - ox, sp = Math.hypot(vx, pos.y - oy);
+    rot = lerp(rot, reduce ? 0 : clamp(vx * 1.2, -16, 16), .2);
+    pip.style.transform = 'translate3d(' + pos.x.toFixed(1) + 'px,' + pos.y.toFixed(1) + 'px,0)';
+    pipFly.style.setProperty('--rot', rot.toFixed(1) + 'deg');
+    pip.classList.toggle('fly', sp > 2 && !reduce);
+    var toLeft = finale ? true : pos.x > VW / 2;
+    pip.classList.toggle('bub-l', toLeft);
+    pip.classList.toggle('bub-r', !toLeft);
+    /* eyes */
+    if(ptr.active){
+      var cx = pos.x + S/2, cy = pos.y + S*.42, dx = ptr.x - cx, dy = ptr.y - cy, d = Math.hypot(dx,dy) || 1, kk = Math.min(1, d/150) * 3.4;
+      look.x = dx/d*kk; look.y = dy/d*kk;
+    } else { look.x = 0; look.y = 1.2 }
+    var s = 'translate(' + look.x.toFixed(2) + 'px,' + look.y.toFixed(2) + 'px)';
+    pL.style.transform = s; pR.style.transform = s;
+    if(Math.abs(t.x - pos.x) > .4 || Math.abs(t.y - pos.y) > .4 || Math.abs(rot) > .3 || finale || freeze) loop = requestAnimationFrame(frame);
+  };
+  var wake = function(){ if(!loop && !gone()) loop = requestAnimationFrame(frame) };
+
+  var showTip = function(text, act, announce){
+    if(gone()) return;
+    bText.textContent = text; bubble.classList.toggle('has-act', !!act); bubble.classList.add('show');
+    if(announce) live.textContent = text;
+    clearTimeout(hideT);
+  };
+  var hideTip = function(){ bubble.classList.remove('show'); if(!finale) bubble.classList.remove('has-act') };
+  var hideLater = function(ms){ clearTimeout(hideT); hideT = setTimeout(hideTip, ms) };
+
+  var inside = function(r, x, y, pad){ return x > r.left - pad && x < r.right + pad && y > r.top - pad && y < r.bottom + pad };
+  var handleTip = function(target){
+    var el = target && target.closest ? target.closest('[data-tip]') : null;
+    var overPip = target && (pip.contains(target));
+    if(freeze){
+      var r = curEl ? curEl.getBoundingClientRect() : null, pr = pip.getBoundingClientRect(), br = bubble.getBoundingClientRect();
+      var keep = overPip || (r && inside(r, ptr.x, ptr.y, 40)) || inside(pr, ptr.x, ptr.y, 20) || (bubble.classList.contains('show') && inside(br, ptr.x, ptr.y, 14));
+      if(keep && (!el || el === curEl || overPip)) return;
+      freeze = false; hideTip(); wake();
+    }
+    if(overPip) return;
+    if(el === curEl) return;
+    curEl = el; clearTimeout(tipT);
+    if(!el){ hideLater(260); return }
+    clearTimeout(hideT);
+    tipT = setTimeout(function(){
+      if(curEl !== el || gone() || finale) return;
+      var act = el.hasAttribute('data-cta');
+      showTip(el.dataset.tip, act);
+      if(act){ freeze = true; wake() }
+    }, 230);
+  };
+
+  var lastTarget = null;
+  window.addEventListener('pointermove', function(e){
+    if(e.pointerType === 'touch' || gone()) return;
+    ptr.x = e.clientX; ptr.y = e.clientY; ptr.active = true; lastTarget = e.target;
+    armIdle(); wake(); handleTip(e.target);
+  }, {passive:true});
+  document.documentElement.addEventListener('mouseleave', function(){ ptr.active = false; wake(); hideLater(100) });
+  function onScrollPip(){
+    if(!hoverCap || !ptr.active || gone()) return;
+    var el = document.elementFromPoint(ptr.x, ptr.y); if(el) handleTip(el);
+    wake();
+  }
+
+  /* section quips: first visit only, and never over a hover tip */
+  var seen = {};
+  var qio = new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if(!e.isIntersecting) return;
+      var id = e.target.id || e.target.className; if(seen[id] || curEl || finale) return; seen[id] = 1;
+      showTip(e.target.dataset.quip, false); hideLater(5200);
+    });
+  },{threshold:.35});
+  $$('[data-quip]').forEach(function(s){ qio.observe(s) });
+
+  /* narrate the run, one line per step */
+  narrate = function(id){
+    if(gone() || curEl || finale || !STEP_SAY[id]) return;
+    var last = id === 'n9';
+    showTip(STEP_SAY[id], last, true); narrCta = last;
+    if(!last) hideLater(4200);      /* the call-to-action stays until you scroll back or move on */
+  };
+  narrOff = function(){ if(narrCta && !curEl && !finale){ narrCta = false; hideTip() } };
+
+  /* finale: at the closing CTA, Pip parks beside the button and asks */
+  var ctaBtn = $('#demo .btn-primary');
+  new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if(e.isIntersecting && !gone()){
+        finale = ctaBtn; clearTimeout(tipT); showTip("That's the tour! Want this running on your own leads?", true, true); wake();
+      } else if(finale){ finale = null; hideTip(); wake() }
+    });
+  },{threshold:.7}).observe($('#demo .cta-card'));
+
+  /* poke him */
+  var JOKES = [
+    "Why did the lead ghost? Step 4 fired anyway.",
+    "Cold outreach? I prefer “room-temperature outreach”.",
+    "I'm not a cloud bird. CRM sync is still “Planned”.",
+    "I run entirely on sample data. Very low calorie.",
+    "My engagement score is 76. Route me to a call.",
+    "I asked my sequence for a break. It replied in 3 days, on a timer.",
+    "Fun fact: I have never once opened a tab.",
+    "Again? Fine. Hold my goggles."
+  ];
+  var ji = Math.floor(Math.random()*JOKES.length), pokes = 0, pokeT = 0;
+  pipBtn.addEventListener('click', function(){
+    pokes++; clearTimeout(pokeT); pokeT = setTimeout(function(){ pokes = 0 }, 6000);
+    pipBtn.classList.remove('hop','spin'); void pipBtn.offsetWidth;
+    if(pokes >= 5){ pipBtn.classList.add('spin'); showTip('Whoa. Dizzy. Please stop. (Don’t stop.)', false, true); hideLater(4200); pokes = 0; return }
+    pipBtn.classList.add('hop');
+    ji = (ji + 1) % JOKES.length; showTip(JOKES[ji], false, true); hideLater(5200);
+  });
+
+  /* idle nudge + greeting */
+  var idleT = 0;
+  function armIdle(){ clearTimeout(idleT); idleT = setTimeout(function(){ if(!curEl && !finale){ showTip('Still there? Hover anything, I’ll explain it.', false); hideLater(4200) } }, 24000) }
+  armIdle();
+  setTimeout(function(){ if(!curEl) { showTip(hoverCap ? "Hi, I'm Pip. Move your cursor, I'll tag along. Hover anything." : "Hi, I'm Pip. Scroll down, I'll co-pilot.", false); hideLater(5600) } }, 1500);
+
+  pipReady = true; measure(); pip.style.transform = 'translate3d(' + pos.x + 'px,' + pos.y + 'px,0)';
+  window.addEventListener('resize', measure);
+  window.addEventListener('load', function(){ configure() });
+  configure(); wake();
+})();
+</script>
+
+
+</body>
+</html>
