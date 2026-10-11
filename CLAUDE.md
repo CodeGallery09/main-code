@@ -71,6 +71,11 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - Sections talk to Pip through `lib/pip.ts`: `pipSay(text)` makes him speak, and `setPipBusy(true)` pauses his idle skits while a section narrates itself.
 - On form fields he reads `data-explain` hints; forms marked `data-pip-host` are where he perches to cheer.
 
+**Auth (prototype)**
+- `lib/auth.ts` (server-only) holds one hardcoded account and signs an `httpOnly` session cookie with HMAC. `/api/login` and `/api/logout` set and clear it; `/dashboard` is a placeholder that redirects to `/login` without a valid session.
+- `/signup` is a dummy form: it validates, creates nothing, and says so. Do not make it show a fake success.
+- `LOGIN_HREF`, `SIGNUP_HREF`, `DASHBOARD_HREF` live in `lib/site.ts`. Never import `lib/auth.ts` from a client component.
+
 ## Content rules
 
 These come from the original product brief:
