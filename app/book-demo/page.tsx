@@ -32,7 +32,7 @@ export default function BookDemoPage() {
     <>
       <Navbar />
       <main id="main">
-        <section id="top" aria-labelledby="book-demo-title" className="relative overflow-hidden">
+        <section id="top" data-pip-section="book-intro" aria-labelledby="book-demo-title" className="relative overflow-hidden">
           <div
             className="intro-fade dot-grid pointer-events-none absolute inset-x-0 top-0 h-[420px] [mask-image:linear-gradient(to_bottom,black,transparent)]"
             style={d(0)}
@@ -43,10 +43,10 @@ export default function BookDemoPage() {
             </p>
             <h1
               id="book-demo-title"
-              className="intro mx-auto mt-5 max-w-3xl font-serif text-[2.6rem] leading-[1.02] tracking-[-0.01em] text-ink sm:text-6xl md:text-[4.1rem]"
+              className="intro mx-auto mt-5 max-w-3xl font-serif [&_em]:not-italic [&_em]:text-accent-ink text-[2.6rem] leading-[1.02] tracking-[-0.01em] text-ink sm:text-6xl md:text-[4.1rem]"
               style={d(140)}
             >
-              Let&rsquo;s find the right GTM motion <em className="text-accent">for your team.</em>
+              Let&rsquo;s find the right GTM motion <em>for your team.</em>
             </h1>
             <p className="intro mx-auto mt-6 max-w-xl text-[17px] leading-relaxed text-ink-2/85" style={d(260)}>
               See how Flightpath coordinates your outreach, responds to lead engagement, and helps your team understand
@@ -56,14 +56,14 @@ export default function BookDemoPage() {
           </div>
         </section>
 
-        <section aria-label="Book a demo" className="py-16 md:py-24">
+        <section data-pip-section="book-form" aria-label="Book a demo" className="py-16 md:py-24">
           <div className="container-page grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16">
             <div className="intro lg:pt-8" style={d(520)}>
               <h2 className="font-serif text-[2rem] leading-tight text-ink sm:text-[2.4rem]">What we&rsquo;ll cover</h2>
               <ol className="mt-8 space-y-0 border-t border-line">
                 {AGENDA.map((item, i) => (
                   <li key={item} className="flex gap-4 border-b border-line py-4.5">
-                    <span className="mt-0.5 font-mono text-[11px] tracking-[0.08em] text-accent">0{i + 1}</span>
+                    <span className="mt-0.5 font-mono text-[11px] tracking-[0.08em] text-accent-ink">0{i + 1}</span>
                     <span className="text-[15.5px] leading-relaxed text-ink-2">{item}</span>
                   </li>
                 ))}
@@ -76,7 +76,7 @@ export default function BookDemoPage() {
               </p>
             </div>
 
-            <div className="intro card px-5 py-7 sm:px-8 sm:py-9" style={d(620)}>
+            <div id="book-form-card" className="intro card px-5 py-7 sm:px-8 sm:py-9" style={d(620)}>
               <h2 className="font-serif text-[2rem] leading-tight text-ink">Book your demo</h2>
               <p className="mt-2 text-[15px] leading-relaxed text-ink-2/85">
                 Tell us a little about your team so we can make the conversation useful.

@@ -39,12 +39,16 @@ export function Navbar() {
   const solid = scrolled || open;
 
   return (
-    <header
-      className={`intro-nav sticky top-0 z-50 border-b transition-colors duration-300 ${
-        solid ? "border-line bg-bg/90 backdrop-blur-md" : "border-transparent bg-bg/0"
-      }`}
-    >
-      <nav aria-label="Primary" className="container-page flex h-[var(--nav-h)] items-center justify-between">
+    <header className="intro-nav sticky top-3 z-50 px-3 sm:px-5">
+      {/* iOS 26 floating bar: a capsule of glass that hovers below the top edge. */}
+      <nav
+        aria-label="Primary"
+        className={`mx-auto flex h-14 max-w-[1120px] items-center justify-between rounded-full border pr-2 pl-5 transition-[background-color,box-shadow,border-color] duration-300 ${
+          solid
+            ? "border-white/70 bg-white/55 shadow-[0_0_0_0.5px_rgb(0_0_0/0.07),inset_0_1px_0_rgb(255_255_255/0.95),0_16px_36px_-18px_rgb(0_0_0/0.3)] backdrop-blur-2xl backdrop-saturate-[1.9]"
+            : "border-transparent bg-transparent"
+        }`}
+      >
         <Link href="/" aria-label="Flightpath home" className="rounded-md">
           <Logo />
         </Link>
@@ -54,7 +58,7 @@ export function Navbar() {
             <li key={l.href}>
               <Link
                 href={l.href}
-                className="rounded-full px-3.5 py-2 text-sm text-ink-2 transition-colors hover:bg-surface hover:text-ink"
+                className="rounded-full px-3.5 py-2 text-[14.5px] font-medium text-ink-2 transition-colors hover:bg-black/5 hover:text-ink"
               >
                 {l.label}
               </Link>
@@ -63,12 +67,12 @@ export function Navbar() {
         </ul>
 
         <div className="flex items-center gap-2">
-          <Link href={DEMO_HREF} className="btn btn-primary hidden h-10 sm:inline-flex">
+          <Link href={DEMO_HREF} className="btn btn-primary hidden h-10 px-5 text-[15px] sm:inline-flex">
             Book a demo
           </Link>
           <button
             type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-line-strong text-ink md:hidden"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/5 text-ink md:hidden"
             aria-expanded={open}
             aria-controls="mobile-menu"
             aria-label={open ? "Close menu" : "Open menu"}
@@ -79,8 +83,8 @@ export function Navbar() {
         </div>
       </nav>
 
-      <div id="mobile-menu" hidden={!open} className="border-t border-line bg-bg md:hidden">
-        <ul className="container-page flex flex-col py-3">
+      <div id="mobile-menu" hidden={!open} className="glass mx-auto mt-2 max-w-[1120px] overflow-hidden md:hidden">
+        <ul className="flex flex-col px-5 py-3">
           {NAV_LINKS.map((l) => (
             <li key={l.href}>
               <Link

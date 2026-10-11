@@ -2,7 +2,8 @@
 export const DEMO_HREF = "/book-demo";
 
 export const NAV_LINKS = [
-  { label: "Product", href: "/#product" },
-  { label: "How it works", href: "/#how-it-works" },
+  { label: "Customer journey", href: "/#journey" },
   { label: "Why Flightpath", href: "/#why" },
+  { label: "How it works", href: "/#how-it-works" },
+  { label: "Talk to founders", href: "/#founders" },
 ] as const;

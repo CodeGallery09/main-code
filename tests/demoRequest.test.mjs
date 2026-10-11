@@ -1,7 +1,7 @@
 // Run with `npm test` (Node's built-in runner; Node >= 22.18 strips the TS types natively).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateDemoRequest, normaliseWebsite, NOTES_MAX } from "../lib/demoRequest.ts";
+import { validateDemoRequest, validateFounderCall, normaliseWebsite, NOTES_MAX } from "../lib/demoRequest.ts";
 
 const valid = {
   fullName: "  Ada Lovelace ",
@@ -61,4 +61,39 @@ test("enforces length limits", () => {
   const r = validateDemoRequest({ ...valid, notes: "x".repeat(NOTES_MAX + 1), company: "x".repeat(121) });
   assert.equal(r.ok, false);
   assert.ok(r.errors.notes && r.errors.company);
+});
+
+const call = {
+  fullName: "Maya Reyes",
+  workEmail: "maya@acme.com",
+  pains: "Reps lose track of LinkedIn vs email replies.",
+  notes: "",
+  guestEmail: "",
+  date: "2030-03-14",
+  time: "09:30",
+  timeZone: "Europe/London",
+};
+
+test("founder call: accepts a complete request", () => {
+  const r = validateFounderCall(call);
+  assert.equal(r.ok, true);
+  assert.equal(r.data.time, "09:30");
+});
+
+test("founder call: flags missing fields", () => {
+  const r = validateFounderCall({});
+  assert.equal(r.ok, false);
+  assert.deepEqual(Object.keys(r.errors).sort(), ["date", "fullName", "pains", "time", "workEmail"]);
+});
+
+test("founder call: rejects digits in names, bad guest emails and impossible dates", () => {
+  assert.ok(validateFounderCall({ ...call, fullName: "Maya 2" }).errors.fullName);
+  assert.ok(validateFounderCall({ ...call, guestEmail: "nope" }).errors.guestEmail);
+  assert.ok(validateFounderCall({ ...call, date: "2030-02-31" }).errors.date);
+  assert.ok(validateFounderCall({ ...call, date: "14/03/2030" }).errors.date);
+});
+
+test("founder call: times must be 30-minute slots between 09:00 and 17:30", () => {
+  for (const time of ["08:30", "18:00", "09:15", "9:30", "noon"]) assert.ok(validateFounderCall({ ...call, time }).errors.time, time);
+  for (const time of ["09:00", "13:30", "17:30"]) assert.equal(validateFounderCall({ ...call, time }).ok, true, time);
 });

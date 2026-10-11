@@ -14,7 +14,7 @@ const STEPS: { label: string; icon: ReactNode; tone?: "signal" | "action" }[] = 
 /** Small decorative flow: LinkedIn → Email → Engagement signal → Next action. */
 export function DemoWorkflow() {
   return (
-    <figure className="card intro-card relative mx-auto mt-12 max-w-2xl px-4 py-5 sm:px-8 sm:py-6" style={d(420)}>
+    <figure data-pip="book-flow" className="card intro-card relative mx-auto mt-12 max-w-2xl px-4 py-5 sm:px-8 sm:py-6" style={d(420)}>
       <figcaption className="sr-only">
         Example workflow: a LinkedIn touch, then an email, then an engagement signal decides the next action.
       </figcaption>
@@ -29,7 +29,7 @@ export function DemoWorkflow() {
             <span
               className={`bd-node relative flex h-10 w-10 items-center justify-center rounded-full border bg-surface ${
                 s.tone === "action"
-                  ? "border-accent/40 text-accent"
+                  ? "border-accent/40 text-accent-ink"
                   : s.tone === "signal"
                     ? "border-success/35 text-success"
                     : "border-line-strong text-ink-2"

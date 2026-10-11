@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Flightpath: a marketing site for a GTM workflow-orchestration SaaS aimed at SMB sales teams. It has two routes: the landing page (`/`) and a demo-request page (`/book-demo`). Stack: Next.js 15 App Router, React 19, TypeScript 5, Tailwind CSS v4 (via `@tailwindcss/postcss`, no `tailwind.config`), ESLint 9 flat config. The only runtime dependency beyond Next and React is `lucide-react`.
+Flightpath: a marketing site for a GTM workflow-orchestration SaaS aimed at SMB sales teams. It has two routes: the landing page (`/`: Hero → Journey → WhyFlightpath → WorkflowLibrary → FounderBooker) and a demo-request page (`/book-demo`). Stack: Next.js 15 App Router, React 19, TypeScript 5, Tailwind CSS v4 (via `@tailwindcss/postcss`, no `tailwind.config`), ESLint 9 flat config. The only runtime dependency beyond Next and React is `lucide-react`.
+
+The visual direction comes from `references/home-terracotta-v9.html` (layout, Pip), recoloured to a testing palette. Palette and fonts are expected to change.
 
 `gtm_mock.html` in the root is a standalone design reference/mock. It is not part of the app.
 
@@ -23,28 +25,34 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
   - have no extensionless relative imports and no `@/` alias imports;
   - use only erasable TS syntax (no enums or namespaces).
 - **Never run `npm run build` while `next dev` is running.** Both write to `.next/`, and doing so has corrupted the cache: dev returns 500 with "Could not find the module … segment-explorer-node.js#SegmentViewNode in the React Client Manifest". The project also lives in a OneDrive folder. To build or recover: stop dev, delete `.next`, then build or restart.
+- `next dev` silently moves to port 3001+ if 3000 is taken, often by a forgotten earlier dev server whose `.next` cache is stale (it then serves 500s). Check the "Local:" URL it prints, and stop the old process.
 - Keep TypeScript on 5.x. TS 6 broke the `import "./globals.css"` side-effect import.
 
 ## Architecture
 
 **Styling system (`app/globals.css`)**
-- Design tokens are CSS variables on `:root` (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--accent` #4F46E5, `--success` #0F6E4E, `--alert`, …). They are mapped to Tailwind utilities through `@theme inline`, giving `bg-surface`, `text-accent`, `border-line` and so on. Add new colours in both places.
-- Fonts come from `next/font` in `app/layout.tsx` and are exposed as `font-serif` (Instrument Serif, headlines), `font-sans` (Inter, body) and `font-mono` (JetBrains Mono, labels/eyebrows).
+- Design tokens are CSS variables on `:root` in `app/globals.css`. The testing theme is black-and-white "liquid glass": pure white `--bg`, near-black `--ink`, and a black `--accent` / `--accent-ink` (so tinted elements are neutral greys), with system green/orange/red for status. Every other token is derived next to them. They are mapped to Tailwind utilities through `@theme inline` (`bg-surface`, `text-accent-ink`, `bg-sky`, …). To re-theme, edit only the `:root` block; add new colours in both places. A few rules and SVGs (Pip's artwork in `components/pip/pipSvg.ts`, `rgb(...)` glows and the pastel wallpaper in `body::before` in `globals.css`, `app/icon.svg`) hardcode brand colours, so grep for them when changing the palette.
+- **Liquid glass:** `.glass`, `.glass-lg` and `.card` share one translucent fill + heavy `backdrop-filter` blur/saturation + specular inset rim (all in `@layer components`), sitting over the fixed pastel "wallpaper" gradient in `body::before`. Small controls (chips, calendar days/slots, month arrows, picker rows marked `glass-row`) get the same look from the **unlayered "glass skin" block at the end of `globals.css`**, which has to be unlayered to beat their background utilities; add new chip-like controls to that selector list. iOS control idioms live there too: `.btn-secondary` is a pale-grey "tinted" capsule, `.field` is a grey-filled text field, and the template picker in `WorkflowLibrary` is a grey segmented control with a white thumb. Glass only reads against something behind it, so keep the wallpaper, and keep the number of blurred surfaces on screen small (the pinned Hero's cards drop their blur once merged). The navbar is a floating glass capsule (`sticky top-3`); `--nav-h` (76px) is the pinned Hero's top offset.
+- Use `--accent` for fills, buttons and rings, and `text-accent-ink` for accent-coloured text: accent and ink are the same black here, but keep the split so a coloured theme still works.
+- Fonts: `--font-sans`, `--font-serif` (the bold display face; utility name kept from the earlier serif) and `--font-mono` (labels/eyebrows, rendered in the system face like iOS section headers) all start with the Apple system stack (`-apple-system`, SF Pro) and fall back to Inter loaded via `next/font` in `app/layout.tsx` (`--font-body`), so Apple devices get real SF and everything else gets Inter. `.font-serif` and `.display` are weight 700 with tight tracking, and `em` is not italic (it is muted grey).
 - **Shared component classes** (`.card`, `.btn`, `.btn-primary`, `.btn-secondary`, `.container-page`, `.eyebrow`, `.field`) must stay inside `@layer components`. Unlayered CSS beats Tailwind utilities, so layered classes can still be overridden by utilities, e.g. `hidden` on a `.btn`.
 - **Exception:** a rule that must beat the global unlayered `:focus-visible` outline must itself be unlayered (see `.field:focus-visible`).
 
 **Animation conventions**
 - An inline script in `layout.tsx` adds `.js` to `<html>`. Every entrance or reveal style is gated on `.js …`, so content stays visible without JS.
-- Page-load intros are pure CSS keyframes (`.intro`, `.intro-word`, `.intro-card`, …), staggered with the `--d` custom property (`style={{"--d": "300ms"}}`). They run before hydration, so `Hero` remains a server component.
+- Page-load intros are pure CSS keyframes (`.intro`, `.intro-word`, `.intro-card`, …), staggered with the `--d` custom property (`style={{"--d": "300ms"}}`). They run before hydration, so the intro plays even though `Hero` is a client component.
 - Scroll reveals use `components/Reveal.tsx` / `lib/useInView.ts`, an IntersectionObserver that toggles `.is-visible` (delay via `--reveal-delay`).
-- Heavy sections avoid React re-renders per frame: `StatusQuoStory`, `Orchestration` and `OutcomeDashboard` drive animation through rAF loops or beat timers that write to refs/DOM, gated by IntersectionObserver.
+- Heavy animation avoids React re-renders per frame:
+  - `Hero` is pinned (sticky, 250vh, desktop only via the `DESKTOP_MQ` media query, which must match the CSS block in `globals.css`). Its six cards sit in their final grid slots and are translated out to scattered positions, then scroll progress glides them home (FLIP-style, inline transforms). After they land, `--m` (0→1, set on the section from scroll progress) fades each card's outline (`.hcard::before`) and fades in hairline dividers (`.hcard::after`), so the six read as one card. Outside the desktop query the cards stay separate and stacked.
+  - `Journey` and `WorkflowLibrary` use beat timers plus one rAF for the travelling packet, started when in view.
+  - `WhyFlightpath` shows the same five chips twice. "Today" is tilted and jittering with tangled curved wires. "With Flightpath" is `components/UntangleFlow.tsx`: it starts from the exact tangled layout, then (once in view) a rAF loop writes chip positions, wire `d` attributes and packet positions straight to refs while the tangle untangles into columns around a hub; its server HTML and reduced-motion state are the finished layout. Both cards read one shared `TOOLS`/`LINKS` table exported from that file, so edit positions there.
 - Animate `transform`/`opacity` only. The `prefers-reduced-motion` block at the end of `globals.css` zeroes durations and delays and hides decorative loops. New looping decorations need adding there.
 - Known Chromium pitfall: SVG `pathLength` + `stroke-dasharray` combined with `vector-effect: non-scaling-stroke` draws only part of the path. Drop `vectorEffect`, or use a `clip-path` wipe instead.
 - Grid columns that hold wide content need `minmax(0,1fr)` (e.g. `grid-cols-1`) to avoid mobile horizontal overflow.
 
 **Navigation**
-- `lib/site.ts` holds `DEMO_HREF` (`/book-demo`) and `NAV_LINKS`. Nav hrefs are root-relative hashes (`/#product`, `/#how-it-works`, `/#why`) so they work from any route. Use `next/link` for them.
-- Section ids on the landing page are what those links target. `#top` exists on both pages because the footer's "Back to top" links to it.
+- `lib/site.ts` holds `DEMO_HREF` (`/book-demo`) and `NAV_LINKS`. Nav hrefs are root-relative hashes (`/#journey`, `/#why`, `/#how-it-works`) so they work from any route. Use `next/link` for them.
+- Section ids on the landing page are what those links target. `#top` exists on both pages because the footer's "Back to top" links to it. The landing page's last section has anchor `id="founders"` but `data-pip-section="demo"` (Pip's table key), so the two differ on purpose.
 
 **Demo-request flow (`/book-demo`)**
 - `lib/demoRequest.ts` is the single shared contract: option lists, the `DemoRequest` type, `validateDemoRequest()` and the `DemoSubmitResponse` union. It is deliberately import-free so it runs in the browser, in the route handler, and under `node --test`.
@@ -55,6 +63,13 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
   - Webhook failure: 502.
 - The success UI must only appear on a genuine `{ ok: true }`.
 - `app/book-demo/page.tsx` is `force-dynamic` so its "delivery not connected" setup note reflects the runtime env.
+- **Founder call booker** (`components/FounderBooker.tsx`, landing page `#founders`) is a second request shape on the same endpoint: it posts `{ kind: "founder_call", … }`, validated by `validateFounderCall()` in `lib/demoRequest.ts` (preferred `date` + `time` in 30-minute slots 09:00–17:30, plus name, email, pains, optional notes and guest). The route branches on `kind` and tells the webhook apart by `type` (`demo_request` vs `founder_call_request`). The calendar is a **preferred-time picker, not availability**: copy must say a founder confirms by email and nothing is booked until then. "Today" is read in an effect so the server render has no date-dependent markup.
+
+**Pip (site mascot)**
+- `components/pip/`: `Pip.tsx` is mounted once in the root layout, `engine.ts` is the imperative engine (one rAF loop, all listeners disposed on unmount), `pipSvg.ts` holds the artwork, and the styles are in `app/pip.css`.
+- Sections opt in with `data-pip-section="<id>"`. The perches and lines live in the `SECTIONS` table in `engine.ts`; missing sections are skipped, so one table serves both routes.
+- Sections talk to Pip through `lib/pip.ts`: `pipSay(text)` makes him speak, and `setPipBusy(true)` pauses his idle skits while a section narrates itself.
+- On form fields he reads `data-explain` hints; forms marked `data-pip-host` are where he perches to cheer.
 
 ## Content rules
 
@@ -62,4 +77,4 @@ These come from the original product brief:
 - No invented testimonials, customer logos, metrics or integrations, and no certification claims.
 - Dashboard and product figures must stay labelled as illustrative or demo data.
 - Integrations beyond LinkedIn and email are shown as "Planned".
-- No fake booking or calendar availability.
+- No fake booking or calendar availability. The founder-call calendar is allowed only as a clearly labelled preferred-time request (see above).

@@ -17,7 +17,7 @@ export function Footer() {
           <ul className="mt-4 space-y-2.5 text-[14px]">
             {NAV_LINKS.map((l) => (
               <li key={l.href}>
-                <Link href={l.href} className="text-ink-2 transition-colors hover:text-accent">
+                <Link href={l.href} className="text-ink-2 transition-colors hover:text-accent-ink-ink">
                   {l.label}
                 </Link>
               </li>
@@ -28,12 +28,12 @@ export function Footer() {
           <p className="eyebrow">Talk to us</p>
           <ul className="mt-4 space-y-2.5 text-[14px]">
             <li>
-              <Link href={DEMO_HREF} className="text-ink-2 transition-colors hover:text-accent">
+              <Link href={DEMO_HREF} className="text-ink-2 transition-colors hover:text-accent-ink-ink">
                 Book a demo
               </Link>
             </li>
             <li>
-              <a href="#top" className="text-ink-2 transition-colors hover:text-accent">
+              <a href="#top" className="text-ink-2 transition-colors hover:text-accent-ink-ink">
                 Back to top
               </a>
             </li>

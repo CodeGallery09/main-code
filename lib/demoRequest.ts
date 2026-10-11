@@ -108,3 +108,79 @@ export type DemoSubmitResponse =
   | { ok: true }
   | { ok: false; code: "invalid"; errors: DemoErrors }
   | { ok: false; code: "not_configured" | "delivery_failed" | "bad_request"; message: string };
+
+/* ---------------------------------------------------------------------------
+   Founder call request: the "Speak with our Founders" booker on the landing page.
+   The visitor proposes a date and time; nothing is scheduled until a founder replies,
+   so the UI must call it a preferred time, never a confirmed booking.
+   --------------------------------------------------------------------------- */
+export const SLOT_FROM_MIN = 9 * 60; // 09:00
+export const SLOT_TO_MIN = 17 * 60 + 30; // last start 17:30
+export const SLOT_STEP_MIN = 30;
+export const FOUNDER_TEXT_MAX = 600;
+export const FOUNDER_NAME_MAX = 50;
+
+export type FounderCallRequest = {
+  fullName: string;
+  workEmail: string;
+  pains: string;
+  notes: string;
+  guestEmail: string; // "" when not provided
+  date: string; // YYYY-MM-DD, in the visitor's time zone
+  time: string; // HH:MM, 30-minute steps between 09:00 and 17:30
+  timeZone: string; // IANA name reported by the browser, "" if unknown
+};
+export type FounderField = keyof FounderCallRequest;
+export type FounderErrors = Partial<Record<FounderField, string>>;
+export type FounderValidation = { ok: true; data: FounderCallRequest } | { ok: false; errors: FounderErrors };
+
+export const FOUNDER_FIELD_ORDER: FounderField[] = ["fullName", "workEmail", "pains", "notes", "guestEmail", "date", "time"];
+
+const NAME_RE = /^[\p{L}\p{M} .'’-]+$/u;
+
+export function validateFounderCall(input: unknown): FounderValidation {
+  const src = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const errors: FounderErrors = {};
+
+  const fullName = str(src.fullName);
+  if (fullName.replace(/[^\p{L}]/gu, "").length < 2) errors.fullName = "Enter your name (letters only).";
+  else if (fullName.length > FOUNDER_NAME_MAX) errors.fullName = `Keep this under ${FOUNDER_NAME_MAX} characters.`;
+  else if (!NAME_RE.test(fullName)) errors.fullName = "Use letters, spaces, hyphens and apostrophes only.";
+
+  const workEmail = str(src.workEmail);
+  if (!workEmail) errors.workEmail = "Enter your work email.";
+  else if (workEmail.length > 254 || !EMAIL_RE.test(workEmail)) errors.workEmail = "Enter a valid email, like name@company.com.";
+
+  const pains = str(src.pains);
+  if (pains.length < 10) errors.pains = "Tell us a little more (at least a sentence).";
+  else if (pains.length > FOUNDER_TEXT_MAX) errors.pains = `Keep this under ${FOUNDER_TEXT_MAX} characters.`;
+
+  const notes = str(src.notes);
+  if (notes.length > FOUNDER_TEXT_MAX) errors.notes = `Keep this under ${FOUNDER_TEXT_MAX} characters.`;
+
+  const guestEmail = str(src.guestEmail);
+  if (guestEmail && (guestEmail.length > 254 || !EMAIL_RE.test(guestEmail))) errors.guestEmail = "That guest email doesn't look right.";
+
+  const date = str(src.date);
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  const real = dm ? new Date(Date.UTC(+dm[1], +dm[2] - 1, +dm[3])) : null;
+  if (!dm || !real || real.getUTCFullYear() !== +dm[1] || real.getUTCMonth() !== +dm[2] - 1 || real.getUTCDate() !== +dm[3]) {
+    errors.date = "Pick a date.";
+  }
+
+  const time = str(src.time);
+  const tm = /^(\d{2}):(\d{2})$/.exec(time);
+  const mins = tm ? +tm[1] * 60 + +tm[2] : -1;
+  if (mins < SLOT_FROM_MIN || mins > SLOT_TO_MIN || (mins - SLOT_FROM_MIN) % SLOT_STEP_MIN !== 0) errors.time = "Pick a time.";
+
+  const timeZone = str(src.timeZone).slice(0, 64);
+
+  if (Object.keys(errors).length) return { ok: false, errors };
+  return { ok: true, data: { fullName, workEmail, pains, notes, guestEmail, date, time, timeZone } };
+}
+
+/** Response body returned by POST /api/demo-request for `kind: "founder_call"` requests. */
+export type FounderSubmitResponse =
+  | { ok: true }
+  | { ok: false; code: "invalid"; errors: FounderErrors }
+  | { ok: false; code: "not_configured" | "delivery_failed" | "bad_request"; message: string };

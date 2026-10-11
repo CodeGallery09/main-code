@@ -134,7 +134,7 @@ export function DemoForm({ deliveryConfigured }: { deliveryConfigured: boolean }
   });
 
   return (
-    <form ref={formRef} noValidate onSubmit={onSubmit} aria-describedby={`${uid}-legend`}>
+    <form ref={formRef} data-pip-host noValidate onSubmit={onSubmit} aria-describedby={`${uid}-legend`}>
       <p id={`${uid}-legend`} className="text-[12.5px] text-muted">
         Fields marked <span className="text-alert">*</span> are required.
       </p>
@@ -146,17 +146,18 @@ export function DemoForm({ deliveryConfigured }: { deliveryConfigured: boolean }
 
       <div className="mt-5 grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
         <Field label="Full name" required htmlFor={`${uid}-fullName`} error={errors.fullName} errorId={`${uid}-fullName-error`}>
-          <input {...f("fullName")} type="text" autoComplete="name" required className="field" />
+          <input {...f("fullName")} data-explain="Your full name, so we know who we're meeting. Example: Maya Reyes" type="text" autoComplete="name" required className="field" />
         </Field>
         <Field label="Work email" required htmlFor={`${uid}-workEmail`} error={errors.workEmail} errorId={`${uid}-workEmail-error`}>
-          <input {...f("workEmail")} type="email" inputMode="email" autoComplete="email" spellCheck={false} required className="field" />
+          <input {...f("workEmail")} data-explain="Your work email. That's where we'll reply to find a time. Example: maya@yourcompany.com" type="email" inputMode="email" autoComplete="email" spellCheck={false} required className="field" />
         </Field>
         <Field label="Company name" required htmlFor={`${uid}-company`} error={errors.company} errorId={`${uid}-company-error`}>
-          <input {...f("company")} type="text" autoComplete="organization" required className="field" />
+          <input {...f("company")} data-explain="Your company name. Example: Example Co." type="text" autoComplete="organization" required className="field" />
         </Field>
         <Field label="Company website" htmlFor={`${uid}-website`} error={errors.website} errorId={`${uid}-website-error`} optional>
           <input
             {...f("website")}
+            data-explain="Optional. Your website helps us prepare. Example: yourcompany.com"
             type="text"
             inputMode="url"
             autoComplete="url"
@@ -166,14 +167,14 @@ export function DemoForm({ deliveryConfigured }: { deliveryConfigured: boolean }
           />
         </Field>
         <Field label="Your role" required htmlFor={`${uid}-role`} error={errors.role} errorId={`${uid}-role-error`}>
-          <Select {...f("role")} options={ROLES} autoComplete="organization-title" />
+          <Select {...f("role")} data-explain="Your role helps us pitch the right level of detail." options={ROLES} autoComplete="organization-title" />
         </Field>
         <Field label="Team size" required htmlFor={`${uid}-teamSize`} error={errors.teamSize} errorId={`${uid}-teamSize-error`}>
-          <Select {...f("teamSize")} options={TEAM_SIZES} />
+          <Select {...f("teamSize")} data-explain="How many people sell on your team, including you?" options={TEAM_SIZES} />
         </Field>
         <div className="sm:col-span-2">
           <Field label="Biggest GTM challenge" required htmlFor={`${uid}-challenge`} error={errors.challenge} errorId={`${uid}-challenge-error`}>
-            <Select {...f("challenge")} options={CHALLENGES} />
+            <Select {...f("challenge")} data-explain="Pick the one that hurts most. We'll start the demo there." options={CHALLENGES} />
           </Field>
         </div>
         <div className="sm:col-span-2">
@@ -191,6 +192,7 @@ export function DemoForm({ deliveryConfigured }: { deliveryConfigured: boolean }
           >
             <textarea
               {...f("notes")}
+              data-explain="Optional. Anything that helps us prepare. Example: 8 reps, selling to HR teams, mostly cold outreach so far."
               rows={4}
               placeholder="Current tools, target audience, or what you'd like to see."
               className="field min-h-[112px] resize-y py-3"

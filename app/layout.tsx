@@ -1,21 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Instrument_Serif, JetBrains_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
+import "./pip.css";
+import { Pip } from "@/components/pip/Pip";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
-const instrument = Instrument_Serif({
-  subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
-  variable: "--font-instrument",
-  display: "swap",
-});
-const jetbrains = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-jetbrains",
-  display: "swap",
-});
+// Inter stands in for SF Pro wherever the Apple system font isn't installed (see --font-sans).
+const body = Inter({ subsets: ["latin"], variable: "--font-body", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Flightpath — Your GTM motion, on autopilot",
@@ -24,14 +14,14 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#F3EDE3",
+  themeColor: "#FFFFFF",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${instrument.variable} ${jetbrains.variable}`}
+      className={`${body.variable}`}
       suppressHydrationWarning
     >
       <head>
@@ -46,6 +36,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           Skip to content
         </a>
         {children}
+        <Pip />
       </body>
     </html>
   );
