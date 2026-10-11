@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Flightpath: a marketing site for a GTM workflow-orchestration SaaS aimed at SMB sales teams. It has two routes: the landing page (`/`: Hero → Journey → WhyFlightpath → WorkflowLibrary → FounderBooker) and a demo-request page (`/book-demo`). Stack: Next.js 15 App Router, React 19, TypeScript 5, Tailwind CSS v4 (via `@tailwindcss/postcss`, no `tailwind.config`), ESLint 9 flat config. The only runtime dependency beyond Next and React is `lucide-react`.
+Flightpath: a marketing site for a GTM workflow-orchestration SaaS aimed at SMB sales teams. Routes: the landing page (`/`: Hero → Journey → WhyFlightpath → WorkflowLibrary → FounderBooker), a demo-request page (`/book-demo`), and prototype auth pages (`/login`, `/signup`, `/dashboard`, see **Auth**). Stack: Next.js 15 App Router, React 19, TypeScript 5, Tailwind CSS v4 (via `@tailwindcss/postcss`, no `tailwind.config`), ESLint 9 flat config. The only runtime dependency beyond Next and React is `lucide-react`.
 
 The visual direction comes from `references/home-terracotta-v9.html` (layout, Pip), recoloured to a testing palette. Palette and fonts are expected to change.
 
@@ -44,14 +44,14 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - Scroll reveals use `components/Reveal.tsx` / `lib/useInView.ts`, an IntersectionObserver that toggles `.is-visible` (delay via `--reveal-delay`).
 - Heavy animation avoids React re-renders per frame:
   - `Hero` is pinned (sticky, 250vh, desktop only via the `DESKTOP_MQ` media query, which must match the CSS block in `globals.css`). Its six cards sit in their final grid slots and are translated out to scattered positions, then scroll progress glides them home (FLIP-style, inline transforms). After they land, `--m` (0→1, set on the section from scroll progress) fades each card's outline (`.hcard::before`) and fades in hairline dividers (`.hcard::after`), so the six read as one card. Outside the desktop query the cards stay separate and stacked.
-  - `Journey` and `WorkflowLibrary` use beat timers plus one rAF for the travelling packet, started when in view.
+  - `Journey` and `WorkflowLibrary` use beat timers plus one rAF for the travelling packet, started when in view. Journey's extra motion (dot springs and rings, text slide-ins, pill pops, gauge sheen, pinging token) is pure CSS keyed off the `.jr-row.is-on` / `.is-chosen` / `.is-on` state classes, so it replays whenever the beat state resets; its looping pings are in the reduced-motion block.
   - `WhyFlightpath` shows the same five chips twice. "Today" is tilted and jittering with tangled curved wires. "With Flightpath" is `components/UntangleFlow.tsx`: it starts from the exact tangled layout, then (once in view) a rAF loop writes chip positions, wire `d` attributes and packet positions straight to refs while the tangle untangles into columns around a hub; its server HTML and reduced-motion state are the finished layout. Both cards read one shared `TOOLS`/`LINKS` table exported from that file, so edit positions there.
 - Animate `transform`/`opacity` only. The `prefers-reduced-motion` block at the end of `globals.css` zeroes durations and delays and hides decorative loops. New looping decorations need adding there.
 - Known Chromium pitfall: SVG `pathLength` + `stroke-dasharray` combined with `vector-effect: non-scaling-stroke` draws only part of the path. Drop `vectorEffect`, or use a `clip-path` wipe instead.
 - Grid columns that hold wide content need `minmax(0,1fr)` (e.g. `grid-cols-1`) to avoid mobile horizontal overflow.
 
 **Navigation**
-- `lib/site.ts` holds `DEMO_HREF` (`/book-demo`) and `NAV_LINKS`. Nav hrefs are root-relative hashes (`/#journey`, `/#why`, `/#how-it-works`) so they work from any route. Use `next/link` for them.
+- `lib/site.ts` holds `DEMO_HREF` (`/book-demo`), `NAV_LINKS` and the auth route constants. Nav hrefs are root-relative hashes (`/#journey`, `/#why`, `/#how-it-works`) so they work from any route. Use `next/link` for them.
 - Section ids on the landing page are what those links target. `#top` exists on both pages because the footer's "Back to top" links to it. The landing page's last section has anchor `id="founders"` but `data-pip-section="demo"` (Pip's table key), so the two differ on purpose.
 
 **Demo-request flow (`/book-demo`)**
