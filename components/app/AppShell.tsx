@@ -10,13 +10,15 @@ import {
   CampaignsIcon,
   HomeIcon,
   InboxIcon,
+  IntegrationsIcon,
   LeadsIcon,
   Mark,
   PanelIcon,
   SearchIcon,
   SettingsIcon,
+  WorkflowsIcon,
 } from "./icons";
-import { DASHBOARD_NAV, SETTINGS_HREF } from "@/lib/nav";
+import { DASHBOARD_NAV, INTEGRATIONS_HREF, SETTINGS_HREF } from "@/lib/nav";
 import { TASKS } from "@/lib/app/inbox";
 import { avatarTint, initials } from "@/lib/app/leads";
 import { useThumb } from "./ui";
@@ -26,6 +28,7 @@ const ICONS = {
   inbox: InboxIcon,
   leads: LeadsIcon,
   campaigns: CampaignsIcon,
+  workflows: WorkflowsIcon,
   analytics: AnalyticsIcon,
 } as const;
 
@@ -65,7 +68,7 @@ export function AppShell({ user, children }: { user: { name: string; org: string
           </button>
         </div>
 
-        <Link className="btn pri new" href="/dashboard/campaigns/new" title="New campaign">
+        <Link className="btn pri new" href="/dashboard/workflows/new" title="New campaign">
           <span className="lbl">New campaign</span>
           <span className="cplus" aria-hidden="true">
             +
@@ -93,7 +96,20 @@ export function AppShell({ user, children }: { user: { name: string; org: string
 
         <span className="grow" />
 
-        <Link className={"navi" + (isCurrent(SETTINGS_HREF) ? " on" : "")} href={SETTINGS_HREF}>
+        <Link
+          className={"navi" + (isCurrent(INTEGRATIONS_HREF) ? " on" : "")}
+          href={INTEGRATIONS_HREF}
+          aria-current={isCurrent(INTEGRATIONS_HREF) ? "page" : undefined}
+        >
+          <IntegrationsIcon />
+          <span className="lbl">Integrations</span>
+        </Link>
+
+        <Link
+          className={"navi" + (isCurrent(SETTINGS_HREF) ? " on" : "")}
+          href={SETTINGS_HREF}
+          aria-current={isCurrent(SETTINGS_HREF) ? "page" : undefined}
+        >
           <SettingsIcon />
           <span className="lbl">Settings</span>
         </Link>
@@ -163,7 +179,13 @@ function TabBar({ pathname, isCurrent }: { pathname: string; isCurrent: (href: s
   const ref = useRef<HTMLElement>(null);
   const thumb = useThumb(ref, "button.on", [pathname]);
   return (
-    <nav className="tabbar" aria-label="Sections" ref={ref}>
+    <nav
+      className="tabbar"
+      aria-label="Sections"
+      ref={ref}
+      // The bar splits evenly across however many sections the nav carries.
+      style={{ "--tabs": DASHBOARD_NAV.length } as React.CSSProperties}
+    >
       {thumb && <span className="tabthumb" style={{ transform: `translateX(${thumb.a}px)`, width: thumb.s }} />}
       {DASHBOARD_NAV.map((item) => {
         const Icon = ICONS[item.icon];
@@ -178,7 +200,7 @@ function TabBar({ pathname, isCurrent }: { pathname: string; isCurrent: (href: s
             onClick={() => router.push(item.href)}
           >
             <Icon />
-            <span>{item.label}</span>
+            <span className="lbl">{item.label}</span>
             {badge ? <span className="bdg">{badge}</span> : null}
           </button>
         );

@@ -116,6 +116,16 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - Server components read the repository directly; client components call the typed browser client in `lib/api.ts`. Don't `fetch("/api/...")` by hand.
 - Writes in the memory store last until the server restarts. That is deliberate for the prototype.
 
+**Workflows and the builder**
+- A multichannel campaign *is* a workflow: campaign ids and workflow ids are the same number. `lib/app/workflow.ts` owns the graph model and the `WORKFLOWS` seed; `lib/app/workflowLibrary.ts` derives the handful of numbers the library cards show (it reuses `hasRun` from `lib/app/campaigns.ts`, so a never-published workflow reads "—" on both screens).
+- **The builder has one route: `/dashboard/workflows/[id]`**, with `/new?template=<key>` for a fresh one. `/dashboard/campaigns/[id]` is a permanent redirect to it, kept only so older links work — do not render a second copy of the builder there.
+- `/dashboard/workflows` is the library: `.wfgrid` cards, a dashed "new" card and a `.tplgrid` template picker, all classes the reference CSS already defines.
+
+**Integrations (`/dashboard/integrations`)**
+- `lib/app/integrations.ts` is the catalogue: providers, their state, LinkedIn seats, and sending domains with their DNS records and mailboxes.
+- **LinkedIn and email are the only providers that connect.** WhatsApp Business, Twilio, calendar and the CRMs are `state: "planned"`, which greys the dot, disables the drawer's primary button and says so in a warn box. That is the content rule below, not a styling choice: never offer a connection the product cannot honour.
+- Reached from the rail (below the main nav, next to Settings) via `INTEGRATIONS_HREF` in `lib/nav.ts`.
+
 **Wallpaper is load-bearing.** Glass only reads as glass when there is colour behind it — the app wallpaper on `.app-shell`, and `body::before` on the marketing pages. Flattening either makes every panel look like a plain white card, so check `--tint` / `--g-tint` and the blur before touching them.
 
 Pip is a marketing guide and is hidden on `/dashboard` (see `components/pip/Pip.tsx`).
