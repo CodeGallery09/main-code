@@ -604,13 +604,13 @@ body::before {
     radial-gradient(
       circle at var(--mx, 50%) var(--my, 50%),
       transparent calc(var(--rip) * 420px - 34px),
-      rgb(255 255 255 / calc(0.5 * (1 - var(--rip)))) calc(var(--rip) * 420px),
+      rgb(255 255 255 / calc(0.35 * (1 - var(--rip)))) calc(var(--rip) * 420px),
       transparent calc(var(--rip) * 420px + 34px)
     ),
     /* the specular: a soft pool of light that follows it */
     radial-gradient(
       240px circle at var(--mx, 50%) var(--my, 50%),
-      rgb(255 255 255 / calc(0.55 * var(--hl))),
+      rgb(255 255 255 / calc(0.385 * var(--hl))),
       transparent 70%
     );
   -webkit-backdrop-filter: var(--lens, opacity(1)) blur(var(--g-blur)) saturate(var(--g-sat));
@@ -630,7 +630,7 @@ body::before {
 .uf-chip:hover,
 .glass-row:not([aria-checked="true"]):hover {
   --hl: 1;
-  --g-tint: rgb(255 255 255 / 0.68);
+  --g-tint: rgb(255 255 255 / 0.63);
   transform: translateY(-1px);
 }
 
@@ -660,7 +660,7 @@ body::before {
   --hl: 0;
   background-color: #0a0a0a;
   background-image:
-    radial-gradient(170px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.45 * var(--hl))), transparent 64%),
+    radial-gradient(170px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.315 * var(--hl))), transparent 64%),
     linear-gradient(180deg, #2c2c30, #0a0a0a);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.38),
@@ -671,8 +671,8 @@ body::before {
 .btn-primary:hover { --hl: 1; box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.45), 0 18px 36px -14px rgb(10 12 20 / 0.85); }
 .btn-ghost {
   --hl: 0;
-  background-image: radial-gradient(140px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.9 * var(--hl))), transparent 72%);
-  background-color: rgb(255 255 255 / calc(0.4 * var(--hl)));
+  background-image: radial-gradient(140px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.63 * var(--hl))), transparent 72%);
+  background-color: rgb(255 255 255 / calc(0.28 * var(--hl)));
   transition: --hl 400ms ease, background-color 300ms;
 }
 .btn-ghost:hover { --hl: 1; }
@@ -694,7 +694,7 @@ body::before {
 
 /* Text fields: a tinted well that turns to white glass on focus. */
 .field { --g-tint: rgb(255 255 255 / 0.45); --g-blur: 10px; }
-.field:hover { --g-tint: rgb(255 255 255 / 0.6); }
+.field:hover { --g-tint: rgb(255 255 255 / 0.56); }
 .field::placeholder { color: rgb(16 20 32 / 0.42); }
 
 /* The segmented template picker in the workflow library. */
@@ -746,7 +746,7 @@ body::before {
   /* The highlight that follows the pointer, over the translucent fill. */
   background-image: radial-gradient(
     340px circle at var(--mx, 50%) var(--my, 0%),
-    rgb(255 255 255 / calc(0.65 * var(--hl))),
+    rgb(255 255 255 / calc(0.455 * var(--hl))),
     transparent 70%
   );
   background-color: var(--tint);
@@ -778,7 +778,7 @@ body::before {
   pointer-events: none;
   padding: 1.3px;
   background:
-    radial-gradient(170px circle at var(--mx, 50%) var(--my, 0%), rgb(255 255 255 / var(--hl)), transparent 75%),
+    radial-gradient(170px circle at var(--mx, 50%) var(--my, 0%), rgb(255 255 255 / calc(0.7 * var(--hl))), transparent 75%),
     linear-gradient(140deg, #fff, rgb(255 255 255 / 0.4) 20%, rgb(0 0 0 / 0.07), rgb(255 255 255 / 0.3) 76%, rgb(255 255 255 / 0.95));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
@@ -802,14 +802,14 @@ body::before {
   background:
     radial-gradient(
       90px circle at var(--mx, 50%) var(--my, 50%),
-      rgb(255 255 255 / calc(0.95 * var(--hl))),
-      rgb(255 255 255 / calc(0.35 * var(--hl))) 62%,
+      rgb(255 255 255 / calc(0.665 * var(--hl))),
+      rgb(255 255 255 / calc(0.245 * var(--hl))) 62%,
       transparent 78%
     ),
-    rgb(17 19 22 / calc(0.07 * var(--hl)));
+    rgb(17 19 22 / calc(0.049 * var(--hl)));
   box-shadow:
-    inset 0 0 0 0.5px rgb(255 255 255 / calc(0.85 * var(--hl))),
-    0 8px 16px -10px rgb(0 0 0 / calc(0.55 * var(--hl)));
+    inset 0 0 0 0.5px rgb(255 255 255 / calc(0.595 * var(--hl))),
+    0 8px 16px -10px rgb(0 0 0 / calc(0.385 * var(--hl)));
 }
 .lg-nav .navlink:hover { --hl: 1; color: var(--accent-ink); }
 
@@ -827,7 +827,7 @@ body::before {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: radial-gradient(130px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.55 * var(--hl))), transparent 68%);
+  background: radial-gradient(130px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.385 * var(--hl))), transparent 68%);
 }
 .lg-nav .btn-primary:hover { --hl: 1; }
 
@@ -836,68 +836,27 @@ body::before {
 }
 
 /* =====================================================================
-   LIQUID: the ripple and the droplet
-   Two things make the glass read as liquid rather than frosted plastic.
-
-   1. The ripple. `--rip` (0 → 1) runs a ring out from the pointer when it
-      lands on a surface; the ring layer is the first background-image in the
-      glass skin above. It is registered so it can be interpolated at all, and
-      its resting value is 1 — the ring has already run out and faded, so an
-      idle surface shows nothing. glass.ts runs it 0 → 1 itself, a frame at a
-      time: neither an animation nor a transition survives here, because the
-      pinned hero tiles carry their own, more specific, float and entrance.
-   2. The droplet. A bead of water that follows the cursor across the glass,
-      magnifying and bending what is under it. It cannot be a pseudo-element
-      of the surface: an element with `backdrop-filter` becomes a backdrop
-      root, so a child of a glass pane can only sample the pane, not the page
-      behind it. So it is one fixed element at the end of <body>, moved and
-      clipped to whichever surface the pointer is on by components/app/glass.ts.
+   LIQUID: the ripple
+   `--rip` (0 → 1) runs a ring out from the pointer when it lands on a surface;
+   the ring layer is the first background-image in the glass skin above. It is
+   registered so it can be interpolated at all, and its resting value is 1 —
+   the ring has already run out and faded, so an idle surface shows nothing.
+   glass.ts runs it 0 → 1 itself, a frame at a time: neither an animation nor a
+   transition survives here, because the pinned hero tiles carry their own,
+   more specific, float and entrance.
    ===================================================================== */
 @property --rip {
   syntax: "<number>";
   inherits: false;
   initial-value: 1;
 }
-.lq-clip {
-  position: fixed;
-  z-index: 40;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 320ms var(--ease-out);
-}
-.lq-clip.is-on { opacity: 1; }
-.lq-drop {
-  position: absolute;
-  width: var(--dw, 184px);
-  height: var(--dw, 184px);
-  margin: calc(var(--dw, 184px) / -2) 0 0 calc(var(--dw, 184px) / -2);
-  border-radius: 48% 52% 53% 47% / 51% 47% 53% 49%;
-  /* The refraction rides inside backdrop-filter, as everywhere else: an
-     element with its own `filter` cannot sample what is behind it. */
-  -webkit-backdrop-filter: var(--drop, opacity(1)) saturate(126%) brightness(1.02);
-  backdrop-filter: var(--drop, opacity(1)) saturate(126%) brightness(1.02);
-  background-image:
-    radial-gradient(42% 38% at 32% 26%, rgb(255 255 255 / 0.12), transparent 66%),
-    radial-gradient(32% 28% at 72% 78%, rgb(255 255 255 / 0.07), transparent 70%);
-  box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 0.2),
-    inset 4px 7px 14px -10px rgb(255 255 255 / 0.4),
-    inset -6px -9px 18px -13px rgb(0 0 0 / 0.26);
-  animation: lq-wobble 5.2s ease-in-out infinite;
-}
-@keyframes lq-wobble {
-  0%, 100% { border-radius: 48% 52% 53% 47% / 51% 47% 53% 49%; }
-  33% { border-radius: 54% 46% 47% 53% / 46% 54% 46% 54%; }
-  66% { border-radius: 46% 54% 50% 50% / 55% 45% 55% 45%; }
-}
-
 /* =====================================================================
    HERO, DARK: the same material read over a photograph.
    The tokens are set on `.hero` above; these are the pieces that carry their
    own colours and so have to be told again.
    ===================================================================== */
 .hero .hcard { --g-tint: rgb(10 18 16 / 0.3); --g-blur: 14px; }
-.hero .hcard:hover { --g-tint: rgb(10 18 16 / 0.22); }
+.hero .hcard:hover { --g-tint: rgb(10 18 16 / 0.244); }
 .hero .hero-frame-bg { --g-tint: rgb(10 18 16 / 0.2); --g-blur: 26px; }
 .hero .live-dot { background: var(--success); }
 
@@ -907,7 +866,7 @@ body::before {
   color: #0a0a0a;
   background-color: rgb(255 255 255 / 0.76);
   background-image:
-    radial-gradient(170px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.9 * var(--hl))), transparent 66%),
+    radial-gradient(170px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.63 * var(--hl))), transparent 66%),
     linear-gradient(180deg, rgb(255 255 255 / 0.3), transparent);
   -webkit-backdrop-filter: var(--lens, opacity(1)) blur(14px) saturate(160%);
   backdrop-filter: var(--lens, opacity(1)) blur(14px) saturate(160%);
@@ -916,9 +875,9 @@ body::before {
     inset 0 1px 0 rgb(255 255 255 / 0.95),
     0 16px 34px -18px rgb(0 0 0 / 0.7);
 }
-.hero .btn-primary:hover { --hl: 1; background-color: rgb(255 255 255 / 0.86); }
+.hero .btn-primary:hover { --hl: 1; background-color: rgb(255 255 255 / 0.83); }
 .hero .btn-secondary { --g-tint: rgb(10 18 16 / 0.3); --g-blur: 14px; }
-.hero .btn-secondary:hover { --g-tint: rgb(255 255 255 / 0.2); }
+.hero .btn-secondary:hover { --g-tint: rgb(255 255 255 / 0.14); }
 .hero .cue-mouse { border-color: rgb(255 255 255 / 0.5); }
 
 /* The navbar floats over the photo at the top of the landing page, so it
@@ -938,25 +897,23 @@ body::before {
 }
 .lg-nav.is-dark::after {
   background:
-    radial-gradient(170px circle at var(--mx, 50%) var(--my, 0%), rgb(255 255 255 / var(--hl)), transparent 75%),
+    radial-gradient(170px circle at var(--mx, 50%) var(--my, 0%), rgb(255 255 255 / calc(0.7 * var(--hl))), transparent 75%),
     linear-gradient(140deg, rgb(255 255 255 / 0.9), rgb(255 255 255 / 0.18) 22%, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0.22) 76%, rgb(255 255 255 / 0.75));
 }
 .lg-nav.is-dark .navlink::before {
   background:
-    radial-gradient(90px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.4 * var(--hl))), rgb(255 255 255 / calc(0.14 * var(--hl))) 62%, transparent 78%),
-    rgb(255 255 255 / calc(0.06 * var(--hl)));
+    radial-gradient(90px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.28 * var(--hl))), rgb(255 255 255 / calc(0.098 * var(--hl))) 62%, transparent 78%),
+    rgb(255 255 255 / calc(0.042 * var(--hl)));
   box-shadow:
-    inset 0 0 0 0.5px rgb(255 255 255 / calc(0.4 * var(--hl))),
-    0 8px 16px -10px rgb(0 0 0 / calc(0.5 * var(--hl)));
+    inset 0 0 0 0.5px rgb(255 255 255 / calc(0.28 * var(--hl))),
+    0 8px 16px -10px rgb(0 0 0 / calc(0.35 * var(--hl)));
 }
 .lg-nav.is-dark .btn-primary {
   color: #0a0a0a;
   background-color: rgb(255 255 255 / 0.92);
-  background-image: radial-gradient(150px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.9 * var(--hl))), transparent 66%);
+  background-image: radial-gradient(150px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.63 * var(--hl))), transparent 66%);
   box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.9), 0 14px 30px -16px rgb(0 0 0 / 0.6);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lq-clip { display: none; }
-  .lq-drop { animation: none; }
 }
