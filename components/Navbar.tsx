@@ -10,6 +10,8 @@ import { DEMO_HREF, LOGIN_HREF, NAV_LINKS } from "@/lib/site";
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  // True while the capsule floats over the hero photograph, which is dark.
+  const [overDark, setOverDark] = useState(false);
 
   useEffect(() => {
     // A 1px sentinel at the top of the page avoids per-frame scroll handlers.
@@ -21,6 +23,28 @@ export function Navbar() {
     return () => {
       io.disconnect();
       sentinel.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const dark = document.querySelector("[data-nav-dark]");
+    if (!dark) return;
+    let frame = 0;
+    const read = () => {
+      frame = 0;
+      // Dark until the bottom of the photo has passed under the capsule.
+      setOverDark(dark.getBoundingClientRect().bottom > 76);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(read);
+    };
+    read();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(frame);
     };
   }, []);
 
@@ -48,7 +72,7 @@ export function Navbar() {
         aria-label="Primary"
         className={`lg-nav mx-auto flex h-14 max-w-[1120px] items-center justify-between rounded-full pr-2 pl-5 ${
           solid ? "is-solid" : ""
-        }`}
+        } ${overDark && !open ? "is-dark" : ""}`}
       >
         <Link href="/" aria-label="Flightpath home" className="rounded-md">
           <Logo />

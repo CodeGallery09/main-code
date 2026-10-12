@@ -233,7 +233,14 @@ export function Hero() {
   }, []);
 
   return (
-    <section ref={sectionRef} id="top" data-pip-section="hero" aria-labelledby="hero-title" className="hero relative">
+    <section
+      ref={sectionRef}
+      id="top"
+      data-pip-section="hero"
+      data-nav-dark
+      aria-labelledby="hero-title"
+      className="hero"
+    >
       <div ref={stickyRef} className="hero-sticky">
         <div className="hero-sky intro-fade" style={d(0)} aria-hidden="true" />
         <div className="hero-wrap container-page relative pt-14 pb-20 md:pt-20">
