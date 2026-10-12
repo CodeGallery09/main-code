@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Screen } from "./AppShell";
 import { SearchIcon } from "./icons";
@@ -21,7 +23,11 @@ type Period = "7d" | "30d" | "90d";
 
 const WINDOW: Record<Period, number> = { "7d": 7, "30d": 30, "90d": 90 };
 
+/** Only multichannel campaigns have a workflow to open in the builder. */
+const builderHref = (c: Campaign) => (c.type === "multi" ? `/dashboard/campaigns/${c.id}` : null);
+
 export function CampaignsScreen() {
+  const router = useRouter();
   const [status, setStatus] = useState<StatusFilter>("all");
   const [type, setType] = useState<TypeFilter>("all");
   const [channel, setChannel] = useState<ChannelKey | "all">("all");
@@ -86,7 +92,9 @@ export function CampaignsScreen() {
             ["draft", "Draft", countFor("draft")],
           ]}
         />
-        <button className="btn pri">Create campaign</button>
+        <Link className="btn pri" href="/dashboard/campaigns/new">
+          Create campaign
+        </Link>
       </div>
 
       <div className="lfilters">
@@ -179,8 +187,13 @@ export function CampaignsScreen() {
             <tbody>
               {rows.map(({ c, m }) => {
                 const tag = STATUS_TAG[paused.includes(c.id) ? "paused" : c.status];
+                const href = builderHref(c);
                 return (
-                  <tr className="click" key={c.id}>
+                  <tr
+                    className={href ? "click" : ""}
+                    key={c.id}
+                    onClick={href ? () => router.push(href) : undefined}
+                  >
                     <td>
                       <span>
                         <Switch
@@ -197,7 +210,15 @@ export function CampaignsScreen() {
                     </td>
                     <td>
                       <div className="two">
-                        <span style={{ fontWeight: 600 }}>{c.name}</span>
+                        <span style={{ fontWeight: 600 }}>
+                          {href ? (
+                            <Link href={href} onClick={(e) => e.stopPropagation()}>
+                              {c.name}
+                            </Link>
+                          ) : (
+                            c.name
+                          )}
+                        </span>
                         <small>
                           {c.type === "single" ? (
                             <>

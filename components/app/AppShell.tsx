@@ -65,7 +65,7 @@ export function AppShell({ user, children }: { user: { name: string; org: string
           </button>
         </div>
 
-        <Link className="btn pri new" href="/dashboard/campaigns" title="New campaign">
+        <Link className="btn pri new" href="/dashboard/campaigns/new" title="New campaign">
           <span className="lbl">New campaign</span>
           <span className="cplus" aria-hidden="true">
             +

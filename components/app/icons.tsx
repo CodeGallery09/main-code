@@ -145,3 +145,54 @@ export function Mark() {
     </svg>
   );
 }
+
+/**
+ * Extra glyphs the campaign builder needs, kept as a path table rather than
+ * twenty more exports. Same 24px grid as the icons above.
+ */
+const GLYPHS: Record<string, string | string[]> = {
+  users: [
+    "M9 11.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7z",
+    "M2.5 20c0-3.6 3-6 6.5-6s6.5 2.4 6.5 6",
+    "M16 4.5a3.5 3.5 0 010 7M18.5 14.3c1.9.8 3 2.8 3 5.7",
+  ],
+  li: [
+    "M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z",
+    "M8 11v5M8 8v.01M12 16v-5M12 13a3 3 0 016 0v3",
+  ],
+  mail: ["M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z", "M3 7l9 6 9-6"],
+  wa: [
+    "M3.5 20.5l1.3-4.2A8.5 8.5 0 1112 20.5a8.4 8.4 0 01-4.2-1.1z",
+    "M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.6-2-1-1 .8a4 4 0 01-2.2-2.2l.8-1-1-2z",
+  ],
+  phone: "M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z",
+  sms: [
+    "M4 5h16a1 1 0 011 1v10a1 1 0 01-1 1h-9l-5 4v-4H4a1 1 0 01-1-1V6a1 1 0 011-1z",
+    "M8 11h.01M12 11h.01M16 11h.01",
+  ],
+  wait: ["M6 3h12M6 21h12", "M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9"],
+  branch: ["M6 3v12", "M18 9a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6z", "M18 9a9 9 0 01-9 9"],
+  split: ["M12 3v6", "M12 9l-6 6v5M12 9l6 6v5"],
+  flag: "M5 21V4M5 4h12l-2 4 2 4H5",
+  exit: ["M15 4h4v16h-4", "M10 8l-4 4 4 4M6 12h10"],
+  plus: "M12 5v14M5 12h14",
+  minus: "M5 12h14",
+  x: "M6 6l12 12M18 6L6 18",
+  undo: ["M9 14L4 9l5-5", "M4 9h11a5 5 0 010 10h-3"],
+  redo: ["M15 14l5-5-5-5", "M20 9H9a5 5 0 000 10h3"],
+  tidy: ["M4 4h6v6H4zM14 14h6v6h-6z", "M7 10v4a2 2 0 002 2h5"],
+  fit: ["M4 9V5a1 1 0 011-1h4M20 15v4a1 1 0 01-1 1h-4", "M15 4h4a1 1 0 011 1v4M9 20H5a1 1 0 01-1-1v-4"],
+  grip: "M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01",
+  alert: ["M12 3l10 18H2z", "M12 10v5M12 18h.01"],
+};
+
+export function Glyph({ n, ...rest }: IconProps & { n: string }) {
+  const d = GLYPHS[n] || "";
+  return (
+    <Icon {...rest}>
+      {(Array.isArray(d) ? d : [d]).map((path, i) => (
+        <path d={path} key={i} />
+      ))}
+    </Icon>
+  );
+}
