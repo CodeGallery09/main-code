@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Flightpath: a marketing site and prototype workspace for a GTM workflow-orchestration SaaS aimed at SMB sales teams. Routes: the landing page (`/`: SiteHero → SiteJourney → SiteWhy → SiteWorkflows → FounderCall), a demo-request page (`/book-demo`), prototype auth pages (`/login`, `/signup`), and the signed-in app under `/dashboard`. Stack: Next.js 15 App Router, React 19, TypeScript 5, Tailwind CSS v4 (via `@tailwindcss/postcss`, no `tailwind.config`), ESLint 9 flat config. The only runtime dependency beyond Next and React is `lucide-react`.
+Flightpath: a marketing site and prototype workspace for a GTM workflow-orchestration SaaS aimed at SMB sales teams. Routes: the landing page (`/`: Hero → Journey → WhyFlightpath → WorkflowLibrary → FounderBooker), a demo-request page (`/book-demo`), prototype auth pages (`/login`, `/signup`), and the signed-in app under `/dashboard`. Stack: Next.js 15 App Router, React 19, TypeScript 5, Tailwind CSS v4 (via `@tailwindcss/postcss`, no `tailwind.config`), ESLint 9 flat config. The only runtime dependency beyond Next and React is `lucide-react`.
 
-**The design reference is the product app itself.** `app/app.css` is a verbatim port of the reference app's stylesheet, and the landing page and the workspace both render against it, so the two read as one product. `/book-demo`, `/login` and `/signup` still use the older Tailwind theme in `app/globals.css`; that file also still carries rules for landing sections that no longer exist (hero pinning, journey, untangle) and can be trimmed.
+The marketing pages (`/`, `/book-demo`, `/login`, `/signup`) use the Tailwind theme in `app/globals.css`. The signed-in workspace under `/dashboard` uses `app/app.css`, a verbatim port of the reference app's stylesheet. The two are deliberately separate: a redesign that put the landing page on `app.css` was rolled back, so `app.css` is loaded by the dashboard layout only.
 
 `gtm_mock.html` in the root is a standalone design reference/mock. It is not part of the app.
 
@@ -31,17 +31,12 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 ## Architecture
 
 **Liquid glass (`app/app.css` + `components/app/glass.ts`)**
-- `app/app.css` is the whole design system: tokens, layout, every screen, the glass material, responsive rules and reduced motion. It is vendored — change the `:root` tokens rather than rewriting rules. It is imported by `app/dashboard/layout.tsx` and by `app/page.tsx`, so Next only ships it on those routes.
+- `app/app.css` is the whole design system for the workspace: tokens, layout, every screen, the glass material, responsive rules and reduced motion. It is vendored — change the `:root` tokens rather than rewriting rules. It is imported by `app/dashboard/layout.tsx` only, so Next ships it on the dashboard routes alone.
 - The glass is not just a blur. `components/app/glass.ts` runs two effects, mounted by `<Glass />`:
   - **Refraction.** For each glass surface it paints a rounded-rect bevel normal map into a canvas, feeds it to an SVG `feDisplacementMap`, and points the element's `--lens` at that filter. Filters are keyed `lg-<w>-<h>-<radius>` so surfaces of the same size share one.
   - **Specular.** A pointer listener writes `--mx` / `--my` onto the surface under the cursor and up to two ancestors, which the stylesheet turns into a highlight that follows the pointer — this is the hover response on buttons, cards, chips and rows.
 - A surface opts in by class: the lens list is `.card,.pane,.side,.modal,…` and the specular list adds `.btn,.ib,.navi,.th,…`. **Add new glass controls to those selector lists in `glass.ts` and to the glass skin block at the end of `app.css`**, or they will render flat.
 - Without JS, or where `backdrop-filter` is unsupported, surfaces still render — they just lose the refraction.
-
-**Marketing page (`app/home.css`)**
-- Loaded only by `/`, on top of `app.css`. It adds the page rhythm the app has no use for (sections, hero, `.trio`/`.duo` grids, the sticky `.sitenav` capsule, the footer) and the wallpaper on `body.site` that gives the glass something to refract.
-- Sections live in `components/site/`. They keep the `data-pip-section` hooks and the `#journey` / `#why` / `#how-it-works` / `#founders` ids that `lib/site.ts` and Pip target.
-- `components/site/FounderCall.tsx` is the founder-call request. It is still a **preferred-time request, not a booking**: it validates with `validateFounderCall()` and posts `{ kind: "founder_call" }` to the same `/api/demo-request` endpoint.
 
 **Workspace data (`lib/app/`)**
 - The dashboard renders from `lib/app/`, a faithful port of the reference's demo content: `channels.ts`, `leads.ts` (rows plus derived score, tags, masked phone), `inbox.ts` (to-do queue and threads), `campaigns.ts`, `workspace.ts`.
@@ -104,9 +99,9 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - Server components read the repository directly; client components call the typed browser client in `lib/api.ts`. Don't `fetch("/api/...")` by hand.
 - Writes in the memory store last until the server restarts. That is deliberate for the prototype.
 
-**Wallpaper is load-bearing.** Glass only reads as glass when there is colour behind it — the gradients on `body.site::before` and the app wallpaper. Flattening them makes every panel look like a plain white card, so check `--tint` and `--blur` before touching them.
+**Wallpaper is load-bearing.** Glass only reads as glass when there is colour behind it — the app wallpaper on `.app-shell`. Flattening it makes every panel look like a plain white card, so check `--tint` and `--blur` before touching it.
 
-Pip is a marketing guide and is hidden on `/dashboard` (see `components/pip/Pip.tsx`). Its perches in `components/pip/engine.ts` were tuned to the old landing sections, so its placement on the new page is approximate.
+Pip is a marketing guide and is hidden on `/dashboard` (see `components/pip/Pip.tsx`).
 
 ## Content rules
 
