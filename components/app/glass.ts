@@ -92,8 +92,13 @@ function bevelMap(w: number, h: number, radius: number, bevel: number, scale: nu
   return canvas.toDataURL("image/png");
 }
 
-/** Attaches refraction filters to every glass surface. Returns a disposer. */
-export function mountLens(): () => void {
+/**
+ * Attaches refraction filters to every glass surface. Returns a disposer.
+ * `targets` narrows which elements get a lens — the marketing navbar passes its
+ * own selector so it does not pull in the workspace classes — and `strength`
+ * scales how hard the edge bends.
+ */
+export function mountLens(targets: string = LENS_TARGETS, strength = 1): () => void {
   if (typeof document === "undefined") return () => {};
   const supported =
     typeof CSS !== "undefined" &&
@@ -120,10 +125,13 @@ export function mountLens(): () => void {
     const w = Math.round(node.offsetWidth / 2) * 2;
     const h = Math.round(node.offsetHeight / 2) * 2;
     if (w < 8 || h < 8) return;
-    const radius = Math.round(parseFloat(getComputedStyle(node).borderTopLeftRadius) || 0);
+    // Pill shapes report a radius larger than the box; clamp so the bevel and
+    // the clip path stay sane.
+    const raw = parseFloat(getComputedStyle(node).borderTopLeftRadius) || 0;
+    const radius = Math.round(Math.min(raw, Math.min(w, h) / 2));
     const small = Math.min(w, h) < 64;
     const bevel = small ? Math.min(w, h) / 2.2 : Math.min(26, Math.min(w, h) / 3);
-    const scale = small ? 5 : Math.min(16, Math.max(8, Math.min(w, h) / 14));
+    const scale = (small ? 5 : Math.min(16, Math.max(8, Math.min(w, h) / 14))) * strength;
     const id = `lg-${w}-${h}-${radius}`;
 
     if (!made.has(id)) {
@@ -167,7 +175,7 @@ export function mountLens(): () => void {
   let frame = 0;
   const scan = () => {
     frame = 0;
-    document.querySelectorAll(LENS_TARGETS).forEach((el) => {
+    document.querySelectorAll(targets).forEach((el) => {
       if (seen.has(el)) return;
       seen.add(el);
       resize.observe(el);
@@ -190,7 +198,7 @@ export function mountLens(): () => void {
 }
 
 /** Writes the pointer position onto glass surfaces for the hover highlight. */
-export function mountSpecular(): () => void {
+export function mountSpecular(targets: string = SPECULAR_TARGETS): () => void {
   if (typeof window === "undefined") return () => {};
   let frame = 0;
   let latest: PointerEvent | null = null;
@@ -200,14 +208,14 @@ export function mountSpecular(): () => void {
     const event = latest;
     const target = event?.target;
     if (!target || !(target instanceof Element)) return;
-    let el: Element | null = target.closest(SPECULAR_TARGETS);
+    let el: Element | null = target.closest(targets);
     // Nested surfaces all light up, so a chip inside a card lifts with it.
     for (let depth = 0; el && depth < 3; depth++) {
       const box = el.getBoundingClientRect();
       const ratio = (el as HTMLElement).offsetWidth / (box.width || 1);
       (el as HTMLElement).style.setProperty("--mx", ((event.clientX - box.left) * ratio).toFixed(0) + "px");
       (el as HTMLElement).style.setProperty("--my", ((event.clientY - box.top) * ratio).toFixed(0) + "px");
-      el = el.parentElement?.closest(SPECULAR_TARGETS) ?? null;
+      el = el.parentElement?.closest(targets) ?? null;
     }
   };
 

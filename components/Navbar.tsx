@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { Logo } from "./Logo";
+import { mountLens, mountSpecular } from "./app/glass";
 import { DEMO_HREF, LOGIN_HREF, NAV_LINKS } from "@/lib/site";
 
 export function Navbar() {
@@ -20,6 +21,16 @@ export function Navbar() {
     return () => {
       io.disconnect();
       sentinel.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    // Real refraction + a pointer-tracked highlight, scoped to the nav capsule.
+    const disposeLens = mountLens(".lg-nav", 1.7);
+    const disposeSpecular = mountSpecular(".lg-nav,.lg-nav .navlink,.lg-nav .btn-primary");
+    return () => {
+      disposeLens();
+      disposeSpecular();
     };
   }, []);
 
@@ -43,10 +54,8 @@ export function Navbar() {
       {/* iOS 26 floating bar: a capsule of glass that hovers below the top edge. */}
       <nav
         aria-label="Primary"
-        className={`mx-auto flex h-14 max-w-[1120px] items-center justify-between rounded-full border pr-2 pl-5 transition-[background-color,box-shadow,border-color] duration-300 ${
-          solid
-            ? "border-white/70 bg-white/55 shadow-[0_0_0_0.5px_rgb(0_0_0/0.07),inset_0_1px_0_rgb(255_255_255/0.95),0_16px_36px_-18px_rgb(0_0_0/0.3)] backdrop-blur-2xl backdrop-saturate-[1.9]"
-            : "border-transparent bg-transparent"
+        className={`lg-nav mx-auto flex h-14 max-w-[1120px] items-center justify-between rounded-full pr-2 pl-5 ${
+          solid ? "is-solid" : ""
         }`}
       >
         <Link href="/" aria-label="Flightpath home" className="rounded-md">
@@ -58,7 +67,7 @@ export function Navbar() {
             <li key={l.href}>
               <Link
                 href={l.href}
-                className="rounded-full px-3.5 py-2 text-[14.5px] font-medium text-ink-2 transition-colors hover:bg-black/5 hover:text-ink"
+                className="navlink rounded-full px-3.5 py-2 text-[14.5px] font-medium text-ink-2"
               >
                 {l.label}
               </Link>
@@ -69,7 +78,7 @@ export function Navbar() {
         <div className="flex items-center gap-2">
           <Link
             href={LOGIN_HREF}
-            className="hidden rounded-full px-3.5 py-2 text-[14.5px] font-medium text-ink-2 transition-colors hover:bg-black/5 hover:text-ink md:inline-flex"
+            className="navlink hidden rounded-full px-3.5 py-2 text-[14.5px] font-medium text-ink-2 md:inline-flex"
           >
             Sign in
           </Link>
@@ -78,7 +87,7 @@ export function Navbar() {
           </Link>
           <button
             type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/5 text-ink md:hidden"
+            className="navlink inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/5 text-ink md:hidden"
             aria-expanded={open}
             aria-controls="mobile-menu"
             aria-label={open ? "Close menu" : "Open menu"}

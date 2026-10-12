@@ -289,7 +289,10 @@ body::before {
 @keyframes pulse-ring { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(2.8); opacity: 0; } }
 
 /* ---------- Page-load intro (pure CSS so it starts before hydration) ---------- */
-.js .intro-nav { animation: intro-nav 800ms var(--ease-out) both; }
+/* `backwards`, not `both`: a forwards fill leaves an identity transform on the
+   header, which makes it a backdrop root and stops the navbar glass from
+   sampling the page behind it. */
+.js .intro-nav { animation: intro-nav 800ms var(--ease-out) backwards; }
 .js .intro-fade { animation: intro-fade 1400ms ease both; animation-delay: var(--d, 0ms); }
 .js .intro { animation: intro-up 900ms var(--ease-out) both; animation-delay: var(--d, 0ms); }
 .intro-word { display: inline-block; }
@@ -554,4 +557,124 @@ body::before {
 .bk-day.is-sel {
   background: linear-gradient(180deg, #2c2c30, #0a0a0a);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4), 0 10px 20px -10px rgb(10 10 10 / 0.7);
+}
+
+/* ---------- Liquid glass navbar ----------
+   Apple-style material on the floating capsule. `components/app/glass.ts`
+   paints a bevel normal map, hands it to an SVG displacement filter and points
+   `--lens` at it, so the backdrop is refracted at the bevelled edge as well as
+   blurred; it also writes the pointer position (--mx / --my) for the specular
+   highlight. Unlayered so it beats the utilities on the element.
+
+   Two constraints shape this block, both Chromium rules about backdrop-filter:
+   the blur has to live on the capsule itself (an element with its own `filter`,
+   or a pseudo-element inside `isolation: isolate`, cannot sample the page
+   behind it), and the refraction therefore rides inside the backdrop-filter
+   list rather than as a separate filter. Without JS it degrades to blur
+   plus rim, which still reads as glass. */
+/* Inherited, so the ::after rim and the pills inside read the same value the
+   element animates; each child that lights up on its own resets it to 0. */
+@property --hl {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+.lg-nav {
+  --tint: rgb(255 255 255 / 0.46);
+  --blur: 18px;
+  --sat: 190%;
+  --hl: 0;
+  position: relative;
+  border: 0;
+  /* The highlight that follows the pointer, over the translucent fill. */
+  background-image: radial-gradient(
+    340px circle at var(--mx, 50%) var(--my, 0%),
+    rgb(255 255 255 / calc(0.65 * var(--hl))),
+    transparent 70%
+  );
+  background-color: var(--tint);
+  -webkit-backdrop-filter: var(--lens, opacity(1)) blur(var(--blur)) saturate(var(--sat));
+  backdrop-filter: var(--lens, opacity(1)) blur(var(--blur)) saturate(var(--sat));
+  box-shadow:
+    inset 0 0 20px rgb(255 255 255 / 0.5),
+    0 0 0 0.5px rgb(0 0 0 / 0.05),
+    0 14px 34px -22px rgb(0 0 0 / 0.3);
+  transition: --hl 450ms ease, box-shadow 350ms var(--ease-out), background-color 300ms;
+}
+.lg-nav.is-solid {
+  --tint: rgb(255 255 255 / 0.68);
+  --blur: 30px;
+  box-shadow:
+    inset 0 0 20px rgb(255 255 255 / 0.55),
+    0 0 0 0.5px rgb(0 0 0 / 0.07),
+    0 18px 40px -20px rgb(0 0 0 / 0.4);
+}
+.lg-nav:hover { --hl: 1; }
+
+/* The rim: a hairline gradient border that brightens under the pointer. */
+.lg-nav::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  padding: 1.3px;
+  background:
+    radial-gradient(170px circle at var(--mx, 50%) var(--my, 0%), rgb(255 255 255 / var(--hl)), transparent 75%),
+    linear-gradient(140deg, #fff, rgb(255 255 255 / 0.4) 20%, rgb(0 0 0 / 0.07), rgb(255 255 255 / 0.3) 76%, rgb(255 255 255 / 0.95));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+
+/* Links get their own little glass pill that lights up where the pointer is. */
+.lg-nav .navlink {
+  --hl: 0;
+  position: relative;
+  isolation: isolate;
+  transition: --hl 350ms ease, color 200ms var(--ease-out);
+}
+.lg-nav .navlink::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 999px;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      90px circle at var(--mx, 50%) var(--my, 50%),
+      rgb(255 255 255 / calc(0.95 * var(--hl))),
+      rgb(255 255 255 / calc(0.35 * var(--hl))) 62%,
+      transparent 78%
+    ),
+    rgb(17 19 22 / calc(0.07 * var(--hl)));
+  box-shadow:
+    inset 0 0 0 0.5px rgb(255 255 255 / calc(0.85 * var(--hl))),
+    0 8px 16px -10px rgb(0 0 0 / calc(0.55 * var(--hl)));
+}
+.lg-nav .navlink:hover { --hl: 1; color: var(--accent-ink); }
+
+/* The dark call-to-action keeps a moving sheen instead of a flat hover. */
+.lg-nav .btn-primary {
+  --hl: 0;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  transition: --hl 350ms ease, background-color 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
+}
+.lg-nav .btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(130px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.55 * var(--hl))), transparent 68%);
+}
+.lg-nav .btn-primary:hover { --hl: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-nav, .lg-nav .navlink, .lg-nav .btn-primary { transition-duration: 1ms; }
 }
