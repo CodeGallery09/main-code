@@ -92,8 +92,44 @@ export const GOALS: Record<GoalKey, string> = {
   clicked: "Clicked link",
 };
 
+/**
+ * An audience a workflow can start from. The demo lists below are illustrative;
+ * a segment uploaded from a file arrives in the same shape, with `reach`
+ * carrying the leads it can actually reach per channel, so the canvas counts
+ * reachable leads rather than raw rows.
+ */
+export type AudienceList = {
+  k: string;
+  name: string;
+  n: number;
+  src: string;
+  reach?: Partial<Record<LeadAttribute, number>>;
+  /** Which uploaded column feeds each attribute, for the line on a channel card. */
+  columns?: Partial<Record<LeadAttribute, string>>;
+};
+
+/** The lead attributes a channel step sends to — mirrors AttributeKey in lib/leads. */
+export type LeadAttribute = "email" | "mobile" | "whatsapp" | "linkedin";
+
+/** Which attribute each channel step reads off the segment. */
+export const STEP_ATTRIBUTE: Partial<Record<StepKind, LeadAttribute>> = {
+  email: "email",
+  wa: "whatsapp",
+  sms: "mobile",
+  call: "mobile",
+  li_invite: "linkedin",
+  li_msg: "linkedin",
+};
+
+export const ATTRIBUTE_LABEL: Record<LeadAttribute, string> = {
+  email: "Email",
+  mobile: "Mobile number",
+  whatsapp: "WhatsApp number",
+  linkedin: "LinkedIn profile URL",
+};
+
 /** Audience lists available to a workflow. */
-export const LISTS = [
+export const LISTS: AudienceList[] = [
   { k: "q4", name: "Q4 SaaS founders", n: 612, src: "CSV" },
   { k: "inbound", name: "Demo requests", n: 214, src: "Form" },
   { k: "lost", name: "Closed-lost 2025", n: 458, src: "CRM export" },
@@ -213,10 +249,10 @@ export function defaults(kind: StepKind): StepData {
 }
 
 /** The line under the step kind on a node card, and the inspector subtitle. */
-export function stepLabel(kind: StepKind, d: StepData): string {
+export function stepLabel(kind: StepKind, d: StepData, lists: AudienceList[] = LISTS): string {
   switch (kind) {
     case "audience": {
-      const list = LISTS.find((l) => l.k === d.list);
+      const list = lists.find((l) => l.k === d.list);
       return list ? `${list.name} · ${list.n}` : "Choose a list";
     }
     case "li_invite":
@@ -390,7 +426,11 @@ export type StepStat = [value: string, label: string];
  * Walks the audience count down the tree and turns it into the two figures on
  * each card. A draft has never run, so it gets none.
  */
-export function stepStats(nodes: StepNode[], edges: FlowEdge[]): Record<string, StepStat[]> {
+export function stepStats(
+  nodes: StepNode[],
+  edges: FlowEdge[],
+  lists: AudienceList[] = LISTS,
+): Record<string, StepStat[]> {
   const byId: Record<string, StepNode> = {};
   for (const n of nodes) byId[n.id] = n;
   const out: Record<string, FlowEdge[]> = {};
@@ -399,7 +439,7 @@ export function stepStats(nodes: StepNode[], edges: FlowEdge[]): Record<string, 
   const root = nodes.find((n) => n.kind === "audience");
   if (!root) return {};
 
-  const list = LISTS.find((l) => l.k === root.data.list);
+  const list = lists.find((l) => l.k === root.data.list);
   const reached: Record<string, number> = {};
   const queue: [id: string, n: number][] = [[root.id, list ? list.n : 0]];
   const expanded = new Set<string>();
@@ -407,7 +447,12 @@ export function stepStats(nodes: StepNode[], edges: FlowEdge[]): Record<string, 
   while (queue.length) {
     const next = queue.shift();
     if (!next) break;
-    const [id, n] = next;
+    const [id, raw] = next;
+    // A channel step can only reach leads whose mapped column held a usable
+    // entry, so a segment's per-channel reachable count caps the step.
+    const attribute = STEP_ATTRIBUTE[byId[id] ? byId[id].kind : "audience"];
+    const cap = attribute && list && list.reach ? list.reach[attribute] : undefined;
+    const n = cap === undefined ? raw : Math.min(raw, cap);
     reached[id] = (reached[id] || 0) + n;
     if (expanded.has(id)) continue;
     expanded.add(id);

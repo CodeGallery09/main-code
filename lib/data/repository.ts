@@ -10,6 +10,11 @@
  * handlers turn that into a 404.
  */
 
+import type { LeadProfile } from "@/lib/leads/merge";
+import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
+import type { Mapping, ParsedLead } from "@/lib/leads/validation";
+import type { Table } from "@/lib/leads/table";
+
 import type {
   Analytics,
   Campaign,
@@ -76,6 +81,33 @@ export interface Repository {
   sendMessage(input: SendMessageInput): Promise<Message | null>;
 
   getAnalytics(range: RangeKey, channels: Channel[] | null): Promise<Analytics>;
+
+  /* ---- lead uploads and segments ---------------------------------------- */
+
+  /**
+   * Parks a parsed file so the mapping and summary steps don't have to upload it
+   * again. Uploads are scratch space: this one is in memory and goes when the
+   * server restarts, which the modal says out loud.
+   */
+  createUpload(input: { fileName: string; fileSize: number; table: Table }): Promise<UploadPreview>;
+  getUpload(id: string): Promise<{ fileName: string; fileSize: number; table: Table } | null>;
+
+  listSegments(): Promise<Segment[]>;
+  getSegment(id: string): Promise<Segment | null>;
+
+  /** Saves a validated upload as a segment, merging its rows into lead profiles. */
+  createSegment(input: {
+    uploadId: string;
+    name: string;
+    description: string;
+    mapping: Mapping;
+    report: MappingReport;
+    leads: ParsedLead[];
+    createdBy: string;
+  }): Promise<{ segment: Segment; profilesCreated: number; profilesMerged: number } | null>;
+
+  /** Profiles the uploads have built up, newest first; `segmentId` narrows to one segment. */
+  listProfiles(segmentId?: string): Promise<LeadProfile[]>;
 }
 
 export type CampaignTotals = {
