@@ -7,7 +7,8 @@ import { DEMO_HREF } from "@/lib/site";
 import { PIP_SVG } from "./pipSvg";
 import { startPip, type PipHandle } from "./engine";
 
-/** Pip lives in the root layout so he follows visitors across pages. */
+/** Pip lives in the root layout so he follows visitors across pages — but he is a guide for the
+ *  marketing site, so he stays out of the signed-in workspace. */
 export function Pip() {
   const rootRef = useRef<HTMLDivElement>(null);
   const handle = useRef<PipHandle | null>(null);
@@ -28,6 +29,8 @@ export function Pip() {
     firstPath.current = pathname;
     handle.current?.routeChanged();
   }, [pathname]);
+
+  if (pathname?.startsWith("/dashboard")) return null;
 
   return (
     <div ref={rootRef}>

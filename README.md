@@ -31,9 +31,15 @@ npm run dev        # http://localhost:3000
 | `/book-demo`      | Demo-request form                                                       |
 | `/login`          | Sign in (prototype, see below)                                          |
 | `/signup`         | Sign-up form (dummy, creates nothing)                                   |
-| `/dashboard`      | Placeholder shown after sign-in; redirects to `/login` without a session |
+| `/dashboard`      | Workspace home: metrics, to-do list, live campaigns, sending caps        |
+| `/dashboard/inbox` | Unified inbox across channels, with a reply composer                   |
+| `/dashboard/leads` | Lead table with search, facets and sorting                             |
+| `/dashboard/campaigns` | Campaign list with live/paused toggles                             |
+| `/dashboard/analytics` | Trend, channel breakdown and funnel                                |
+| `/dashboard/settings`  | Account, workspace, channel caps and team                          |
 | `/api/demo-request` | Validates and forwards demo requests to a webhook                     |
 | `/api/login`, `/api/logout` | Prototype session cookie endpoints                            |
+| `/api/*`          | Workspace data: see "Data and API" below                                 |
 
 ## Configuration
 
@@ -55,13 +61,65 @@ Real authentication is **not built yet**.
 
 Replace `lib/auth.ts` and the two login/logout routes with a real provider and user store before launch.
 
+## Data and API
+
+The app has no database yet, but it is wired as though it does.
+
+Every page and route handler talks to **one interface**, `Repository` in `lib/data/repository.ts`,
+obtained from `getRepository()` in `lib/data/index.ts`. Today that returns `MemoryRepository`,
+backed by the demo seed in `lib/data/seed.ts`.
+
+**Adding a database** means writing one class and changing one line:
+
+```ts
+// lib/data/index.ts
+export function getRepository(): Repository {
+  if (!instance) {
+    instance = process.env.DATABASE_URL ? new PrismaRepository() : new MemoryRepository();
+  }
+  return instance;
+}
+```
+
+No page, component or endpoint changes, because none of them import a concrete store. The shared
+filter/sort/paginate rules in `lib/data/query.ts` are pure and unit-tested, so both
+implementations behave the same.
+
+### Endpoints
+
+All require a session cookie and answer `401` without one. Errors are always
+`{ error: { code, message } }` — `404` for a missing row, `422` for invalid input.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| GET | `/api/me` | Signed-in user and workspace |
+| GET | `/api/workspace` | Org, plan, seats, members, channel caps |
+| GET | `/api/overview?range=7d\|30d\|90d` | Everything the home screen shows |
+| GET | `/api/tasks?kind=all\|reply\|call\|review` | Open to-dos |
+| POST | `/api/tasks/:id/complete` | Mark a to-do handled |
+| GET | `/api/campaigns?q=&status=&type=&channel=` | Campaign list with totals |
+| GET / PATCH | `/api/campaigns/:id` | Read one; `{ status }` pauses or resumes |
+| GET | `/api/leads?q=&stage=&ownerId=&campaignId=&sort=&dir=&page=&pageSize=` | Paged leads |
+| GET | `/api/leads/:id` | One lead |
+| GET | `/api/threads?filter=to-reply\|all&q=` | Inbox list |
+| GET | `/api/threads/:id` | Thread with messages |
+| POST | `/api/threads/:id/messages` | `{ channel, body }` sends a reply |
+| GET | `/api/analytics?range=&channels=linkedin,email` | Metrics, trend, channels, funnel |
+
+Server components read the repository directly; client components use the typed client in
+`lib/api.ts`.
+
 ## Project structure
 
 ```
 app/                  Routes, layout, global styles (design tokens in globals.css)
   api/                Route handlers: demo-request, login, logout
 components/           Landing sections, navbar/footer, demo/ and auth/ forms
+  app/                Workspace shell, screens and glass UI primitives
 lib/
+  data/               Domain types, Repository interface, in-memory store, seed, query helpers
+  api.ts              Typed browser client for /api
+  http.ts             Shared route-handler helpers (auth, JSON, errors, param parsing)
   demoRequest.ts      Shared demo-form contract and validation (import-free)
   auth.ts             Prototype credentials and session cookie (server-only)
   site.ts             Nav links and route constants

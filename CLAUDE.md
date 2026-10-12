@@ -17,7 +17,7 @@ npm run dev          # dev server (http://localhost:3000)
 npm run build        # production build
 npm run typecheck    # tsc --noEmit
 npm run lint         # eslint .
-npm test             # node --test tests/demoRequest.test.mjs
+npm test             # node --test tests/*.test.mjs
 node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   # single test
 ```
 
@@ -75,6 +75,20 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - `lib/auth.ts` (server-only) holds one hardcoded account and signs an `httpOnly` session cookie with HMAC. `/api/login` and `/api/logout` set and clear it; `/dashboard` is a placeholder that redirects to `/login` without a valid session.
 - `/signup` is a dummy form: it validates, creates nothing, and says so. Do not make it show a fake success.
 - `LOGIN_HREF`, `SIGNUP_HREF`, `DASHBOARD_HREF` live in `lib/site.ts`. Never import `lib/auth.ts` from a client component.
+
+**Signed-in app (`/dashboard`)**
+- Routes: `/dashboard` (Home), `/dashboard/inbox`, `/leads`, `/campaigns`, `/analytics`, `/settings`. `app/dashboard/layout.tsx` guards the session and renders `components/app/AppShell.tsx` (glass rail, top bar, mobile tab bar). It is `force-dynamic` so signing out takes effect immediately.
+- **The storage seam is `lib/data/repository.ts`.** Pages and route handlers only ever talk to that interface, obtained from `getRepository()` in `lib/data/index.ts`. Today it returns `MemoryRepository` (`lib/data/memory.ts`) over the demo seed in `lib/data/seed.ts`. To add a database, implement `Repository` against your client and return it from the factory — nothing else changes.
+- `lib/data/query.ts` holds the pure filter/sort/paginate helpers both implementations share; it is import-free and covered by `tests/dataQuery.test.mjs`.
+- REST endpoints live under `app/api/*`: `me`, `workspace`, `overview`, `tasks`, `tasks/[id]/complete`, `campaigns`, `campaigns/[id]`, `leads`, `leads/[id]`, `threads`, `threads/[id]`, `threads/[id]/messages`, `analytics`. They share `lib/http.ts` (`withUser`, `json`, `fail`, param parsers) so auth, caching and error shapes are identical: 401 unauthenticated, 404 missing, 422 invalid, `{ error: { code, message } }`.
+- Server components read the repository directly; client components call the typed browser client in `lib/api.ts`. Don't `fetch("/api/...")` by hand.
+- Writes in the memory store last until the server restarts. That is deliberate for the prototype.
+
+**App styling (`app/app.css`)**
+- Loaded only by the dashboard layout, so the marketing pages are untouched. It is the iOS "liquid glass" material: a tinted wallpaper on `.app-shell`, and three thicknesses above it — `.lg-thin`, `.lg`, `.lg-thick` — each a translucent fill with `backdrop-filter: blur() saturate()`, a hairline border and a specular top edge.
+- **The wallpaper is load-bearing.** Glass only reads as glass when there is colour behind it; flattening those gradients makes every panel look like a plain white card. If panels start looking opaque, check `--lg-fill*` and the white radial in `.lg` before touching the wallpaper.
+- Component classes (`.nav-item`, `.segmented`, `.gbtn`, `.ginput`, `.switch`, `.pill`, `.meter`, `.score`) stay inside `@layer components`, same rule as `globals.css`.
+- Pip is a marketing guide and is hidden on `/dashboard` (see `components/pip/Pip.tsx`).
 
 ## Content rules
 
