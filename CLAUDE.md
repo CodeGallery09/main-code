@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Flightpath: a marketing site and prototype workspace for a GTM workflow-orchestration SaaS aimed at SMB sales teams. Routes: the landing page (`/`: Hero → Journey → WhyFlightpath → WorkflowLibrary → FounderBooker), a demo-request page (`/book-demo`), prototype auth pages (`/login`, `/signup`), and the signed-in app under `/dashboard`. Stack: Next.js 15 App Router, React 19, TypeScript 5, Tailwind CSS v4 (via `@tailwindcss/postcss`, no `tailwind.config`), ESLint 9 flat config. The only runtime dependency beyond Next and React is `lucide-react`.
 
-The marketing pages (`/`, `/book-demo`, `/login`, `/signup`) use the Tailwind theme in `app/globals.css`. The signed-in workspace under `/dashboard` uses `app/app.css`, a verbatim port of the reference app's stylesheet. The two are deliberately separate: a redesign that put the landing page on `app.css` was rolled back, so `app.css` is loaded by the dashboard layout only.
+The marketing pages (`/`, `/book-demo`, `/login`, `/signup`) use the Tailwind theme in `app/globals.css`, now an iOS "liquid glass" skin over a colour wallpaper. The signed-in workspace under `/dashboard` uses `app/app.css`, a verbatim port of the reference app's stylesheet. The two are deliberately separate: a redesign that put the landing page on `app.css` was rolled back, so `app.css` is loaded by the dashboard layout only. Both render the same material, through different stylesheets.
 
 `gtm_mock.html` in the root is a standalone design reference/mock. It is not part of the app.
 
@@ -30,7 +30,17 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 
 ## Architecture
 
-**Liquid glass (`app/app.css` + `components/app/glass.ts`)**
+**Liquid glass on the marketing pages (`app/globals.css` + `components/SiteGlass.tsx`)**
+- The material is one unlayered **glass skin** block at the end of `globals.css`. Every pane, tile, chip, field and button in its selector list is a translucent fill (`--g-tint`) over a blurred, saturated and refracted backdrop (`--g-blur`, `--g-sat`), with a bright inner rim (`--g-rim`) and a soft shadow. Re-tune the whole page from those tokens on `:root`; **add a new surface to that selector list and to the lens/specular lists in `SiteGlass.tsx` together**, or it renders flat.
+- `components/SiteGlass.tsx` mounts the runtime (`mountLens` / `mountSpecular` from `components/app/glass.ts`) and is rendered by `Navbar`, so every page with the site chrome gets it and the dashboard does not. The navbar passes a stronger lens than the panes.
+- `--hl` (registered with `@property`, **inheriting**) fades the pointer-tracked highlight in on hover. It must inherit: pseudo-elements and inner pills read the value the parent animates.
+- **The wallpaper on `body::before` is load-bearing**: glass only reads as glass when there is colour behind it to bend. Flattening it makes every panel a plain white card.
+- Three Chromium rules silently disable `backdrop-filter`, all three found by testing the rendered page, so no glass surface may gain any of them:
+  - its own `filter` (so the refraction rides *inside* the `backdrop-filter` list, as `var(--lens, opacity(1)) blur(…)`);
+  - sitting inside `isolation: isolate`;
+  - an ancestor holding a transform — including the identity transform a forwards-filling animation leaves behind, which is why `.intro-nav` fills `backwards`.
+
+**Liquid glass in the workspace (`app/app.css` + `components/app/glass.ts`)**
 - `app/app.css` is the whole design system for the workspace: tokens, layout, every screen, the glass material, responsive rules and reduced motion. It is vendored — change the `:root` tokens rather than rewriting rules. It is imported by `app/dashboard/layout.tsx` only, so Next ships it on the dashboard routes alone.
 - The glass is not just a blur. `components/app/glass.ts` runs two effects, mounted by `<Glass />`:
   - **Refraction.** For each glass surface it paints a rounded-rect bevel normal map into a canvas, feeds it to an SVG `feDisplacementMap`, and points the element's `--lens` at that filter. Filters are keyed `lg-<w>-<h>-<radius>` so surfaces of the same size share one.
@@ -99,7 +109,7 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - Server components read the repository directly; client components call the typed browser client in `lib/api.ts`. Don't `fetch("/api/...")` by hand.
 - Writes in the memory store last until the server restarts. That is deliberate for the prototype.
 
-**Wallpaper is load-bearing.** Glass only reads as glass when there is colour behind it — the app wallpaper on `.app-shell`. Flattening it makes every panel look like a plain white card, so check `--tint` and `--blur` before touching it.
+**Wallpaper is load-bearing.** Glass only reads as glass when there is colour behind it — the app wallpaper on `.app-shell`, and `body::before` on the marketing pages. Flattening either makes every panel look like a plain white card, so check `--tint` / `--g-tint` and the blur before touching them.
 
 Pip is a marketing guide and is hidden on `/dashboard` (see `components/pip/Pip.tsx`).
 

@@ -7,16 +7,16 @@
    To try another palette, change only the tokens below; every component reads these.
    ===================================================================== */
 :root {
-  --sky: #ececee;  /* soft neutral tint for washes and highlights */
+  --sky: #e8ecf6;  /* soft tint for washes and highlights */
 
-  --bg: #ffffff;
+  --bg: #eef0f6;
   --surface: #ffffff;
-  --surface-2: #f4f4f5;
+  --surface-2: #f3f4f8;
   --ink: #0a0a0a;
   --ink-2: #3f3f46;
   --muted: #71717a;
-  --line: #e4e4e7;
-  --line-strong: #d4d4d8;
+  --line: rgb(16 20 32 / 0.08);
+  --line-strong: rgb(16 20 32 / 0.14);
   --accent: #0a0a0a; /* black: fills, buttons, rings */
   --accent-ink: #0a0a0a;
   --accent-soft: #f1f1f2;
@@ -27,12 +27,21 @@
   --alert-soft: #ffe5e7;
   --hl: #e0a43a; /* warm highlight, used only for Pip's beak and feet */
 
-  --shadow: rgb(0 0 0 / 0.22);
-  --shadow-card: 0 1px 0 rgb(0 0 0 / 0.03), 0 14px 34px -16px rgb(0 0 0 / 0.18);
-  --shadow-float: 0 1px 0 rgb(0 0 0 / 0.04), 0 30px 70px -30px rgb(0 0 0 / 0.3);
-  --radius-sm: 10px;
-  --radius: 14px;
-  --radius-lg: 24px;
+  --shadow: rgb(16 20 32 / 0.26);
+  --shadow-card: 0 1px 2px rgb(16 20 32 / 0.04), 0 18px 40px -24px rgb(16 20 32 / 0.34);
+  --shadow-float: 0 1px 2px rgb(16 20 32 / 0.05), 0 36px 80px -34px rgb(16 20 32 / 0.42);
+  /* iOS corner radii: generous and consistent. */
+  --radius-sm: 12px;
+  --radius: 18px;
+  --radius-lg: 28px;
+
+  /* Liquid glass knobs. Every glass surface reads these, so the whole page
+     re-tunes from here. --lens (an SVG refraction filter) and --mx / --my (the
+     pointer) are written at runtime by components/app/glass.ts. */
+  --g-tint: rgb(255 255 255 / 0.5);
+  --g-blur: 18px;
+  --g-sat: 180%;
+  --g-rim: inset 0 0 0 0.5px rgb(255 255 255 / 0.75), inset 0 1px 0 rgb(255 255 255 / 0.9);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --nav-h: 76px;
 
@@ -84,14 +93,18 @@ body {
   overflow-x: clip;
 }
 
-/* Ambient colour behind everything, so the glass surfaces have something to refract. */
+/* The wallpaper is load-bearing: glass only reads as glass when there is colour
+   behind it to blur, bend and saturate. Fixed, so every section scrolls over
+   the same light. */
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(760px 560px at 4% 0%, rgb(0 0 0 / 0.09), transparent 70%),
-    radial-gradient(680px 520px at 98% 10%, rgb(0 0 0 / 0.07), transparent 70%),
-    radial-gradient(800px 600px at 80% 96%, rgb(0 0 0 / 0.08), transparent 70%),
-    radial-gradient(640px 480px at 0% 84%, rgb(0 0 0 / 0.06), transparent 70%);
+    radial-gradient(1000px 760px at 6% -8%, rgb(150 182 255 / 0.5), transparent 68%),
+    radial-gradient(880px 700px at 96% 2%, rgb(206 172 255 / 0.42), transparent 70%),
+    radial-gradient(900px 720px at 84% 70%, rgb(140 224 203 / 0.38), transparent 70%),
+    radial-gradient(820px 680px at 0% 78%, rgb(255 198 160 / 0.34), transparent 70%),
+    radial-gradient(700px 560px at 50% 112%, rgb(168 196 255 / 0.4), transparent 70%),
+    linear-gradient(180deg, #f8f9fc, var(--bg));
 }
 
 ::selection {
@@ -139,27 +152,15 @@ body::before {
 .font-serif { font-weight: 700; letter-spacing: -0.035em; }
 .font-mono { font-weight: 500; font-variant-numeric: tabular-nums; }
 
-/* Liquid glass: translucent fill, strong blur + saturation, a bright specular rim and a soft sheen. */
+/* Liquid glass panes. The material itself lives in the glass skin at the end of
+   this file (it has to be unlayered to beat the utilities these carry); here we
+   only set the shape. */
 .glass, .card, .glass-lg {
   position: relative;
-  background:
-    radial-gradient(130% 90% at 0% 0%, rgb(255 255 255 / 0.6), transparent 55%),
-    linear-gradient(135deg, rgb(255 255 255 / 0.62), rgb(255 255 255 / 0.34));
-  -webkit-backdrop-filter: blur(30px) saturate(190%);
-  backdrop-filter: blur(30px) saturate(190%);
-  border: 1px solid rgb(255 255 255 / 0.7);
+  border: 0;
   border-radius: var(--radius-lg);
-  box-shadow:
-    0 0 0 0.5px rgb(0 0 0 / 0.06),
-    inset 0 1px 0 rgb(255 255 255 / 0.95),
-    inset 1px 0 0 rgb(255 255 255 / 0.5),
-    inset 0 -1px 0 rgb(255 255 255 / 0.25),
-    0 24px 48px -24px rgb(0 0 0 / 0.22);
 }
 .glass-lg { border-radius: 34px; }
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass, .card, .glass-lg { background: rgb(255 255 255 / 0.92); }
-}
 
 .dot-grid {
   background-image: radial-gradient(rgb(0 0 0 / 0.09) 1px, transparent 1px);
@@ -214,8 +215,9 @@ body::before {
   justify-content: center;
   gap: 8px;
   height: 50px;
-  padding-inline: 24px;
+  padding-inline: 26px;
   border-radius: 999px;
+  position: relative;
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -223,19 +225,9 @@ body::before {
     border-color 200ms var(--ease-out), transform 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
   white-space: nowrap;
 }
-.btn:active { transform: translateY(1px); }
-.btn-primary {
-  background: linear-gradient(180deg, #2c2c30, #0a0a0a);
-  color: #fff;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4), inset 0 -1px 0 rgb(0 0 0 / 0.12), 0 12px 26px -12px rgb(10 10 10 / 0.75);
-}
-.btn-primary:hover { background: linear-gradient(180deg, #3f3f46, #18181b); color: #fff; }
-.btn-secondary {
-  border: 1.5px solid var(--ink);
-  color: var(--ink);
-  background: transparent;
-}
-.btn-secondary:hover { background: var(--surface); }
+.btn:active { transform: scale(0.97); }
+.btn-primary { color: #fff; }
+.btn-primary:hover { color: #fff; }
 .btn-ghost { color: var(--ink); }
 .btn-ghost:hover { color: var(--accent-ink); }
 .btn .btn-arrow { transition: transform 200ms var(--ease-out); }
@@ -247,9 +239,8 @@ body::before {
   width: 100%;
   min-height: 44px;
   padding: 10px 14px;
-  border: 1px solid var(--line-strong);
+  border: 0;
   border-radius: var(--radius);
-  background: rgb(255 255 255 / 0.7);
   color: var(--ink);
   font-size: 15px;
   line-height: 1.4;
@@ -514,49 +505,150 @@ body::before {
 }
 
 /* =====================================================================
-   GLASS SKIN for small controls. Unlayered on purpose: it must beat the
-   background/border utilities these elements carry in their markup.
+   GLASS SKIN. Unlayered on purpose: it must beat the background and border
+   utilities these elements carry in their markup.
+
+   One material for the whole page. Each surface is a translucent fill over a
+   blurred, saturated and refracted backdrop, with a bright inner rim and a
+   soft shadow — the iOS "liquid glass" recipe. Three things make it work:
+
+   - `--lens` is an SVG displacement filter minted per surface size by
+     components/app/glass.ts; inside backdrop-filter it bends the page behind
+     the bevelled edge instead of only blurring it.
+   - `--mx` / `--my` are the pointer position, written by the same module, so
+     the specular highlight follows the cursor across whatever is under it.
+   - `--hl` (0 → 1) fades that highlight in on hover.
+
+   Chromium will silently drop the backdrop blur if the element has its own
+   `filter`, sits inside `isolation: isolate`, or has an ancestor holding a
+   transform (including one left behind by a forwards-filling animation), so
+   none of these surfaces may gain those.
    ===================================================================== */
+.card,
+.glass,
+.glass-lg,
+.hero-frame-bg,
+.hcard,
+.btn-secondary,
+.field,
 .bk-nav,
 .bk-day:not(.is-sel):not(:disabled),
 .bk-slot:not(:disabled),
 .why-chip,
 .uf-chip,
 .tag-sample,
-.glass-row:not([aria-checked="true"]) {
-  background: linear-gradient(135deg, rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.42));
-  -webkit-backdrop-filter: blur(14px) saturate(180%);
-  backdrop-filter: blur(14px) saturate(180%);
-  border-color: rgb(255 255 255 / 0.75);
-  box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.07), inset 0 1px 0 #fff, 0 8px 16px -10px rgb(0 0 0 / 0.25);
+.glass-row:not([aria-checked="true"]),
+.jr-card,
+.site-footer,
+.wf-box,
+.wf-canvas-bg {
+  border-color: transparent;
+  background-color: var(--g-tint);
+  background-image: radial-gradient(
+    240px circle at var(--mx, 50%) var(--my, 50%),
+    rgb(255 255 255 / calc(0.55 * var(--hl))),
+    transparent 70%
+  );
+  -webkit-backdrop-filter: var(--lens, opacity(1)) blur(var(--g-blur)) saturate(var(--g-sat));
+  backdrop-filter: var(--lens, opacity(1)) blur(var(--g-blur)) saturate(var(--g-sat));
+  box-shadow: var(--g-rim), 0 1px 2px rgb(16 20 32 / 0.04), 0 18px 40px -24px rgb(16 20 32 / 0.34);
+  transition: --hl 400ms ease, background-color 300ms, box-shadow 350ms var(--ease-out),
+    transform 400ms var(--ease-out), color 200ms;
 }
+
+/* Panes sit still and brighten; controls also lift a little. */
+.card:hover, .glass:hover, .glass-lg:hover, .jr-card:hover, .wf-box:hover { --hl: 1; }
+.btn-secondary:hover,
 .bk-nav:hover:not(:disabled),
 .bk-day:not(.is-sel):not(:disabled):hover,
 .bk-slot:not(:disabled):hover,
+.why-chip:hover,
+.uf-chip:hover,
 .glass-row:not([aria-checked="true"]):hover {
-  background: linear-gradient(135deg, #fff, rgb(255 255 255 / 0.7));
+  --hl: 1;
+  --g-tint: rgb(255 255 255 / 0.68);
+  transform: translateY(-1px);
 }
 
-/* Tinted button: pale grey capsule with black label, no outline. */
-.btn-secondary {
-  border: 0;
-  background: rgb(10 10 10 / 0.12);
-  color: var(--accent-ink);
-}
-.btn-secondary:hover { background: rgb(10 10 10 / 0.2); }
+/* Thicknesses: big panes carry more blur, small controls less. */
+.glass-lg, .card, .jr-card { --g-tint: rgb(255 255 255 / 0.52); --g-blur: 26px; }
+.hero-frame-bg { --g-tint: rgb(255 255 255 / 0.46); --g-blur: 28px; }
+.hcard { --g-tint: rgb(255 255 255 / 0.5); --g-blur: 16px; border-radius: 18px; }
+.why-chip, .uf-chip, .tag-sample, .bk-nav, .bk-day, .bk-slot { --g-blur: 12px; }
+.wf-canvas-bg { --g-tint: rgb(255 255 255 / 0.34); --g-blur: 14px; }
 
-/* Text field: soft grey fill, no hairline; focus swaps to white with a black ring (.field:focus-visible). */
-.field {
-  border-color: transparent;
-  background: rgb(120 120 128 / 0.12);
-  border-radius: 14px;
+/* The footer is a frosted slab the page scrolls under. */
+.site-footer {
+  --g-tint: rgb(255 255 255 / 0.4);
+  --g-blur: 24px;
+  margin-top: 40px;
+  border-radius: 34px 34px 0 0;
+  box-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.9), 0 -20px 50px -40px rgb(16 20 32 / 0.5);
+}
+
+/* Shapes: iOS corner radii across the board. */
+.bk-nav { border-radius: 12px; }
+.bk-day, .bk-slot { border-radius: 14px; }
+.field { border-radius: var(--radius); }
+
+/* The dark call to action keeps the same moving sheen, in reverse. */
+.btn-primary {
+  --hl: 0;
+  background-color: #0a0a0a;
+  background-image:
+    radial-gradient(170px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.45 * var(--hl))), transparent 64%),
+    linear-gradient(180deg, #2c2c30, #0a0a0a);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.38),
+    inset 0 -1px 0 rgb(0 0 0 / 0.2),
+    0 14px 30px -14px rgb(10 12 20 / 0.8);
+  transition: --hl 400ms ease, box-shadow 350ms var(--ease-out), transform 300ms var(--ease-out);
+}
+.btn-primary:hover { --hl: 1; box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.45), 0 18px 36px -14px rgb(10 12 20 / 0.85); }
+.btn-ghost {
+  --hl: 0;
+  background-image: radial-gradient(140px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.9 * var(--hl))), transparent 72%);
+  background-color: rgb(255 255 255 / calc(0.4 * var(--hl)));
+  transition: --hl 400ms ease, background-color 300ms;
+}
+.btn-ghost:hover { --hl: 1; }
+
+/* Selected states stay solid so they read as chosen, not as glass. */
+.bk-day.is-sel {
+  background-color: var(--accent);
+  background-image: none;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), 0 12px 24px -12px rgb(10 12 20 / 0.7);
+}
+.bk-day:disabled, .bk-slot:disabled {
+  background-color: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   box-shadow: none;
 }
-.field:hover { border-color: transparent; background: rgb(120 120 128 / 0.16); }
+.bk-slot:disabled { border: 1px dashed var(--line); }
 
-.bk-day.is-sel {
-  background: linear-gradient(180deg, #2c2c30, #0a0a0a);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4), 0 10px 20px -10px rgb(10 10 10 / 0.7);
+/* Text fields: a tinted well that turns to white glass on focus. */
+.field { --g-tint: rgb(255 255 255 / 0.45); --g-blur: 10px; }
+.field:hover { --g-tint: rgb(255 255 255 / 0.6); }
+.field::placeholder { color: rgb(16 20 32 / 0.42); }
+
+/* The segmented template picker in the workflow library. */
+.glass-row[aria-checked="true"] {
+  background-color: var(--surface);
+  box-shadow: var(--g-rim), 0 10px 22px -14px rgb(16 20 32 / 0.5);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .card, .glass, .glass-lg, .hero-frame-bg, .hcard, .jr-card, .field {
+    background-color: rgb(255 255 255 / 0.94);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card, .glass, .glass-lg, .btn, .field, .why-chip, .uf-chip, .bk-day, .bk-slot, .bk-nav {
+    transition-duration: 1ms;
+  }
 }
 
 /* ---------- Liquid glass navbar ----------

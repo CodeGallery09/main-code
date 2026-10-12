@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { Logo } from "./Logo";
-import { mountLens, mountSpecular } from "./app/glass";
+import { SiteGlass } from "./SiteGlass";
 import { DEMO_HREF, LOGIN_HREF, NAV_LINKS } from "@/lib/site";
 
 export function Navbar() {
@@ -25,16 +25,6 @@ export function Navbar() {
   }, []);
 
   useEffect(() => {
-    // Real refraction + a pointer-tracked highlight, scoped to the nav capsule.
-    const disposeLens = mountLens(".lg-nav", 1.7);
-    const disposeSpecular = mountSpecular(".lg-nav,.lg-nav .navlink,.lg-nav .btn-primary");
-    return () => {
-      disposeLens();
-      disposeSpecular();
-    };
-  }, []);
-
-  useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     const mq = window.matchMedia("(min-width: 768px)");
@@ -51,6 +41,8 @@ export function Navbar() {
 
   return (
     <header className="intro-nav sticky top-3 z-50 px-3 sm:px-5">
+      {/* The glass runtime for the whole marketing page, mounted with the chrome. */}
+      <SiteGlass />
       {/* iOS 26 floating bar: a capsule of glass that hovers below the top edge. */}
       <nav
         aria-label="Primary"

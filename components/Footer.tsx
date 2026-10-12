@@ -4,7 +4,7 @@ import { Logo } from "./Logo";
 
 export function Footer() {
   return (
-    <footer className="border-t border-line">
+    <footer className="site-footer">
       <div className="container-page grid gap-10 py-14 md:grid-cols-[1.4fr_1fr_1fr]">
         <div>
           <Logo />
@@ -17,7 +17,7 @@ export function Footer() {
           <ul className="mt-4 space-y-2.5 text-[14px]">
             {NAV_LINKS.map((l) => (
               <li key={l.href}>
-                <Link href={l.href} className="text-ink-2 transition-colors hover:text-accent-ink-ink">
+                <Link href={l.href} className="text-ink-2 transition-colors hover:text-accent-ink">
                   {l.label}
                 </Link>
               </li>
@@ -28,12 +28,12 @@ export function Footer() {
           <p className="eyebrow">Talk to us</p>
           <ul className="mt-4 space-y-2.5 text-[14px]">
             <li>
-              <Link href={DEMO_HREF} className="text-ink-2 transition-colors hover:text-accent-ink-ink">
+              <Link href={DEMO_HREF} className="text-ink-2 transition-colors hover:text-accent-ink">
                 Book a demo
               </Link>
             </li>
             <li>
-              <a href="#top" className="text-ink-2 transition-colors hover:text-accent-ink-ink">
+              <a href="#top" className="text-ink-2 transition-colors hover:text-accent-ink">
                 Back to top
               </a>
             </li>
