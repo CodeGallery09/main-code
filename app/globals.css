@@ -302,9 +302,25 @@ body::before {
    HERO: cards scattered around the headline assemble into one overview
    card as you scroll (desktop). Elsewhere it is a simple static stack.
    ===================================================================== */
+/* Trial: a forest behind the hero only. The photo sits under two scrims — a
+   bright pool behind the headline and a wash that fades into the page colour —
+   so the dark type stays readable and the glass has a real scene to refract. */
 .hero-sky {
   position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(900px 520px at 50% 38%, rgb(214 232 255 / 0.8), transparent 70%);
+  background-image:
+    radial-gradient(980px 600px at 50% 42%, rgb(255 255 255 / 0.62), rgb(255 255 255 / 0.22) 58%, rgb(255 255 255 / 0.02) 80%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.18) 0%, rgb(255 255 255 / 0.14) 55%, rgb(238 240 246 / 0.84) 88%, var(--bg) 100%),
+    url("/hero-forest.jpg");
+  background-size: cover, cover, cover;
+  background-position: center, center, center 32%;
+  background-repeat: no-repeat;
+}
+@media (max-width: 760px) {
+  .hero-sky { background-image:
+    radial-gradient(720px 520px at 50% 38%, rgb(255 255 255 / 0.66), rgb(255 255 255 / 0.26) 58%, rgb(255 255 255 / 0.04) 82%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.2) 0%, rgb(255 255 255 / 0.16) 55%, rgb(238 240 246 / 0.86) 88%, var(--bg) 100%),
+    url("/hero-forest-sm.jpg");
+    background-position: center, center, 34% 42%; }
 }
 .hero-sticky { position: relative; }
 .hero-frame { position: relative; margin-top: 56px; }
@@ -353,27 +369,26 @@ body::before {
   .js .hero.is-ready .hcard { opacity: 1; animation: hcard-float 7s ease-in-out infinite; animation-delay: calc(var(--i, 0) * -1.2s); }
   .js .hero-cue { display: flex; }
 
-  /* Merge: the grid closes up, each card's own outline fades out and hairline dividers fade in,
-     so the six cards read as one. --m (0..1) is set from scroll progress in Hero.tsx. */
+  /* Merge: the grid closes up, each tile keeps its glass but loses its rounded
+     corners, rim and shadow as hairline dividers fade in, so the six read as
+     one pane. --m (0..1) is set from scroll progress in Hero.tsx. The glass
+     itself stays on the tile — a drawn inset card could not refract the photo,
+     and `isolation` would stop the tile sampling it. */
   .js .hero-grid { gap: 0; }
   .js .hcard {
-    background: transparent; border-color: transparent; box-shadow: none; border-radius: 0;
-    -webkit-backdrop-filter: none; backdrop-filter: none;
-    padding: 22px 26px; min-height: 164px;
-  }
-  .js .hcard::before {
-    content: ""; position: absolute; inset: 8px; z-index: -1; border-radius: 16px;
-    background: linear-gradient(135deg, rgb(255 255 255 / 0.82), rgb(255 255 255 / 0.56)); border: 1px solid rgb(255 255 255 / 0.9);
-    box-shadow: 0 1px 0 rgb(0 0 0 / 0.02), 0 18px 36px -24px var(--shadow);
-    opacity: calc(1 - var(--m, 0));
+    padding: 22px 26px;
+    min-height: 164px;
+    border-radius: calc(18px * (1 - var(--m, 0)));
+    --g-rim: inset 0 0 0 0.5px rgb(255 255 255 / calc(0.75 * (1 - var(--m, 0)))),
+      inset 0 1px 0 rgb(255 255 255 / calc(0.9 * (1 - var(--m, 0))));
+    box-shadow: var(--g-rim), 0 18px 40px -24px rgb(16 20 32 / calc(0.34 * (1 - var(--m, 0))));
   }
   .js .hcard::after {
     content: ""; position: absolute; inset: 0; pointer-events: none; opacity: var(--m, 0);
-    border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    border-right: 1px solid rgb(255 255 255 / 0.5); border-bottom: 1px solid rgb(255 255 255 / 0.5);
   }
   .js .hcard:nth-child(3n)::after { border-right-color: transparent; }
   .js .hcard:nth-child(n + 4)::after { border-bottom-color: transparent; }
-  .js .hcard { isolation: isolate; }
 }
 /* Gentle idle float in the scattered state; JS fades it out via --float as cards assemble. */
 @keyframes hcard-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 calc(var(--float, 1) * -6px); } }
