@@ -1,4 +1,5 @@
-export function Logo({ className = "" }: { className?: string }) {
+/** `compact` drops the wordmark, for the collapsed app rail and small screens. */
+export function Logo({ className = "", compact = false }: { className?: string; compact?: boolean }) {
   return (
     <span className={`inline-flex items-center gap-2 ${className}`}>
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -7,7 +8,7 @@ export function Logo({ className = "" }: { className?: string }) {
         <path d="M5 16.5c3.5 0 4.5-9 8-9 2.2 0 2.6 3 6 3" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" />
         <circle cx="19" cy="10.5" r="1.9" fill="#fff" />
       </svg>
-      <span className="text-[18px] font-bold tracking-[-0.03em] text-ink">Flightpath</span>
+      {!compact && <span className="text-[18px] font-bold tracking-[-0.03em] text-ink">Flightpath</span>}
     </span>
   );
 }
