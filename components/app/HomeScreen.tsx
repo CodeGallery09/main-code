@@ -2,244 +2,223 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
-import type { Campaign, Overview, Task } from "@/lib/data/types";
-import {
-  Avatar,
-  CHANNEL_LABEL,
-  ChannelDots,
-  DemoDataNote,
-  MetricTile,
-  ScoreBadge,
-  Segmented,
-  Switch,
-  fmtNumber,
-} from "@/components/app/ui";
-import { CheckIcon, ChevronRight, PlusIcon } from "@/components/app/icons";
+import { Screen } from "./AppShell";
+import { CheckIcon, ClockIcon } from "./icons";
+import { Avatar, Delta, Dot, fmt, Meter, Segmented, Switch } from "./ui";
+import { CHANNEL, channelNames } from "@/lib/app/channels";
+import { CAMPAIGNS, hasRun } from "@/lib/app/campaigns";
+import { TASK_ACTION, TASKS, type TaskKind } from "@/lib/app/inbox";
+import { leadById, scoreBand } from "@/lib/app/leads";
+import { campaignMetrics, DAYS, rangeLabel, rate, REACHED, REPLIED, totals } from "@/lib/app/metrics";
+import { SENDING_TODAY } from "@/lib/app/workspace";
 
-const FILTERS = [
-  { id: "all", label: "All" },
-  { id: "call", label: "Calls" },
-  { id: "reply", label: "Replies" },
-  { id: "review", label: "Approve" },
-] as const;
+type Filter = "all" | "call" | "reply" | "approve";
 
-function greeting(now = new Date()) {
-  const hour = now.getHours();
+/** Greeting that matches the time of day, like the reference. */
+function greeting() {
+  const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
 }
 
-export function HomeScreen({ initial }: { initial: Overview }) {
-  const [tasks, setTasks] = useState<Task[]>(initial.tasks);
-  const [campaigns, setCampaigns] = useState<Campaign[]>(initial.campaigns);
-  const [filter, setFilter] = useState<string>("all");
-  const [busy, setBusy] = useState<string | null>(null);
+export function HomeScreen({ user }: { user: { name: string } }) {
+  const [filter, setFilter] = useState<Filter>("all");
+  const [done, setDone] = useState<string[]>([]);
+  const [paused, setPaused] = useState<number[]>([]);
+  const firstName = user.name.split(" ")[0];
 
-  const counts = useMemo(
-    () => ({
-      all: tasks.length,
-      call: tasks.filter((t) => t.kind === "call").length,
-      reply: tasks.filter((t) => t.kind === "reply").length,
-      review: tasks.filter((t) => t.kind === "review").length,
-    }),
-    [tasks],
-  );
+  // This week against the one before it, so the stat cards can show movement.
+  const stats = useMemo(() => {
+    const from = DAYS - 7;
+    const to = DAYS - 1;
+    const now = totals(from, to).tot;
+    const before = totals(from - 7, from - 1).tot;
+    const change = (a: number, b: number) => (b ? ((a - b) / b) * 100 : null);
+    return {
+      label: rangeLabel(from, to),
+      replies: now[REPLIED],
+      repliesDelta: change(now[REPLIED], before[REPLIED]),
+      meetings: now[4],
+      meetingsDelta: change(now[4], before[4]),
+      replyRate: rate(now[REPLIED], now[REACHED]),
+      replyRateDelta: rate(now[REPLIED], now[REACHED]) - rate(before[REPLIED], before[REACHED]),
+      activeLeads: 1284,
+    };
+  }, []);
 
-  const shown = filter === "all" ? tasks : tasks.filter((task) => task.kind === filter);
+  const open = TASKS.filter((t) => !done.includes(t.id));
+  const count = (kind: Filter) => open.filter((t) => kind === "all" || t.type === kind).length;
+  const shown = open.filter((t) => filter === "all" || t.type === filter);
 
-  const complete = async (id: string) => {
-    setBusy(id);
-    const previous = tasks;
-    setTasks((rows) => rows.filter((row) => row.id !== id)); // optimistic
-    try {
-      await api.completeTask(id);
-    } catch {
-      setTasks(previous);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const toggleCampaign = async (campaign: Campaign) => {
-    const next = campaign.status === "live" ? "paused" : "live";
-    setCampaigns((rows) => rows.map((row) => (row.id === campaign.id ? { ...row, status: next } : row)));
-    try {
-      await api.setCampaignStatus(campaign.id, next);
-    } catch {
-      setCampaigns((rows) =>
-        rows.map((row) => (row.id === campaign.id ? { ...row, status: campaign.status } : row)),
-      );
-    }
-  };
-
-  const firstName = initial.user.name.split(" ")[0];
+  const live = CAMPAIGNS.filter((c) => c.status === "live").slice(0, 5);
 
   return (
-    <div className="space-y-3.5">
-      {/* ---------- greeting ---------- */}
-      <section className="lg lg-sheen lg-in r-xl flex flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-6">
-        <div>
-          <p className="thead">Today</p>
-          <h2 className="mt-1.5 text-[clamp(1.6rem,3vw,2rem)] font-bold leading-tight tracking-[-0.035em] text-ink">
-            {greeting()}, <span className="text-muted">{firstName}.</span>
-          </h2>
-          <DemoDataNote className="mt-1.5" />
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" className="gbtn">
-            Last 30 days
-          </button>
-          <Link href="/dashboard/leads" className="gbtn gbtn-solid">
-            <PlusIcon />
+    <Screen title="Home">
+      <div className="hello">
+        <h2>
+          {greeting()}, <em>{firstName}.</em>
+        </h2>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <div className="drp">
+            <button className="drbtn" aria-haspopup="dialog" aria-expanded="false">
+              <span className="num">{stats.label}</span>
+              <span className="chev" aria-hidden="true">
+                ⌄
+              </span>
+            </button>
+          </div>
+          <Link className="btn line" href="/dashboard/leads">
             Add leads
           </Link>
         </div>
-      </section>
+      </div>
 
-      {/* ---------- metrics ---------- */}
-      <section aria-label="Headline metrics" className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
-        {initial.metrics.map((metric, i) => (
-          <MetricTile key={metric.id} metric={metric} index={i + 1} />
-        ))}
-      </section>
+      <div className="stats">
+        <Stat label="Replies" value={fmt(stats.replies)} delta={<Delta v={stats.repliesDelta} />} />
+        <Stat label="Meetings" value={fmt(stats.meetings)} delta={<Delta v={stats.meetingsDelta} />} />
+        <Stat
+          label="Reply rate"
+          value={`${stats.replyRate.toFixed(1)}%`}
+          delta={<Delta v={stats.replyRateDelta} pp />}
+        />
+        <Stat label="Active leads" value={fmt(stats.activeLeads)} />
+      </div>
 
-      <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-        {/* ---------- to do ---------- */}
-        <section
-          className="lg lg-sheen lg-in r-xl flex flex-col"
-          style={{ "--i": 5 } as React.CSSProperties}
-          aria-labelledby="todo-title"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3 px-5 pb-3 pt-4">
-            <h3 id="todo-title" className="text-[17px] font-semibold tracking-[-0.02em] text-ink">
-              To do
-            </h3>
-            <Segmented
-              label="Filter to-dos"
+      <div className="g-home">
+        <section className="card">
+          <div className="card-h">
+            <h3>To do</h3>
+            <Segmented<Filter>
               value={filter}
               onChange={setFilter}
-              items={FILTERS.map((f) => ({ ...f, count: counts[f.id] }))}
+              items={[
+                ["all", "All", count("all")],
+                ["call", "Calls", count("call")],
+                ["reply", "Replies", count("reply")],
+                ["approve", "Approve", count("approve")],
+              ]}
             />
           </div>
 
-          <ul className="flex-1">
-            {shown.map((task) => (
-              <li
-                key={task.id}
-                className="row-sep row-hover flex items-center gap-3 px-5 py-3.5 first:border-t first:border-black/[0.06]"
-              >
-                <Avatar initials={task.initials} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14.5px] font-semibold text-ink">
-                    {task.leadName}{" "}
-                    <span className="font-normal text-muted">{task.company}</span>
-                  </p>
-                  <p className="mt-0.5 flex items-center gap-2 text-[13px] text-ink-2">
-                    <ScoreBadge score={task.score} />
-                    <span className="truncate">{task.summary}</span>
-                    <span className="shrink-0 text-muted">· {task.when}</span>
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <Link
-                    href={task.kind === "call" ? "/dashboard/leads" : "/dashboard/inbox"}
-                    className="gbtn gbtn-sm gbtn-solid"
-                  >
-                    {task.kind === "call" ? "Call" : task.kind === "review" ? "Review" : "Reply"}
-                  </Link>
-                  <button
-                    type="button"
-                    className="gbtn gbtn-sm gbtn-quiet h-8 w-8 !px-0"
-                    onClick={() => complete(task.id)}
-                    disabled={busy === task.id}
-                    aria-label={`Mark ${task.leadName} handled`}
-                  >
-                    <CheckIcon />
-                  </button>
-                </div>
-              </li>
-            ))}
-            {!shown.length && (
-              <li className="px-5 py-12 text-center text-[14px] text-muted">
-                Nothing waiting on you here. Good place to be.
-              </li>
-            )}
-          </ul>
+          {shown.length === 0 ? (
+            <p className="empty">Nothing waiting on you. Enjoy it.</p>
+          ) : (
+            <ul className="todo" style={{ marginTop: 10 }}>
+              {shown.map((task) => {
+                const lead = leadById(task.lead);
+                if (!lead) return null;
+                const action = TASK_ACTION[task.type as TaskKind];
+                return (
+                  <li key={task.id}>
+                    <Avatar name={lead.n} />
+                    <div>
+                      <div className="t1">
+                        <b>{lead.n}</b>
+                        <span>{lead.c}</span>
+                      </div>
+                      <div className="t2">
+                        <span className={"score " + scoreBand(lead.score)}>{lead.score}</span>
+                        {task.why}
+                        <span className="muted">· {task.due}</span>
+                      </div>
+                    </div>
+                    <div className="acts">
+                      <Link className={"btn sm " + action.tone} href="/dashboard/inbox">
+                        {action.label}
+                      </Link>
+                      <button className="ib sm" title="Snooze to tomorrow" aria-label="Snooze">
+                        <ClockIcon />
+                      </button>
+                      <button
+                        className="ib sm"
+                        title="Done"
+                        aria-label="Done"
+                        onClick={() => setDone((d) => [...d, task.id])}
+                      >
+                        <CheckIcon />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </section>
 
-        <div className="flex flex-col gap-3.5">
-          {/* ---------- live campaigns ---------- */}
-          <section
-            className="lg lg-sheen lg-in r-xl"
-            style={{ "--i": 6 } as React.CSSProperties}
-            aria-labelledby="live-title"
-          >
-            <div className="flex items-center justify-between px-5 pb-3 pt-4">
-              <h3 id="live-title" className="text-[17px] font-semibold tracking-[-0.02em] text-ink">
-                Campaigns
-              </h3>
-              <Link href="/dashboard/campaigns" className="inline-flex items-center gap-1 text-[13px] font-medium text-ink-2 hover:text-ink">
-                See all <ChevronRight className="h-3.5 w-3.5" />
+        <div className="stack">
+          <section className="card">
+            <div className="card-h">
+              <h3>Campaigns</h3>
+              <Link className="link" href="/dashboard/campaigns">
+                See all
               </Link>
             </div>
-            <ul>
-              {campaigns.map((campaign) => (
-                <li
-                  key={campaign.id}
-                  className="row-sep row-hover flex items-center gap-3 px-5 py-3 first:border-t first:border-black/[0.06]"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-semibold text-ink">{campaign.name}</p>
-                    <p className="mt-0.5 flex items-center gap-1.5 truncate text-[12.5px] text-muted">
-                      <ChannelDots channels={campaign.channels} />
-                      {campaign.channels.map((c) => CHANNEL_LABEL[c]).join(" · ")}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-[13.5px] font-semibold tabular-nums text-ink">
-                    {campaign.replyRate !== null ? `${campaign.replyRate}%` : "—"}
-                  </span>
-                  <Switch
-                    checked={campaign.status === "live"}
-                    onChange={() => toggleCampaign(campaign)}
-                    label={`${campaign.status === "live" ? "Pause" : "Resume"} ${campaign.name}`}
-                  />
-                </li>
-              ))}
+            <ul className="card-b wfmini">
+              {live.map((c) => {
+                const m = hasRun(c) ? campaignMetrics(c.id, c.channels, DAYS - 30, DAYS - 1) : null;
+                const on = !paused.includes(c.id);
+                return (
+                  <li key={c.id}>
+                    <Link className="nm" href="/dashboard/campaigns">
+                      <b>{c.name}</b>
+                      <small className="muted" style={{ fontSize: 12 }}>
+                        {c.type === "single"
+                          ? `${CHANNEL[c.channels[0]].name} · Standalone`
+                          : channelNames(c.channels)}
+                      </small>
+                    </Link>
+                    <span className="num" style={{ fontWeight: 600 }}>
+                      {m && m.sent >= 1 ? `${rate(m.replied, m.sent).toFixed(1)}%` : "—"}
+                    </span>
+                    <Switch
+                      on={on}
+                      label={`${c.name} live`}
+                      onChange={() =>
+                        setPaused((p) => (on ? [...p, c.id] : p.filter((id) => id !== c.id)))
+                      }
+                    />
+                  </li>
+                );
+              })}
             </ul>
           </section>
 
-          {/* ---------- sending caps ---------- */}
-          <section
-            className="lg lg-sheen lg-in r-xl px-5 py-4"
-            style={{ "--i": 7 } as React.CSSProperties}
-            aria-labelledby="sending-title"
-          >
-            <h3 id="sending-title" className="text-[17px] font-semibold tracking-[-0.02em] text-ink">
-              Sending today
-            </h3>
-            <p className="mt-1 text-[12.5px] text-muted">
-              Daily caps per channel protect your accounts and domains.
-            </p>
-            <ul className="mt-4 space-y-3.5">
-              {initial.quotas.map((quota) => (
-                <li key={quota.channel}>
-                  <div className="flex items-baseline justify-between text-[13px]">
-                    <span className="font-medium text-ink">{CHANNEL_LABEL[quota.channel]}</span>
-                    <span className="tabular-nums text-muted">
-                      {fmtNumber(quota.used)} / {fmtNumber(quota.cap)}
+          <section className="card">
+            <div className="card-h">
+              <h3>Sending today</h3>
+            </div>
+            <div className="card-b cap">
+              {SENDING_TODAY.map((row) => (
+                <div key={row.k}>
+                  <div className="t">
+                    <span>
+                      <Dot k={row.k} />
+                      {CHANNEL[row.k].name}
+                    </span>
+                    <span className="num muted">
+                      {row.used} / {row.cap}
                     </span>
                   </div>
-                  <div className="meter mt-1.5">
-                    <i style={{ "--fill": quota.used / quota.cap } as React.CSSProperties} />
-                  </div>
-                </li>
+                  <Meter value={row.used} max={row.cap} color={CHANNEL[row.k].hex} />
+                </div>
               ))}
-            </ul>
+            </div>
           </section>
         </div>
       </div>
-    </div>
+    </Screen>
+  );
+}
+
+function Stat({ label, value, delta }: { label: string; value: string; delta?: React.ReactNode }) {
+  return (
+    <button className="card stat">
+      <span className="eyebrow">{label}</span>
+      <span className="v">
+        {value}
+        {delta}
+      </span>
+    </button>
   );
 }

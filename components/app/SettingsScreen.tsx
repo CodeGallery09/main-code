@@ -1,162 +1,153 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { User, Workspace } from "@/lib/data/types";
-import { Avatar, CHANNEL_LABEL, ChannelMark, DemoDataNote, Segmented, fmtNumber } from "@/components/app/ui";
-import { LogoutIcon } from "@/components/app/icons";
+import { Screen } from "./AppShell";
+import { Avatar, Meter, SideTabs, Switch } from "./ui";
+import { CHANNEL } from "@/lib/app/channels";
+import {
+  CHANNEL_SETTINGS,
+  DOMAINS,
+  PLAN,
+  SENDING_WINDOW,
+  SETTINGS_SECTIONS,
+  TEAM,
+  type SettingsSection,
+} from "@/lib/app/workspace";
 
-export function SettingsScreen({ user, workspace }: { user: User; workspace: Workspace }) {
-  const router = useRouter();
-  const [tab, setTab] = useState("account");
-  const [signingOut, setSigningOut] = useState(false);
-
-  const signOut = async () => {
-    setSigningOut(true);
-    try {
-      await fetch("/api/logout", { method: "POST" });
-    } finally {
-      router.push("/");
-      router.refresh();
-    }
-  };
+export function SettingsScreen() {
+  const [section, setSection] = useState<SettingsSection>("channels");
+  const [off, setOff] = useState<string[]>([]);
 
   return (
-    <div className="space-y-3.5">
-      <section className="lg lg-sheen lg-in r-xl px-4 py-3.5">
-        <Segmented
-          label="Settings section"
-          value={tab}
-          onChange={setTab}
-          items={[
-            { id: "account", label: "Account" },
-            { id: "workspace", label: "Workspace" },
-            { id: "channels", label: "Channels" },
-            { id: "team", label: "Team" },
-          ]}
+    <Screen title="Settings">
+      <div className="set">
+        <SideTabs<SettingsSection>
+          value={section}
+          onChange={setSection}
+          items={SETTINGS_SECTIONS.map(([k, label]) => [k, label])}
         />
-      </section>
 
-      {tab === "account" && (
-        <Panel title="Account" index={1}>
-          <div className="flex items-center gap-3">
-            <Avatar initials={user.initials} className="!h-12 !w-12 !text-[15px]" />
-            <div>
-              <p className="text-[15.5px] font-semibold text-ink">{user.name}</p>
-              <p className="text-[13px] text-muted">{user.email}</p>
-            </div>
-          </div>
-          <Rows
-            rows={[
-              ["Role", user.role],
-              ["Time zone", user.timeZone],
-              ["Sign-in", "Prototype account — one hardcoded user, no password reset yet"],
-            ]}
-          />
-          <button type="button" className="gbtn mt-5" onClick={signOut} disabled={signingOut}>
-            <LogoutIcon />
-            {signingOut ? "Signing out…" : "Sign out"}
-          </button>
-        </Panel>
-      )}
-
-      {tab === "workspace" && (
-        <Panel title="Workspace" index={1}>
-          <Rows
-            rows={[
-              ["Name", workspace.name],
-              ["Plan", workspace.plan],
-              ["Seats", `${workspace.seatsUsed} of ${workspace.seats} used`],
-            ]}
-          />
-          <DemoDataNote className="mt-5" />
-        </Panel>
-      )}
-
-      {tab === "channels" && (
-        <Panel title="Channels and daily caps" index={1}>
-          <p className="text-[13.5px] leading-relaxed text-ink-2">
-            LinkedIn and email run today. The rest are planned, so their caps are shown but not used.
-          </p>
-          <ul className="mt-5 space-y-4">
-            {workspace.quotas.map((quota) => {
-              const live = workspace.liveChannels.includes(quota.channel);
-              return (
-                <li key={quota.channel}>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-2 text-[14px] font-medium text-ink">
-                      <ChannelMark channel={quota.channel} className="h-4 w-4 text-ink-2" />
-                      {CHANNEL_LABEL[quota.channel]}
-                      <span className={`pill ${live ? "pill-live" : "pill-draft"}`}>
-                        {live ? "Live" : "Planned"}
+        <div className="stack">
+          {section === "channels" && (
+            <section className="card">
+              {CHANNEL_SETTINGS.map((row) => {
+                const channel = CHANNEL[row.k];
+                const on = row.on && !off.includes(row.k);
+                return (
+                  <div className="chrow" key={row.k}>
+                    <i className="cdot" style={{ background: channel.hex }} />
+                    <div style={{ minWidth: 0 }}>
+                      <b>{channel.name}</b>
+                      <small>{row.via}</small>
+                    </div>
+                    <span className="lim row" style={{ gap: 10 }}>
+                      <span className={"tag " + row.status.tone}>{row.status.label}</span>
+                      <span className="muted num" style={{ fontSize: 12.5, minWidth: 64, textAlign: "right" }}>
+                        {row.cap}/day
                       </span>
                     </span>
-                    <span className="text-[13px] tabular-nums text-muted">
-                      {fmtNumber(quota.used)} / {fmtNumber(quota.cap)} today
+                    <Switch
+                      on={on}
+                      label={channel.name}
+                      onChange={() =>
+                        setOff((o) => (o.includes(row.k) ? o.filter((k) => k !== row.k) : [...o, row.k]))
+                      }
+                    />
+                  </div>
+                );
+              })}
+            </section>
+          )}
+
+          {section === "sending" && (
+            <>
+              <section className="card">
+                <div className="card-h">
+                  <h3>Sending window</h3>
+                </div>
+                <div className="card-b">
+                  <p>
+                    {SENDING_WINDOW.days.join(" · ")}, {SENDING_WINDOW.from} to {SENDING_WINDOW.to} (
+                    {SENDING_WINDOW.timezone}).
+                  </p>
+                  <p className="muted">
+                    {SENDING_WINDOW.skipOther
+                      ? "Leads already in another campaign are skipped, so nobody is double-touched."
+                      : "Leads can appear in more than one campaign."}
+                  </p>
+                </div>
+              </section>
+
+              <section className="card">
+                <div className="card-h">
+                  <h3>Sending domains</h3>
+                </div>
+                {DOMAINS.map((d) => (
+                  <div className="chrow" key={d.host}>
+                    <i className="cdot" style={{ background: d.ok ? "var(--pos)" : "var(--hl)" }} />
+                    <div style={{ minWidth: 0 }}>
+                      <b>{d.host}</b>
+                      <small>{d.note}</small>
+                    </div>
+                    <span className="lim row" style={{ gap: 10 }}>
+                      <span className={"tag " + (d.ok ? "pos" : "hl")}>{d.ok ? "Verified" : "Pending"}</span>
                     </span>
                   </div>
-                  <div className="meter mt-2">
-                    <i style={{ "--fill": quota.used / quota.cap } as React.CSSProperties} />
+                ))}
+              </section>
+            </>
+          )}
+
+          {section === "team" && (
+            <section className="card">
+              {TEAM.map((person) => (
+                <div className="chrow" key={person.email}>
+                  <Avatar name={person.name} />
+                  <div style={{ minWidth: 0 }}>
+                    <b>{person.name}</b>
+                    <small>{person.email}</small>
                   </div>
-                </li>
-              );
-            })}
-          </ul>
-        </Panel>
-      )}
-
-      {tab === "team" && (
-        <Panel title="Team" index={1}>
-          <ul>
-            {workspace.members.map((member) => (
-              <li key={member.id} className="row-sep flex items-center gap-3 py-3">
-                <Avatar initials={member.initials} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14px] font-semibold text-ink">{member.name}</p>
-                  <p className="truncate text-[12.5px] text-muted">{member.email}</p>
+                  <span className="lim row" style={{ gap: 10 }}>
+                    <span className="tag">{person.role}</span>
+                    <span className="muted num" style={{ fontSize: 12.5, minWidth: 96, textAlign: "right" }}>
+                      replies in {person.respondsIn}
+                    </span>
+                  </span>
                 </div>
-                <span className="pill">{member.role}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-5 text-[12.5px] text-muted">
-            Inviting teammates needs a database, so it is not wired up in this prototype.
-          </p>
-        </Panel>
-      )}
-    </div>
-  );
-}
+              ))}
+            </section>
+          )}
 
-function Panel({
-  title,
-  index,
-  children,
-}: {
-  title: string;
-  index: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      className="lg lg-sheen lg-in r-xl max-w-3xl px-5 py-5"
-      style={{ "--i": index } as React.CSSProperties}
-    >
-      <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-ink">{title}</h2>
-      <div className="mt-4">{children}</div>
-    </section>
-  );
-}
-
-function Rows({ rows }: { rows: [string, string][] }) {
-  return (
-    <dl className="mt-5">
-      {rows.map(([label, value]) => (
-        <div key={label} className="row-sep flex flex-wrap items-baseline justify-between gap-3 py-3">
-          <dt className="text-[13.5px] text-muted">{label}</dt>
-          <dd className="text-[13.5px] font-medium text-ink">{value}</dd>
+          {section === "plan" && (
+            <section className="card">
+              <div className="card-h">
+                <h3>{PLAN.name} plan</h3>
+                <span className="muted">Renews {PLAN.renews}</span>
+              </div>
+              <div className="card-b cap">
+                <div>
+                  <div className="t">
+                    <span>Seats</span>
+                    <span className="num muted">
+                      {PLAN.seats} / {PLAN.seatCap}
+                    </span>
+                  </div>
+                  <Meter value={PLAN.seats} max={PLAN.seatCap} color="var(--accent)" />
+                </div>
+                <div>
+                  <div className="t">
+                    <span>Active leads</span>
+                    <span className="num muted">
+                      {PLAN.leads.toLocaleString("en-US")} / {PLAN.leadCap.toLocaleString("en-US")}
+                    </span>
+                  </div>
+                  <Meter value={PLAN.leads} max={PLAN.leadCap} color="var(--accent)" />
+                </div>
+              </div>
+            </section>
+          )}
         </div>
-      ))}
-    </dl>
+      </div>
+    </Screen>
   );
 }

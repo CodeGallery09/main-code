@@ -1,313 +1,231 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
-import type { Channel, Message, Thread } from "@/lib/data/types";
-import {
-  Avatar,
-  CHANNEL_LABEL,
-  ChannelMark,
-  DemoDataNote,
-  ErrorNote,
-  Loading,
-  ScoreBadge,
-  Segmented,
-  fmtAgo,
-  fmtDate,
-  fmtTime,
-} from "@/components/app/ui";
-import { SendIcon } from "@/components/app/icons";
+import { TopBar } from "./AppShell";
+import { BackIcon } from "./icons";
+import { Avatar, Dot, Segmented } from "./ui";
+import { CHANNEL, OWNERS, type ChannelKey } from "@/lib/app/channels";
+import { CAMPAIGNS } from "@/lib/app/campaigns";
+import { INTENT_TONE, THREADS } from "@/lib/app/inbox";
+import { leadById, scoreBand, SIGNAL_LABEL, SIGNAL_SCORE, STAGE_COLOR } from "@/lib/app/leads";
 
-const INTENT_LABEL: Record<Thread["intent"], string> = {
-  interested: "Interested",
-  question: "Question",
-  objection: "Objection",
-  "out-of-office": "Out of office",
-  "opt-out": "Opt-out",
+/** Which campaign a lead sits in, used for the context rail. */
+const CAMPAIGN_FOR_LEAD: Record<number, string> = {
+  15: "Inbound follow-up",
+  2: "Net-new outbound",
+  1: "Net-new outbound",
+  8: "Net-new outbound",
+  13: "Inbound follow-up",
+  5: "Q4 webinar invite",
+  7: "Closed-lost re-engage",
 };
 
-const REPLY_CHANNELS: Channel[] = ["linkedin", "email", "whatsapp"];
+/** Last thing said in a thread, for the list preview. */
+function preview(messages: { t: string }[]) {
+  return messages[messages.length - 1]?.t ?? "";
+}
 
-export function InboxScreen({ initial }: { initial: Thread[] }) {
-  const [filter, setFilter] = useState("to-reply");
-  const [threads, setThreads] = useState<Thread[]>(initial);
-  const [activeId, setActiveId] = useState<string | null>(initial[0]?.id ?? null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [thread, setThread] = useState<Thread | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [channel, setChannel] = useState<Channel>("linkedin");
-  const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
-  const scroller = useRef<HTMLDivElement>(null);
+export function InboxScreen() {
+  const [filter, setFilter] = useState<"needs" | "all">("needs");
+  const [selected, setSelected] = useState(THREADS[0].id);
+  const [read, setRead] = useState<number[]>([]);
+  const [handled, setHandled] = useState<number[]>([]);
 
-  // Reload the list whenever the filter changes.
-  useEffect(() => {
-    let live = true;
-    api
-      .threads({ filter })
-      .then(({ threads: rows }) => {
-        if (!live) return;
-        setThreads(rows);
-        if (!rows.some((row) => row.id === activeId)) setActiveId(rows[0]?.id ?? null);
-      })
-      .catch((err: Error) => live && setError(err.message));
-    return () => {
-      live = false;
-    };
-    // activeId is intentionally not a dependency: changing threads shouldn't refetch the list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter]);
+  const shown = THREADS.filter((t) => (filter === "needs" ? t.needs && !handled.includes(t.id) : true));
+  const thread = useMemo(
+    () => THREADS.find((t) => t.id === selected) ?? shown[0] ?? THREADS[0],
+    [selected, shown],
+  );
+  const lead = leadById(thread.id);
+  const [channel, setChannel] = useState<ChannelKey>(thread.ch);
+  const [draft, setDraft] = useState(thread.sugg ?? "");
 
-  // Load the open conversation.
-  useEffect(() => {
-    if (!activeId) {
-      setThread(null);
-      setMessages([]);
-      return;
-    }
-    let live = true;
-    setLoading(true);
-    setError(null);
-    api
-      .thread(activeId)
-      .then((data) => {
-        if (!live) return;
-        setThread(data.thread);
-        setMessages(data.messages);
-        setChannel(data.thread.channel === "call" || data.thread.channel === "sms" ? "email" : data.thread.channel);
-        setDraft("");
-      })
-      .catch((err: Error) => live && setError(err.message))
-      .finally(() => live && setLoading(false));
-    return () => {
-      live = false;
-    };
-  }, [activeId]);
-
-  useEffect(() => {
-    scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
-  }, [messages]);
-
-  const send = async () => {
-    if (!activeId || !draft.trim()) return;
-    setSending(true);
-    try {
-      const { message } = await api.sendMessage(activeId, channel, draft.trim());
-      setMessages((rows) => [...rows, message]);
-      setDraft("");
-      setThreads((rows) =>
-        rows.map((row) => (row.id === activeId ? { ...row, needsReply: false, unread: false } : row)),
-      );
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSending(false);
-    }
+  const select = (id: number) => {
+    const next = THREADS.find((t) => t.id === id);
+    setSelected(id);
+    setRead((r) => (r.includes(id) ? r : [...r, id]));
+    setChannel(next?.ch ?? "mail");
+    setDraft(next?.sugg ?? "");
   };
 
-  const toReply = threads.filter((t) => t.needsReply).length;
+  if (!lead) return null;
 
   return (
-    <div className="grid min-h-0 grid-cols-1 gap-3.5 lg:h-[calc(100svh-var(--app-top)-var(--app-gap)*3)] lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)] xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)_minmax(0,278px)]">
-      {/* ---------- list ---------- */}
-      <section className="lg lg-sheen lg-in r-xl flex min-h-0 flex-col" aria-label="Conversations">
-        <div className="px-3.5 pb-3 pt-3.5">
-          <Segmented
-            label="Filter conversations"
-            value={filter}
-            onChange={setFilter}
-            items={[
-              { id: "to-reply", label: "To reply", count: toReply },
-              { id: "all", label: "All", count: threads.length },
-            ]}
-          />
-        </div>
-        <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-          {threads.map((row) => (
-            <li key={row.id}>
-              <button
-                type="button"
-                onClick={() => setActiveId(row.id)}
-                aria-current={row.id === activeId ? "true" : undefined}
-                className={`w-full rounded-[14px] px-3 py-2.5 text-left transition-colors ${
-                  row.id === activeId ? "bg-white/85 shadow-[0_1px_2px_rgb(0_0_0/0.06)]" : "hover:bg-white/50"
-                }`}
-              >
-                <div className="flex items-start gap-2.5">
-                  <Avatar initials={row.initials} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-1.5">
-                      <p className="truncate text-[14px] font-semibold text-ink">{row.leadName}</p>
-                      {row.unread && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ink" aria-label="Unread" />}
-                      <span className="ml-auto shrink-0 text-[11.5px] text-muted">{fmtAgo(row.lastAt)}</span>
-                    </div>
-                    <p className="mt-0.5 truncate text-[13px] text-ink-2">{row.preview}</p>
-                    <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-muted">
-                      <ChannelMark channel={row.channel} className="h-3.5 w-3.5" />
-                      {CHANNEL_LABEL[row.channel]}
-                      <span className="pill h-5 !px-2 text-[11px]">{INTENT_LABEL[row.intent]}</span>
-                    </p>
-                  </div>
-                </div>
-              </button>
-            </li>
-          ))}
-          {!threads.length && (
-            <li className="px-3 py-10 text-center text-[13.5px] text-muted">No conversations here.</li>
-          )}
-        </ul>
-      </section>
-
-      {/* ---------- conversation ---------- */}
-      <section
-        className="lg lg-sheen lg-in r-xl flex min-h-0 flex-col"
-        style={{ "--i": 1 } as React.CSSProperties}
-        aria-label="Conversation"
-      >
-        {error && <div className="p-4"><ErrorNote message={error} /></div>}
-        {loading && !thread && <div className="p-4"><Loading rows={4} /></div>}
-
-        {thread && (
-          <>
-            <header className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-3">
-              <Avatar initials={thread.initials} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px] font-semibold text-ink">{thread.leadName}</p>
-                <p className="truncate text-[12.5px] text-muted">
-                  {thread.role} · {thread.company}
-                </p>
-              </div>
-              <Link href="/dashboard/leads" className="gbtn gbtn-sm">
-                Profile
-              </Link>
-              <button type="button" className="gbtn gbtn-sm gbtn-solid">
-                Call
-              </button>
-            </header>
-
-            <div ref={scroller} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex flex-col ${message.from === "us" ? "items-end" : "items-start"}`}
-                >
-                  <p className="mb-1 px-1 text-[11.5px] text-muted">
-                    {message.from === "us" ? "You" : thread.leadName.split(" ")[0]} ·{" "}
-                    {CHANNEL_LABEL[message.channel]} · {fmtDate(message.sentAt)} {fmtTime(message.sentAt)}
-                  </p>
-                  <div
-                    className={`max-w-[min(560px,86%)] rounded-[18px] px-3.5 py-2.5 text-[14px] leading-relaxed ${
-                      message.from === "us"
-                        ? "bg-ink text-white shadow-[0_8px_18px_-10px_rgb(0_0_0/0.6)]"
-                        : "lg-thin text-ink"
-                    }`}
-                  >
-                    {message.body}
-                  </div>
-                </div>
-              ))}
+    <div className="main">
+      <TopBar title="Inbox" />
+      <div className="scroll">
+        <div className="full inbox">
+          <div className="ib-list pane">
+            <div className="ib-list-h">
+              <Segmented<"needs" | "all">
+                value={filter}
+                onChange={setFilter}
+                items={[
+                  ["needs", "To reply", THREADS.filter((t) => t.needs && !handled.includes(t.id)).length],
+                  ["all", "All", THREADS.length],
+                ]}
+              />
             </div>
 
-            <footer className="border-t border-black/[0.06] p-3">
-              <div className="mb-2 flex items-center gap-2">
-                <Segmented
-                  label="Reply channel"
-                  value={channel}
-                  onChange={(id) => setChannel(id as Channel)}
-                  items={REPLY_CHANNELS.map((c) => ({ id: c, label: CHANNEL_LABEL[c] }))}
+            <div className="threads">
+              {shown.map((t) => {
+                const person = leadById(t.id);
+                if (!person) return null;
+                const unread = t.unread && !read.includes(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    className={"th" + (t.id === thread.id ? " on" : "") + (unread ? " unread" : "")}
+                    onClick={() => select(t.id)}
+                  >
+                    <Avatar name={person.n} />
+                    <div>
+                      <div className="r1">
+                        <b>{person.n}</b>
+                        <time>{t.time}</time>
+                      </div>
+                      <p>{preview(t.msgs)}</p>
+                      <div className="r3">
+                        <span className="chname">
+                          <Dot k={t.ch} />
+                          {CHANNEL[t.ch].name}
+                        </span>
+                        <span className={"tag " + INTENT_TONE[t.intent]}>{t.intent}</span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+              {shown.length === 0 && <p className="empty">Inbox zero. Nothing left to reply to.</p>}
+            </div>
+          </div>
+
+          <section className="convo pane">
+            <div className="convo-h">
+              <button className="ib back" aria-label="Back" onClick={() => setSelected(0)}>
+                <BackIcon />
+              </button>
+              <Avatar name={lead.n} />
+              <div>
+                <b>{lead.n}</b>
+                <small>
+                  {lead.t} · {lead.c}
+                </small>
+              </div>
+              <div className="acts">
+                <Link className="btn sm line hide-m" href="/dashboard/leads">
+                  Profile
+                </Link>
+                <button className="btn sm acc">Call</button>
+              </div>
+            </div>
+
+            <div className="msgs">
+              {thread.msgs.map((m, i) =>
+                "sys" in m ? (
+                  <div className="sys" key={i}>
+                    {m.t}
+                  </div>
+                ) : (
+                  <div className={"msg " + m.s} key={i}>
+                    <div className="meta">
+                      {m.s === "me" ? "You" : lead.n.split(" ")[0]} · {CHANNEL[m.ch].name} · {m.w}
+                    </div>
+                    {m.subj && <div className="subj">{m.subj}</div>}
+                    <div className="bubble">{m.t}</div>
+                  </div>
+                ),
+              )}
+            </div>
+
+            {thread.auto ? (
+              <div className="composer">
+                <p className="ack">{thread.auto}</p>
+              </div>
+            ) : (
+              <div className="composer">
+                <div className="f">
+                  <Segmented<ChannelKey>
+                    value={channel}
+                    onChange={setChannel}
+                    items={[
+                      ["li", "LinkedIn"],
+                      ["mail", "Email"],
+                      ["wa", "WhatsApp"],
+                    ]}
+                  />
+                  {thread.sugg && draft === thread.sugg && (
+                    <span className="tag acc hide-m">Suggested reply</span>
+                  )}
+                </div>
+                <textarea
+                  className="ta"
+                  aria-label="Reply"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
                 />
-                <span className="tag-sample ml-auto">Nothing is sent</span>
+                <div className="f">
+                  <button className="btn sm line" onClick={() => setDraft((d) => `${d}\n\nflightpath.app/aarav`)}>
+                    Booking link
+                  </button>
+                  <button
+                    className="btn sm ghost"
+                    onClick={() => setHandled((h) => [...h, thread.id])}
+                  >
+                    Mark handled
+                  </button>
+                  <span className="sp" />
+                  <button className="btn pri" onClick={() => setHandled((h) => [...h, thread.id])}>
+                    Send
+                  </button>
+                </div>
               </div>
-              <textarea
-                className="ginput min-h-[84px]"
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder={`Reply to ${thread.leadName.split(" ")[0]} on ${CHANNEL_LABEL[channel]}…`}
-                aria-label="Your reply"
-              />
-              <div className="mt-2 flex items-center gap-2">
-                <button type="button" className="gbtn gbtn-sm">
-                  Booking link
-                </button>
-                <button type="button" className="gbtn gbtn-sm gbtn-quiet">
-                  Mark handled
-                </button>
-                <button
-                  type="button"
-                  className="gbtn gbtn-sm gbtn-solid ml-auto"
-                  onClick={send}
-                  disabled={sending || !draft.trim()}
-                >
-                  <SendIcon />
-                  {sending ? "Sending…" : "Send"}
-                </button>
-              </div>
-            </footer>
-          </>
-        )}
+            )}
+          </section>
 
-        {!thread && !loading && !error && (
-          <p className="p-10 text-center text-[14px] text-muted">Pick a conversation to open it.</p>
-        )}
-      </section>
-
-      {/* ---------- lead panel ---------- */}
-      <aside
-        className="lg lg-sheen lg-in r-xl hidden min-h-0 flex-col overflow-y-auto p-4 xl:flex"
-        style={{ "--i": 2 } as React.CSSProperties}
-        aria-label="Lead detail"
-      >
-        {thread ? (
-          <>
-            <Avatar initials={thread.initials} className="!h-11 !w-11 !text-[14px]" />
-            <p className="mt-3 text-[16px] font-semibold text-ink">{thread.leadName}</p>
-            <p className="text-[12.5px] text-muted">
-              {thread.role} · {thread.company}
-            </p>
-
-            <dl className="mt-5 space-y-2.5 text-[13px]">
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-muted">Score</dt>
-                <dd><ScoreBadge score={thread.score} /></dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-muted">Stage</dt>
-                <dd className="font-medium capitalize text-ink">{thread.stage}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-muted">Campaign</dt>
-                <dd className="truncate font-medium text-ink">{thread.campaignName ?? "—"}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-muted">Owner</dt>
-                <dd className="font-medium text-ink">{thread.ownerName}</dd>
-              </div>
+          <aside className="ctx pane">
+            <div style={{ display: "grid", gap: 6, justifyItems: "start" }}>
+              <Avatar name={lead.n} size="lg" />
+              <b style={{ fontSize: 15 }}>{lead.n}</b>
+              <span className="muted" style={{ fontSize: 12.5 }}>
+                {lead.t} · {lead.c}
+              </span>
+            </div>
+            <dl>
+              <dt>Score</dt>
+              <dd>
+                <span className={"score " + scoreBand(lead.score)}>{lead.score}</span>
+              </dd>
+              <dt>Stage</dt>
+              <dd>
+                <span className="stage">
+                  <i style={{ background: STAGE_COLOR[lead.stage] }} />
+                  {lead.stage}
+                </span>
+              </dd>
+              <dt>Campaign</dt>
+              <dd>{CAMPAIGN_FOR_LEAD[lead.id] ?? CAMPAIGNS[1].name}</dd>
+              <dt>Owner</dt>
+              <dd>{OWNERS[lead.own]}</dd>
             </dl>
-
-            <p className="thead mt-6">Why this score</p>
-            <ul className="mt-2">
-              {thread.signals.map((signal) => (
-                <li
-                  key={signal.label}
-                  className="row-sep flex items-center justify-between py-2 text-[13px]"
-                >
-                  <span className="text-ink-2">{signal.label}</span>
-                  <span className="font-semibold tabular-nums text-ink">+{signal.points}</span>
+            <ul className="sigs">
+              {lead.sig.map((s) => (
+                <li key={s}>
+                  <span>{SIGNAL_LABEL[s]}</span>
+                  <span className="p">
+                    {SIGNAL_SCORE[s] >= 0 ? "+" : ""}
+                    {SIGNAL_SCORE[s]}
+                  </span>
                 </li>
               ))}
             </ul>
-
-            <Link href="/dashboard/leads" className="gbtn mt-5 w-full">
+            <Link className="btn line block" href="/dashboard/leads">
               Open lead
             </Link>
-            <DemoDataNote className="mt-4" />
-          </>
-        ) : (
-          <p className="text-[13.5px] text-muted">No conversation open.</p>
-        )}
-      </aside>
+          </aside>
+        </div>
+      </div>
     </div>
   );
 }

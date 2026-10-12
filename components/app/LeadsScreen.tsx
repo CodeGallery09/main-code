@@ -1,286 +1,286 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
-import type { Lead, LeadStage, Paged } from "@/lib/data/types";
+import { useMemo, useState } from "react";
+import { Screen } from "./AppShell";
+import { CheckIcon, SearchIcon } from "./icons";
+import { Avatar } from "./ui";
+import { OWNERS } from "@/lib/app/channels";
+import { CAMPAIGNS } from "@/lib/app/campaigns";
 import {
-  Avatar,
-  DemoDataNote,
-  ErrorNote,
-  Loading,
-  ScoreBadge,
-  fmtNumber,
-  fmtSince,
-} from "@/components/app/ui";
-import { ChevronDown, PlusIcon, SearchIcon, StarIcon } from "@/components/app/icons";
+  LEADS,
+  maskPhone,
+  scoreBand,
+  STAGE_COLOR,
+  tagColors,
+  type Lead,
+  type Stage,
+} from "@/lib/app/leads";
 
-const STAGES: { id: LeadStage | "all"; label: string }[] = [
-  { id: "all", label: "Any stage" },
-  { id: "meeting", label: "Meeting" },
-  { id: "hot", label: "Hot" },
-  { id: "engaged", label: "Engaged" },
-  { id: "reaching", label: "Reaching" },
-  { id: "nurture", label: "Nurture" },
-  { id: "closed", label: "Closed" },
+const STAGES: [Stage | "any", string][] = [
+  ["any", "Any status"],
+  ["Hot", "Hot"],
+  ["Meeting", "Meeting"],
+  ["Engaged", "Engaged"],
+  ["Reaching", "Reaching"],
+  ["New", "New"],
+  ["Nurture", "Nurture"],
+  ["Paused", "Paused"],
+  ["Stopped", "Not interested"],
 ];
 
-const STAGE_PILL: Record<LeadStage, string> = {
-  meeting: "pill-meeting",
-  hot: "pill-hot",
-  engaged: "pill-live",
-  reaching: "pill-scheduled",
-  nurture: "pill-draft",
-  closed: "pill-draft",
+/** Pill tint per stage; the text colour comes from STAGE_COLOR. */
+const STAGE_TINT: Record<Stage, string> = {
+  Hot: "rgba(178,78,38,.14)",
+  Meeting: "rgba(79,107,69,.16)",
+  Engaged: "rgba(201,146,46,.18)",
+  Reaching: "rgba(24,26,30,.07)",
+  New: "rgba(24,26,30,.07)",
+  Nurture: "rgba(185,162,124,.22)",
+  Paused: "rgba(24,26,30,.07)",
+  Stopped: "rgba(24,26,30,.07)",
 };
 
-/** Debounces the search box so typing doesn't fire a request per keystroke. */
-function useDebounced<T>(value: T, delay = 250): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setSettled(value), delay);
-    return () => clearTimeout(id);
-  }, [value, delay]);
-  return settled;
-}
+type SortKey = "name" | "score" | "avgCall" | "msgs";
 
-export function LeadsScreen({
-  initial,
-  owners,
-  campaigns,
-}: {
-  initial: Paged<Lead>;
-  owners: { id: string; name: string }[];
-  campaigns: { id: string; name: string }[];
-}) {
+export function LeadsScreen() {
   const [query, setQuery] = useState("");
-  const debounced = useDebounced(query);
-  const [stage, setStage] = useState<string>("all");
-  const [ownerId, setOwnerId] = useState<string>("all");
-  const [campaignId, setCampaignId] = useState<string>("all");
-  const [sort, setSort] = useState<"score" | "name" | "updated">("score");
-  const [page, setPage] = useState<Paged<Lead>>(initial);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [campaign, setCampaign] = useState("any");
+  const [owner, setOwner] = useState("any");
+  const [stage, setStage] = useState<Stage | "any">("any");
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: -1 });
+  const [starred, setStarred] = useState<number[]>(LEADS.filter((l) => l.fav).map((l) => l.id));
+  const [picked, setPicked] = useState<number[]>([]);
 
-  useEffect(() => {
-    let live = true;
-    setLoading(true);
-    api
-      .leads({ q: debounced, stage, ownerId, campaignId, sort })
-      .then((data) => live && (setPage(data), setError(null)))
-      .catch((err: Error) => live && setError(err.message))
-      .finally(() => live && setLoading(false));
-    return () => {
-      live = false;
-    };
-  }, [debounced, stage, ownerId, campaignId, sort]);
-
-  const toggle = (id: string) =>
-    setSelected((previous) => {
-      const next = new Set(previous);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+  const rows = useMemo(() => {
+    const text = query.trim().toLowerCase();
+    const filtered = LEADS.filter((l) => {
+      if (owner !== "any" && l.own !== owner) return false;
+      if (stage !== "any" && l.stage !== stage) return false;
+      if (!text) return true;
+      return [l.n, l.c, l.t, ...l.tags].some((v) => v.toLowerCase().includes(text));
     });
 
-  const allOnPage = page.items.length > 0 && page.items.every((lead) => selected.has(lead.id));
-  const toggleAll = () =>
-    setSelected(allOnPage ? new Set() : new Set(page.items.map((lead) => lead.id)));
+    const value = (l: Lead) => {
+      switch (sort.key) {
+        case "name":
+          return l.n.toLowerCase();
+        case "avgCall":
+          return l.avgCall ?? -1;
+        case "msgs":
+          return l.msgs;
+        default:
+          return l.score;
+      }
+    };
+    return [...filtered].sort((a, b) => {
+      const x = value(a);
+      const y = value(b);
+      return (x < y ? -1 : x > y ? 1 : 0) * sort.dir;
+    });
+  }, [query, owner, stage, sort]);
+
+  const toggleSort = (key: SortKey) =>
+    setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: key === "name" ? 1 : -1 }));
+
+  const arrow = (key: SortKey) => (sort.key === key ? (sort.dir === 1 ? "↑" : "↓") : "↕");
+
+  const allPicked = picked.length === rows.length && rows.length > 0;
 
   return (
-    <div className="space-y-3.5">
-      {/* ---------- filters ---------- */}
-      <section className="lg lg-sheen lg-in r-xl flex flex-wrap items-center gap-2.5 px-4 py-3.5">
-        <div className="relative min-w-[200px] flex-1">
-          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+    <Screen title="Leads">
+      <div className="lfilters">
+        <label className="q wide">
+          <SearchIcon />
           <input
-            className="ginput pl-9"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            type="search"
             placeholder="Search leads, companies, tags"
             aria-label="Search leads"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
           />
-        </div>
+        </label>
 
-        <Select value={campaignId} onChange={setCampaignId} label="Campaign">
-          <option value="all">All campaigns</option>
-          {campaigns.map((campaign) => (
-            <option key={campaign.id} value={campaign.id}>
-              {campaign.name}
+        <select className="sel pill" aria-label="Campaign" value={campaign} onChange={(e) => setCampaign(e.target.value)}>
+          <option value="any">All campaigns</option>
+          {CAMPAIGNS.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
             </option>
           ))}
-        </Select>
+        </select>
 
-        <Select value={ownerId} onChange={setOwnerId} label="Owner">
-          <option value="all">Any owner</option>
-          {owners.map((owner) => (
-            <option key={owner.id} value={owner.id}>
-              {owner.name}
+        <select className="sel pill" aria-label="Owner" value={owner} onChange={(e) => setOwner(e.target.value)}>
+          <option value="any">Any owner</option>
+          {Object.entries(OWNERS).map(([k, name]) => (
+            <option key={k} value={k}>
+              {name}
             </option>
           ))}
-        </Select>
+        </select>
 
-        <Select value={stage} onChange={setStage} label="Stage">
-          {STAGES.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
+        <select
+          className="sel pill hide-m"
+          aria-label="Status"
+          value={stage}
+          onChange={(e) => setStage(e.target.value as Stage | "any")}
+        >
+          {STAGES.map(([k, label]) => (
+            <option key={k} value={k}>
+              {label}
             </option>
           ))}
-        </Select>
+        </select>
 
-        <Select value={sort} onChange={(value) => setSort(value as typeof sort)} label="Sort by">
-          <option value="score">Top score</option>
-          <option value="updated">Recently active</option>
-          <option value="name">Name A–Z</option>
-        </Select>
+        <select className="sel pill hide-m" aria-label="Date range" defaultValue="90">
+          <option value="30">Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="ytd">This year</option>
+        </select>
 
-        <button type="button" className="gbtn gbtn-solid ml-auto">
-          <PlusIcon />
-          Add leads
+        <button className="ib more" aria-label="More actions">
+          ⋯
         </button>
-      </section>
+        <button className="btn pri">Start calling</button>
+      </div>
 
-      {/* ---------- table ---------- */}
-      <section className="lg lg-sheen lg-in r-xl overflow-hidden" style={{ "--i": 1 } as React.CSSProperties}>
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-          <p className="text-[13px] text-muted">
-            {selected.size
-              ? `${selected.size} selected`
-              : `${fmtNumber(page.total)} ${page.total === 1 ? "lead" : "leads"}`}
-          </p>
-          {selected.size > 0 && (
-            <div className="flex items-center gap-1.5">
-              <button type="button" className="gbtn gbtn-sm">Add to campaign</button>
-              <button type="button" className="gbtn gbtn-sm">Assign owner</button>
-              <button type="button" className="gbtn gbtn-sm gbtn-quiet" onClick={() => setSelected(new Set())}>
-                Clear
-              </button>
-            </div>
-          )}
-        </div>
-
-        {error && <div className="p-4"><ErrorNote message={error} /></div>}
-
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] border-collapse text-left">
+      <div className="card ltable">
+        <div className="tblw">
+          <table className="tbl leads">
             <thead>
-              <tr className="thead border-y border-black/[0.06]">
-                <th scope="col" className="w-10 px-4 py-2.5">
-                  <input
-                    type="checkbox"
-                    checked={allOnPage}
-                    onChange={toggleAll}
-                    aria-label="Select all leads on this page"
-                    className="h-4 w-4 accent-black"
-                  />
+              <tr>
+                <th className="c-n">
+                  <span className="hn">
+                    <button
+                      className={"cb" + (allPicked ? " on" : "")}
+                      aria-label="Select all"
+                      onClick={() => setPicked(allPicked ? [] : rows.map((r) => r.id))}
+                    >
+                      <CheckIcon />
+                    </button>
+                    <button className={"sortb" + (sort.key === "name" ? " on" : "")} onClick={() => toggleSort("name")}>
+                      Lead name<span className="arr">{arrow("name")}</span>
+                    </button>
+                  </span>
                 </th>
-                <th scope="col" className="px-2 py-2.5 font-medium">Lead</th>
-                <th scope="col" className="px-2 py-2.5 font-medium">Stage</th>
-                <th scope="col" className="px-2 py-2.5 font-medium">Score</th>
-                <th scope="col" className="px-2 py-2.5 font-medium">Source</th>
-                <th scope="col" className="px-2 py-2.5 font-medium">Tags</th>
-                <th scope="col" className="px-2 py-2.5 font-medium">Owner</th>
-                <th scope="col" className="px-2 py-2.5 font-medium">Activity</th>
-                <th scope="col" className="px-2 py-2.5 font-medium">Next step</th>
+                <th>Status</th>
+                <th>
+                  <button className={"sortb" + (sort.key === "score" ? " on" : "")} onClick={() => toggleSort("score")}>
+                    Score<span className="arr">{arrow("score")}</span>
+                  </button>
+                </th>
+                <th className="c-src">Source</th>
+                <th className="c-tags">Tags</th>
+                <th className="c-mid c-cons">Consent</th>
+                <th className="c-mid">
+                  <button
+                    className={"sortb" + (sort.key === "avgCall" ? " on" : "")}
+                    onClick={() => toggleSort("avgCall")}
+                  >
+                    Avg call<span className="arr">{arrow("avgCall")}</span>
+                  </button>
+                </th>
+                <th className="c-mid c-fu">
+                  <button className={"sortb" + (sort.key === "msgs" ? " on" : "")} onClick={() => toggleSort("msgs")}>
+                    Follow-ups<span className="arr">{arrow("msgs")}</span>
+                  </button>
+                </th>
+                <th className="c-next">Next step</th>
               </tr>
             </thead>
             <tbody>
-              {page.items.map((lead) => (
-                <tr key={lead.id} className="row-hover border-b border-black/[0.05] last:border-0">
-                  <td className="px-4 py-3 align-middle">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(lead.id)}
-                      onChange={() => toggle(lead.id)}
-                      aria-label={`Select ${lead.name}`}
-                      className="h-4 w-4 accent-black"
-                    />
-                  </td>
-                  <td className="px-2 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar initials={lead.initials} />
-                      <div className="min-w-0">
-                        <p className="flex items-center gap-1.5 truncate text-[14px] font-semibold text-ink">
-                          {lead.name}
-                          {lead.starred && <StarIcon filled className="h-3.5 w-3.5 text-ink-2" />}
-                        </p>
-                        <p className="truncate text-[12.5px] text-muted">{lead.company}</p>
+              {rows.map((lead) => {
+                const isStarred = starred.includes(lead.id);
+                const visible = lead.tags.slice(0, 2);
+                const extra = lead.tags.length - visible.length;
+                return (
+                  <tr className="click" key={lead.id}>
+                    <td className="c-n">
+                      <div className="lname">
+                        <button
+                          className={"cb" + (picked.includes(lead.id) ? " on" : "")}
+                          aria-label={`Select ${lead.n}`}
+                          onClick={() =>
+                            setPicked((p) =>
+                              p.includes(lead.id) ? p.filter((id) => id !== lead.id) : [...p, lead.id],
+                            )
+                          }
+                        >
+                          <CheckIcon />
+                        </button>
+                        <Avatar name={lead.n} />
+                        <div className="nm">
+                          <span className="row1">
+                            <b title={lead.n}>{lead.n}</b>
+                            <button
+                              className="star"
+                              aria-label="Star"
+                              aria-pressed={isStarred}
+                              onClick={() =>
+                                setStarred((s) =>
+                                  s.includes(lead.id) ? s.filter((id) => id !== lead.id) : [...s, lead.id],
+                                )
+                              }
+                            >
+                              {isStarred ? "★" : "☆"}
+                            </button>
+                          </span>
+                          <small className="num">{lead.ph ? maskPhone(lead.ph) : lead.c}</small>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-2 py-3">
-                    <span className={`pill ${STAGE_PILL[lead.stage]} capitalize`}>{lead.stage}</span>
-                  </td>
-                  <td className="px-2 py-3"><ScoreBadge score={lead.score} /></td>
-                  <td className="px-2 py-3">
-                    <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted">
-                      {lead.source}
-                    </span>
-                  </td>
-                  <td className="px-2 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {lead.tags.slice(0, 2).map((tag) => (
-                        <span key={tag} className="pill h-[22px] !px-2 text-[11.5px]">{tag}</span>
-                      ))}
-                      {lead.tags.length > 2 && (
-                        <span className="pill h-[22px] !px-2 text-[11.5px]">+{lead.tags.length - 2}</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-2 py-3 text-[13px] text-ink-2">{lead.ownerName}</td>
-                  <td className="px-2 py-3 text-[12.5px] text-muted">
-                    <span className="tabular-nums">{lead.messageCount} msg</span>
-                    {lead.callCount > 0 && <span className="tabular-nums"> · {lead.callCount} call</span>}
-                    <span className="block">{fmtSince(lead.updatedAt)}</span>
-                  </td>
-                  <td className="px-2 py-3 text-[13px] text-ink">{lead.nextStep}</td>
-                </tr>
-              ))}
+                    </td>
+                    <td>
+                      <button className="pillbtn" aria-label={`Status: ${lead.stage}`}>
+                        <span
+                          className="spill"
+                          style={{ background: STAGE_TINT[lead.stage], color: STAGE_COLOR[lead.stage] }}
+                        >
+                          {lead.stage}
+                        </span>
+                        <span className="chev">⌄</span>
+                      </button>
+                    </td>
+                    <td>
+                      <span className={"scoren " + scoreBand(lead.score)}>{lead.score}</span>
+                    </td>
+                    <td className="c-src">
+                      <span className="src">{lead.src}</span>
+                    </td>
+                    <td className="c-tags">
+                      <div className="tagcell">
+                        <div className="tagstack">
+                          {visible.map((tag) => {
+                            const [bg, fg] = tagColors(tag);
+                            return (
+                              <span className="ltag" title={tag} key={tag} style={{ background: bg, color: fg }}>
+                                {tag}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        {extra > 0 && <button className="more-n">+{extra}</button>}
+                      </div>
+                    </td>
+                    <td className="c-mid c-cons">{lead.consent ? "Yes" : "No"}</td>
+                    <td className="c-mid num">{lead.avgCall ? `${lead.avgCall}s` : "—"}</td>
+                    <td className="c-mid c-fu">
+                      <span className="fu">
+                        <span className="fuc" title="Messages">
+                          {lead.msgs} msg
+                        </span>
+                        <span className="fuc" title="Calls">
+                          {lead.calls} call
+                        </span>
+                      </span>
+                    </td>
+                    <td className="c-next">{lead.next}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-
-        {loading && <div className="p-4"><Loading rows={2} /></div>}
-        {!loading && !page.items.length && (
-          <p className="px-4 py-14 text-center text-[14px] text-muted">
-            No leads match those filters.
-          </p>
-        )}
-
-        <div className="flex items-center justify-between gap-3 border-t border-black/[0.06] px-4 py-3">
-          <DemoDataNote />
-          <p className="text-[12.5px] text-muted">
-            Page {page.page} · {fmtNumber(page.total)} total
-          </p>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function Select({
-  value,
-  onChange,
-  label,
-  children,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="relative">
-      <select
-        className="ginput w-auto min-w-[140px]"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-label={label}
-      >
-        {children}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-    </div>
+        {rows.length === 0 && <p className="empty">No leads match those filters.</p>}
+      </div>
+    </Screen>
   );
 }

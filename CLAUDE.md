@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Flightpath: a marketing site for a GTM workflow-orchestration SaaS aimed at SMB sales teams. Routes: the landing page (`/`: Hero → Journey → WhyFlightpath → WorkflowLibrary → FounderBooker), a demo-request page (`/book-demo`), and prototype auth pages (`/login`, `/signup`, `/dashboard`, see **Auth**). Stack: Next.js 15 App Router, React 19, TypeScript 5, Tailwind CSS v4 (via `@tailwindcss/postcss`, no `tailwind.config`), ESLint 9 flat config. The only runtime dependency beyond Next and React is `lucide-react`.
+Flightpath: a marketing site and prototype workspace for a GTM workflow-orchestration SaaS aimed at SMB sales teams. Routes: the landing page (`/`: SiteHero → SiteJourney → SiteWhy → SiteWorkflows → FounderCall), a demo-request page (`/book-demo`), prototype auth pages (`/login`, `/signup`), and the signed-in app under `/dashboard`. Stack: Next.js 15 App Router, React 19, TypeScript 5, Tailwind CSS v4 (via `@tailwindcss/postcss`, no `tailwind.config`), ESLint 9 flat config. The only runtime dependency beyond Next and React is `lucide-react`.
 
-The visual direction comes from `references/home-terracotta-v9.html` (layout, Pip), recoloured to a testing palette. Palette and fonts are expected to change.
+**The design reference is the product app itself.** `app/app.css` is a verbatim port of the reference app's stylesheet, and the landing page and the workspace both render against it, so the two read as one product. `/book-demo`, `/login` and `/signup` still use the older Tailwind theme in `app/globals.css`; that file also still carries rules for landing sections that no longer exist (hero pinning, journey, untangle) and can be trimmed.
 
 `gtm_mock.html` in the root is a standalone design reference/mock. It is not part of the app.
 
@@ -30,7 +30,25 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 
 ## Architecture
 
-**Styling system (`app/globals.css`)**
+**Liquid glass (`app/app.css` + `components/app/glass.ts`)**
+- `app/app.css` is the whole design system: tokens, layout, every screen, the glass material, responsive rules and reduced motion. It is vendored — change the `:root` tokens rather than rewriting rules. It is imported by `app/dashboard/layout.tsx` and by `app/page.tsx`, so Next only ships it on those routes.
+- The glass is not just a blur. `components/app/glass.ts` runs two effects, mounted by `<Glass />`:
+  - **Refraction.** For each glass surface it paints a rounded-rect bevel normal map into a canvas, feeds it to an SVG `feDisplacementMap`, and points the element's `--lens` at that filter. Filters are keyed `lg-<w>-<h>-<radius>` so surfaces of the same size share one.
+  - **Specular.** A pointer listener writes `--mx` / `--my` onto the surface under the cursor and up to two ancestors, which the stylesheet turns into a highlight that follows the pointer — this is the hover response on buttons, cards, chips and rows.
+- A surface opts in by class: the lens list is `.card,.pane,.side,.modal,…` and the specular list adds `.btn,.ib,.navi,.th,…`. **Add new glass controls to those selector lists in `glass.ts` and to the glass skin block at the end of `app.css`**, or they will render flat.
+- Without JS, or where `backdrop-filter` is unsupported, surfaces still render — they just lose the refraction.
+
+**Marketing page (`app/home.css`)**
+- Loaded only by `/`, on top of `app.css`. It adds the page rhythm the app has no use for (sections, hero, `.trio`/`.duo` grids, the sticky `.sitenav` capsule, the footer) and the wallpaper on `body.site` that gives the glass something to refract.
+- Sections live in `components/site/`. They keep the `data-pip-section` hooks and the `#journey` / `#why` / `#how-it-works` / `#founders` ids that `lib/site.ts` and Pip target.
+- `components/site/FounderCall.tsx` is the founder-call request. It is still a **preferred-time request, not a booking**: it validates with `validateFounderCall()` and posts `{ kind: "founder_call" }` to the same `/api/demo-request` endpoint.
+
+**Workspace data (`lib/app/`)**
+- The dashboard renders from `lib/app/`, a faithful port of the reference's demo content: `channels.ts`, `leads.ts` (rows plus derived score, tags, masked phone), `inbox.ts` (to-do queue and threads), `campaigns.ts`, `workspace.ts`.
+- `metrics.ts` is the one source of numbers. A seeded PRNG walks 180 days and produces, per campaign and channel, a `[reached, engaged, replied, positive, meetings]` funnel; `totals()`, `buckets()` and `campaignMetrics()` read off it. It is deterministic, so the dashboard, the campaign table and analytics always agree — and it reproduces the reference's figures exactly.
+- `lib/data/` and the `/api/*` endpoints remain the storage seam described below; the dashboard layout reads the signed-in user through it.
+
+**Legacy styling system (`app/globals.css`)**
 - Design tokens are CSS variables on `:root` in `app/globals.css`. The testing theme is black-and-white "liquid glass": pure white `--bg`, near-black `--ink`, and a black `--accent` / `--accent-ink` (so tinted elements are neutral greys), with system green/orange/red for status. Every other token is derived next to them. They are mapped to Tailwind utilities through `@theme inline` (`bg-surface`, `text-accent-ink`, `bg-sky`, …). To re-theme, edit only the `:root` block; add new colours in both places. A few rules and SVGs (Pip's artwork in `components/pip/pipSvg.ts`, `rgb(...)` glows and the pastel wallpaper in `body::before` in `globals.css`, `app/icon.svg`) hardcode brand colours, so grep for them when changing the palette.
 - **Liquid glass:** `.glass`, `.glass-lg` and `.card` share one translucent fill + heavy `backdrop-filter` blur/saturation + specular inset rim (all in `@layer components`), sitting over the fixed pastel "wallpaper" gradient in `body::before`. Small controls (chips, calendar days/slots, month arrows, picker rows marked `glass-row`) get the same look from the **unlayered "glass skin" block at the end of `globals.css`**, which has to be unlayered to beat their background utilities; add new chip-like controls to that selector list. iOS control idioms live there too: `.btn-secondary` is a pale-grey "tinted" capsule, `.field` is a grey-filled text field, and the template picker in `WorkflowLibrary` is a grey segmented control with a white thumb. Glass only reads against something behind it, so keep the wallpaper, and keep the number of blurred surfaces on screen small (the pinned Hero's cards drop their blur once merged). The navbar is a floating glass capsule (`sticky top-3`); `--nav-h` (76px) is the pinned Hero's top offset.
 - Use `--accent` for fills, buttons and rings, and `text-accent-ink` for accent-coloured text: accent and ink are the same black here, but keep the split so a coloured theme still works.
@@ -78,17 +96,17 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 
 **Signed-in app (`/dashboard`)**
 - Routes: `/dashboard` (Home), `/dashboard/inbox`, `/leads`, `/campaigns`, `/analytics`, `/settings`. `app/dashboard/layout.tsx` guards the session and renders `components/app/AppShell.tsx` (glass rail, top bar, mobile tab bar). It is `force-dynamic` so signing out takes effect immediately.
+- Screens live in `components/app/` and render from `lib/app/` (see **Workspace data**). `ui.tsx` holds the shared controls (`Segmented`, `Switch`, `Avatar`, `Delta`, `Meter`), `charts.tsx` the SVG sparkline, area and bar charts, `icons.tsx` the 24px icon set.
+- The campaign builder canvas and the new-campaign wizard from the design reference are not ported; "Create campaign" and "New campaign" lead to the campaign list.
 - **The storage seam is `lib/data/repository.ts`.** Pages and route handlers only ever talk to that interface, obtained from `getRepository()` in `lib/data/index.ts`. Today it returns `MemoryRepository` (`lib/data/memory.ts`) over the demo seed in `lib/data/seed.ts`. To add a database, implement `Repository` against your client and return it from the factory — nothing else changes.
 - `lib/data/query.ts` holds the pure filter/sort/paginate helpers both implementations share; it is import-free and covered by `tests/dataQuery.test.mjs`.
 - REST endpoints live under `app/api/*`: `me`, `workspace`, `overview`, `tasks`, `tasks/[id]/complete`, `campaigns`, `campaigns/[id]`, `leads`, `leads/[id]`, `threads`, `threads/[id]`, `threads/[id]/messages`, `analytics`. They share `lib/http.ts` (`withUser`, `json`, `fail`, param parsers) so auth, caching and error shapes are identical: 401 unauthenticated, 404 missing, 422 invalid, `{ error: { code, message } }`.
 - Server components read the repository directly; client components call the typed browser client in `lib/api.ts`. Don't `fetch("/api/...")` by hand.
 - Writes in the memory store last until the server restarts. That is deliberate for the prototype.
 
-**App styling (`app/app.css`)**
-- Loaded only by the dashboard layout, so the marketing pages are untouched. It is the iOS "liquid glass" material: a tinted wallpaper on `.app-shell`, and three thicknesses above it — `.lg-thin`, `.lg`, `.lg-thick` — each a translucent fill with `backdrop-filter: blur() saturate()`, a hairline border and a specular top edge.
-- **The wallpaper is load-bearing.** Glass only reads as glass when there is colour behind it; flattening those gradients makes every panel look like a plain white card. If panels start looking opaque, check `--lg-fill*` and the white radial in `.lg` before touching the wallpaper.
-- Component classes (`.nav-item`, `.segmented`, `.gbtn`, `.ginput`, `.switch`, `.pill`, `.meter`, `.score`) stay inside `@layer components`, same rule as `globals.css`.
-- Pip is a marketing guide and is hidden on `/dashboard` (see `components/pip/Pip.tsx`).
+**Wallpaper is load-bearing.** Glass only reads as glass when there is colour behind it — the gradients on `body.site::before` and the app wallpaper. Flattening them makes every panel look like a plain white card, so check `--tint` and `--blur` before touching them.
+
+Pip is a marketing guide and is hidden on `/dashboard` (see `components/pip/Pip.tsx`). Its perches in `components/pip/engine.ts` were tuned to the old landing sections, so its placement on the new page is approximate.
 
 ## Content rules
 

@@ -1,212 +1,243 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
-import type { Campaign, CampaignStatus } from "@/lib/data/types";
-import type { CampaignTotals } from "@/lib/data/repository";
+import { useMemo, useState } from "react";
+import { Screen } from "./AppShell";
+import { SearchIcon } from "./icons";
+import { Dot, fmt, Kpi, Segmented, Switch, Tabs } from "./ui";
+import { CHANNEL, CHANNELS, type ChannelKey } from "@/lib/app/channels";
 import {
-  CHANNEL_LABEL,
-  ChannelDots,
-  DemoDataNote,
-  ErrorNote,
-  Segmented,
-  Switch,
-  fmtDate,
-  fmtNumber,
-} from "@/components/app/ui";
-import { PlusIcon, SearchIcon } from "@/components/app/icons";
+  CAMPAIGNS,
+  hasRun,
+  scheduleLabel,
+  STATUS_TAG,
+  type Campaign,
+  type CampaignStatus,
+} from "@/lib/app/campaigns";
+import { campaignMetrics, DAYS, rangeLabel, rate } from "@/lib/app/metrics";
 
-const STATUS_PILL: Record<CampaignStatus, string> = {
-  live: "pill-live",
-  scheduled: "pill-scheduled",
-  paused: "pill-paused",
-  draft: "pill-draft",
-};
+type StatusFilter = "all" | CampaignStatus;
+type TypeFilter = "all" | "single" | "multi";
+type Period = "7d" | "30d" | "90d";
 
-export function CampaignsScreen({
-  initialItems,
-  initialTotals,
-}: {
-  initialItems: Campaign[];
-  initialTotals: CampaignTotals;
-}) {
-  const [status, setStatus] = useState("all");
-  const [type, setType] = useState("all");
+const WINDOW: Record<Period, number> = { "7d": 7, "30d": 30, "90d": 90 };
+
+export function CampaignsScreen() {
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [type, setType] = useState<TypeFilter>("all");
+  const [channel, setChannel] = useState<ChannelKey | "all">("all");
+  const [period, setPeriod] = useState<Period>("30d");
   const [query, setQuery] = useState("");
-  const [items, setItems] = useState(initialItems);
-  const [totals, setTotals] = useState(initialTotals);
-  const [error, setError] = useState<string | null>(null);
+  const [paused, setPaused] = useState<number[]>([]);
 
-  useEffect(() => {
-    const id = setTimeout(() => {
-      api
-        .campaigns({ status, type, q: query })
-        .then((data) => {
-          setItems(data.items);
-          setTotals(data.totals);
-          setError(null);
-        })
-        .catch((err: Error) => setError(err.message));
-    }, 220);
-    return () => clearTimeout(id);
-  }, [status, type, query]);
+  const range = { from: DAYS - WINDOW[period], to: DAYS - 1 };
 
-  const counts = (value: CampaignStatus) => initialItems.filter((c) => c.status === value).length;
+  // Everything but the status tabs narrows the set the tab counts are taken from.
+  const scoped = CAMPAIGNS.filter(
+    (c) =>
+      (type === "all" || c.type === type) &&
+      (channel === "all" || c.channels.includes(channel)) &&
+      (!query || c.name.toLowerCase().includes(query.toLowerCase())),
+  );
 
-  const toggle = async (campaign: Campaign) => {
-    const next: CampaignStatus = campaign.status === "live" ? "paused" : "live";
-    setItems((rows) => rows.map((row) => (row.id === campaign.id ? { ...row, status: next } : row)));
-    try {
-      await api.setCampaignStatus(campaign.id, next);
-    } catch (err) {
-      setItems((rows) =>
-        rows.map((row) => (row.id === campaign.id ? { ...row, status: campaign.status } : row)),
-      );
-      setError((err as Error).message);
-    }
-  };
+  const countFor = (s: StatusFilter) => scoped.filter((c) => s === "all" || c.status === s).length;
 
-  const summary = [
-    { label: "Leads", value: fmtNumber(totals.leads) },
-    { label: "Delivered", value: fmtNumber(totals.delivered) },
-    { label: "Open rate", value: totals.openRate !== null ? `${totals.openRate}%` : "—" },
-    { label: "Reply rate", value: totals.replyRate !== null ? `${totals.replyRate}%` : "—" },
-  ];
+  const rows = useMemo(
+    () =>
+      scoped
+        .filter((c) => status === "all" || c.status === status)
+        .map((c) => ({ c, m: hasRun(c) ? campaignMetrics(c.id, c.channels, range.from, range.to) : null })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [status, type, channel, query, period],
+  );
+
+  const totals = rows.reduce(
+    (acc, { c, m }) =>
+      m
+        ? {
+            leads: acc.leads + c.leads,
+            delivered: acc.delivered + m.delivered,
+            opened: acc.opened + m.opened,
+            openBase: acc.openBase + m.openBase,
+            sent: acc.sent + m.sent,
+            replied: acc.replied + m.replied,
+          }
+        : { ...acc, leads: acc.leads + c.leads },
+    { leads: 0, delivered: 0, opened: 0, openBase: 0, sent: 0, replied: 0 },
+  );
+
+  /** Columns read "—" until a campaign has actually sent something. */
+  const cell = (m: ReturnType<typeof campaignMetrics> | null, render: (v: NonNullable<typeof m>) => string) =>
+    m && m.sent >= 1 ? render(m) : "—";
+
+  const isOn = (c: Campaign) =>
+    (c.status === "live" || c.status === "scheduled") && !paused.includes(c.id);
 
   return (
-    <div className="space-y-3.5">
-      {/* ---------- controls ---------- */}
-      <section className="lg lg-sheen lg-in r-xl flex flex-wrap items-center gap-2.5 px-4 py-3.5">
-        <Segmented
-          label="Filter by status"
+    <Screen title="Campaigns">
+      <div className="wfhead">
+        <Tabs<StatusFilter>
           value={status}
           onChange={setStatus}
           items={[
-            { id: "all", label: "All", count: initialItems.length },
-            { id: "live", label: "Live", count: counts("live") },
-            { id: "scheduled", label: "Scheduled", count: counts("scheduled") },
-            { id: "paused", label: "Paused", count: counts("paused") },
-            { id: "draft", label: "Draft", count: counts("draft") },
+            ["all", "All", countFor("all")],
+            ["live", "Live", countFor("live")],
+            ["scheduled", "Scheduled", countFor("scheduled")],
+            ["paused", "Paused", countFor("paused")],
+            ["draft", "Draft", countFor("draft")],
           ]}
         />
-        <Segmented
-          label="Filter by type"
+        <button className="btn pri">Create campaign</button>
+      </div>
+
+      <div className="lfilters">
+        <label className="q wide">
+          <SearchIcon />
+          <input
+            type="search"
+            placeholder="Search campaigns"
+            aria-label="Search campaigns"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
+
+        <Segmented<TypeFilter>
           value={type}
           onChange={setType}
           items={[
-            { id: "all", label: "All types" },
-            { id: "standalone", label: "Standalone" },
-            { id: "multichannel", label: "Multichannel" },
+            ["all", "All types"],
+            ["single", "Standalone"],
+            ["multi", "Multichannel"],
           ]}
         />
-        <div className="relative min-w-[180px] flex-1">
-          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-          <input
-            className="ginput pl-9"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search campaigns"
-            aria-label="Search campaigns"
+
+        <select
+          className="sel pill"
+          aria-label="Channel"
+          value={channel}
+          onChange={(e) => setChannel(e.target.value as ChannelKey | "all")}
+        >
+          <option value="all">All channels</option>
+          {CHANNELS.map((c) => (
+            <option key={c.k} value={c.k}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+
+        <span className="sp" />
+
+        <div className="drpre">
+          <Segmented<Period>
+            value={period}
+            onChange={setPeriod}
+            items={[
+              ["7d", "7D"],
+              ["30d", "30D"],
+              ["90d", "90D"],
+            ]}
           />
-        </div>
-        <button type="button" className="gbtn gbtn-solid">
-          <PlusIcon />
-          Create campaign
-        </button>
-      </section>
-
-      {/* ---------- totals ---------- */}
-      <section aria-label="Totals for the current filter" className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
-        {summary.map((item, i) => (
-          <div
-            key={item.label}
-            className="lg lg-sheen lg-in r-lg px-5 py-4"
-            style={{ "--i": i + 1 } as React.CSSProperties}
-          >
-            <p className="thead">{item.label}</p>
-            <p className="metric-value mt-2">{item.value}</p>
+          <div className="drp">
+            <button className="drbtn" aria-haspopup="dialog" aria-expanded="false">
+              <span className="num">{rangeLabel(range.from, range.to)}</span>
+              <span className="chev" aria-hidden="true">
+                ⌄
+              </span>
+            </button>
           </div>
-        ))}
-      </section>
+        </div>
+      </div>
 
-      {error && <ErrorNote message={error} />}
+      <div className="kpis">
+        <Kpi label="Leads" value={fmt(totals.leads)} />
+        <Kpi label="Delivered" value={fmt(totals.delivered)} />
+        <Kpi
+          label="Open rate"
+          value={totals.openBase ? `${rate(totals.opened, totals.openBase).toFixed(1)}%` : "—"}
+        />
+        <Kpi label="Reply rate" value={totals.sent ? `${rate(totals.replied, totals.sent).toFixed(1)}%` : "—"} />
+      </div>
 
-      {/* ---------- table ---------- */}
-      <section className="lg lg-sheen lg-in r-xl overflow-hidden" style={{ "--i": 5 } as React.CSSProperties}>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] border-collapse text-left">
+      <div className="card ltable">
+        <div className="tblw">
+          <table className="tbl leads camps">
             <thead>
-              <tr className="thead border-b border-black/[0.06]">
-                <th scope="col" className="w-16 px-4 py-2.5 font-medium">On</th>
-                <th scope="col" className="px-2 py-2.5 font-medium">Campaign</th>
-                <th scope="col" className="px-2 py-2.5 font-medium">Status</th>
-                <th scope="col" className="px-2 py-2.5 text-right font-medium">Leads</th>
-                <th scope="col" className="px-2 py-2.5 text-right font-medium">Sent</th>
-                <th scope="col" className="px-2 py-2.5 text-right font-medium">Delivered</th>
-                <th scope="col" className="px-2 py-2.5 text-right font-medium">Open</th>
-                <th scope="col" className="px-2 py-2.5 text-right font-medium">Reply</th>
-                <th scope="col" className="px-4 py-2.5 text-right font-medium">Clicks</th>
+              <tr>
+                <th style={{ width: 64 }}>
+                  <span className="sr">On</span>
+                </th>
+                <th>Campaign</th>
+                <th>Status</th>
+                <th className="r">Leads</th>
+                <th className="r hide-m">Sent</th>
+                <th className="r">Delivered</th>
+                <th className="r">Open rate</th>
+                <th className="r">Reply rate</th>
+                <th className="r hide-m">Clicks</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((campaign) => (
-                <tr key={campaign.id} className="row-hover border-b border-black/[0.05] last:border-0">
-                  <td className="px-4 py-3">
-                    <Switch
-                      checked={campaign.status === "live"}
-                      onChange={() => toggle(campaign)}
-                      disabled={campaign.status === "draft"}
-                      label={`${campaign.status === "live" ? "Pause" : "Resume"} ${campaign.name}`}
-                    />
-                  </td>
-                  <td className="px-2 py-3">
-                    <p className="text-[14px] font-semibold text-ink">{campaign.name}</p>
-                    <p className="mt-0.5 flex items-center gap-1.5 text-[12.5px] text-muted">
-                      <ChannelDots channels={campaign.channels} />
-                      {campaign.type === "multichannel"
-                        ? `Multichannel${campaign.version ? ` · ${campaign.version}` : ""}`
-                        : CHANNEL_LABEL[campaign.channels[0]]}
-                      {" · "}
-                      {campaign.status === "scheduled" ? "Starts" : "Started"} {fmtDate(campaign.startedAt)}
-                    </p>
-                  </td>
-                  <td className="px-2 py-3">
-                    <span className={`pill ${STATUS_PILL[campaign.status]} capitalize`}>{campaign.status}</span>
-                  </td>
-                  <Num value={campaign.leads} />
-                  <Num value={campaign.sent} />
-                  <Num value={campaign.delivered} />
-                  <Num value={campaign.openRate} suffix="%" />
-                  <Num value={campaign.replyRate} suffix="%" />
-                  <Num value={campaign.clicks} className="px-4" />
-                </tr>
-              ))}
+              {rows.map(({ c, m }) => {
+                const tag = STATUS_TAG[paused.includes(c.id) ? "paused" : c.status];
+                return (
+                  <tr className="click" key={c.id}>
+                    <td>
+                      <span>
+                        <Switch
+                          on={isOn(c)}
+                          disabled={c.status === "completed" || c.status === "draft"}
+                          label={`${c.name} on`}
+                          onChange={() =>
+                            setPaused((p) =>
+                              p.includes(c.id) ? p.filter((id) => id !== c.id) : [...p, c.id],
+                            )
+                          }
+                        />
+                      </span>
+                    </td>
+                    <td>
+                      <div className="two">
+                        <span style={{ fontWeight: 600 }}>{c.name}</span>
+                        <small>
+                          {c.type === "single" ? (
+                            <>
+                              <Dot k={c.channels[0]} />
+                              {CHANNEL[c.channels[0]].name} · Standalone · {scheduleLabel(c)}
+                            </>
+                          ) : (
+                            <>
+                              <span className="dots">
+                                {c.channels.map((k) => (
+                                  <Dot k={k} key={k} />
+                                ))}
+                              </span>
+                              Multichannel{c.ver ? ` · v${c.ver}` : ""} · {scheduleLabel(c)}
+                            </>
+                          )}
+                        </small>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={"tag " + tag.tone}>{tag.label}</span>
+                    </td>
+                    <td className="r num">{fmt(c.leads)}</td>
+                    <td className="r num hide-m">{cell(m, (v) => fmt(v.sent))}</td>
+                    <td className="r num">{cell(m, (v) => fmt(v.delivered))}</td>
+                    <td className="r num">
+                      {cell(m, (v) => (v.openBase ? `${rate(v.opened, v.openBase).toFixed(1)}%` : "—"))}
+                    </td>
+                    <td className="r num">{cell(m, (v) => `${rate(v.replied, v.sent).toFixed(1)}%`)}</td>
+                    <td className="r num hide-m">
+                      {cell(m, (v) => (v.clicks >= 1 ? fmt(v.clicks) : "—"))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-        {!items.length && (
-          <p className="px-4 py-14 text-center text-[14px] text-muted">No campaigns match those filters.</p>
-        )}
-        <div className="border-t border-black/[0.06] px-4 py-3">
-          <DemoDataNote />
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function Num({
-  value,
-  suffix = "",
-  className = "px-2",
-}: {
-  value: number | null;
-  suffix?: string;
-  className?: string;
-}) {
-  return (
-    <td className={`${className} py-3 text-right text-[13.5px] tabular-nums text-ink`}>
-      {value === null ? <span className="text-muted">—</span> : `${fmtNumber(value, suffix ? 1 : 0)}${suffix}`}
-    </td>
+        {rows.length === 0 && <p className="empty">No campaigns match those filters.</p>}
+      </div>
+    </Screen>
   );
 }

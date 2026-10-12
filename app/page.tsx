@@ -1,23 +1,24 @@
-import { Navbar } from "@/components/Navbar";
-import { Hero } from "@/components/Hero";
-import { Journey } from "@/components/Journey";
-import { WhyFlightpath } from "@/components/WhyFlightpath";
-import { WorkflowLibrary } from "@/components/WorkflowLibrary";
-import { FounderBooker } from "@/components/FounderBooker";
-import { Footer } from "@/components/Footer";
+import "./app.css";
+import "./home.css";
+import Glass from "@/components/app/Glass";
+import { SiteNav } from "@/components/site/SiteNav";
+import { SiteHero } from "@/components/site/SiteHero";
+import { SiteFooter, SiteJourney, SiteWhy, SiteWorkflows } from "@/components/site/SiteSections";
+import { FounderCall } from "@/components/site/FounderCall";
 
 export default function Home() {
   return (
     <>
-      <Navbar />
+      <Glass />
+      <SiteNav />
       <main id="main">
-        <Hero />
-        <Journey />
-        <WhyFlightpath />
-        <WorkflowLibrary />
-        <FounderBooker />
+        <SiteHero />
+        <SiteJourney />
+        <SiteWhy />
+        <SiteWorkflows />
+        <FounderCall />
       </main>
-      <Footer />
+      <SiteFooter />
     </>
   );
 }
