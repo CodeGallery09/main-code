@@ -60,6 +60,29 @@ export function CampaignsIcon(p: IconProps) {
   );
 }
 
+/** A branching sequence — the shape of a workflow on the canvas. */
+export function WorkflowsIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="2.5" y="3" width="7" height="5.5" rx="1.8" />
+      <rect x="14.5" y="3" width="7" height="5.5" rx="1.8" />
+      <rect x="14.5" y="15.5" width="7" height="5.5" rx="1.8" />
+      <path d="M9.5 5.75h5M6 8.5v6.75a3 3 0 003 3h5.5" />
+    </Icon>
+  );
+}
+
+/** Two plugged connectors, for the integrations section. */
+export function IntegrationsIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M10.5 13.5l-2 2a3.2 3.2 0 01-4.5-4.5l2-2" />
+      <path d="M13.5 10.5l2-2a3.2 3.2 0 014.5 4.5l-2 2" />
+      <path d="M9.5 14.5l5-5" />
+    </Icon>
+  );
+}
+
 export function AnalyticsIcon(p: IconProps) {
   return (
     <Icon {...p}>

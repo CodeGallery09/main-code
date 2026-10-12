@@ -35,6 +35,8 @@ npm run dev        # http://localhost:3000
 | `/dashboard/inbox` | Unified inbox across channels, with a reply composer                   |
 | `/dashboard/leads` | Lead table with search, facets and sorting                             |
 | `/dashboard/campaigns` | Campaign list with live/paused toggles                             |
+| `/dashboard/workflows` | Workflow library, and the builder at `/workflows/[id]`             |
+| `/dashboard/integrations` | Connect LinkedIn, email domains and mailboxes; roadmap providers |
 | `/dashboard/analytics` | Trend, channel breakdown and funnel                                |
 | `/dashboard/settings`  | Account, workspace, channel caps and team                          |
 | `/api/demo-request` | Validates and forwards demo requests to a webhook                     |

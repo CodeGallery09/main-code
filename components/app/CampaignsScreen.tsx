@@ -23,8 +23,9 @@ type Period = "7d" | "30d" | "90d";
 
 const WINDOW: Record<Period, number> = { "7d": 7, "30d": 30, "90d": 90 };
 
-/** Only multichannel campaigns have a workflow to open in the builder. */
-const builderHref = (c: Campaign) => (c.type === "multi" ? `/dashboard/campaigns/${c.id}` : null);
+/** Only multichannel campaigns have a workflow to open in the builder, which lives
+ *  under /dashboard/workflows — campaign ids and workflow ids are the same. */
+const builderHref = (c: Campaign) => (c.type === "multi" ? `/dashboard/workflows/${c.id}` : null);
 
 export function CampaignsScreen() {
   const router = useRouter();
@@ -92,7 +93,7 @@ export function CampaignsScreen() {
             ["draft", "Draft", countFor("draft")],
           ]}
         />
-        <Link className="btn pri" href="/dashboard/campaigns/new">
+        <Link className="btn pri" href="/dashboard/workflows/new">
           Create campaign
         </Link>
       </div>

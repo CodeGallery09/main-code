@@ -516,8 +516,9 @@ button.stat:hover { border-color:var(--line-strong);box-shadow:0 14px 30px -24px
   .sendsw .lbl { display:none }
   .page { padding:18px 14px 100px }
   .main { height:calc(100vh - 62px) }
-  .tabbar { display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:50;height:62px;background:color-mix(in srgb,var(--surface) 95%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:4px 2px env(safe-area-inset-bottom) }
-  .tabbar button { position:relative;display:grid;justify-items:center;align-content:center;gap:3px;font-size:10.5px;color:var(--muted);font-weight:500 }
+  .tabbar { display:grid;grid-template-columns:repeat(var(--tabs,5),1fr);position:fixed;left:0;right:0;bottom:0;z-index:50;height:62px;background:color-mix(in srgb,var(--surface) 95%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:4px 2px env(safe-area-inset-bottom) }
+  .tabbar button { position:relative;display:grid;justify-items:center;align-content:center;gap:3px;font-size:10.5px;color:var(--muted);font-weight:500;min-width:0;padding-inline:2px }
+  .tabbar button .lbl { max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
   .tabbar button.on { color:var(--accent-ink) }
   .tabbar .bdg { position:absolute;top:2px;left:calc(50% + 5px);height:16px;min-width:16px;font-size:10px;padding:0 4px }
   .inbox { grid-template-columns:minmax(0,1fr) }
@@ -1218,7 +1219,7 @@ body, .bgfx { background:#fafafa }
   .dbgflow { height:480px }
 }
 @media(max-width:820px) {
-  .tabbar { grid-template-columns:repeat(5,1fr) }
+  .tabbar { grid-template-columns:repeat(var(--tabs,5),1fr) }
   .tabbar button { font-size:9.5px }
   .bhero { flex-direction:column;gap:8px;padding:10px }
   .srccard { flex:none }
@@ -1275,7 +1276,7 @@ body:has(.wizf) .toasts, body:has(.react-flow) .toasts { bottom:92px!important }
 .ccards .two>* { display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
 .ccards .two small .cdot, .ccards .two small [class*=cdot] { vertical-align:middle }
 .ccards .two small .cdot { display:inline-block;margin-right:6px }
-.tabbar { grid-template-columns:repeat(5,1fr)!important }
+.tabbar { grid-template-columns:repeat(var(--tabs,5),1fr)!important }
 .dots { display:inline-flex;gap:3px;margin-right:6px;vertical-align:middle }
 .dots .cdot { margin:0!important }
 .camps .two small { display:flex;align-items:center;gap:6px;white-space:nowrap }
