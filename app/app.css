@@ -1452,6 +1452,53 @@ html, body { background:#fafafa }
 }
 
 /* ---------------------------------------------------------------------------
+   One sliding pill, one glass recipe.
+
+   Everything that selects between choices moves the same raised white pill
+   (`.thumb` / `.tabthumb` / `.navthumb` / `.vthumb`, all rendered by `Thumb`
+   in components/app/ui.tsx) across the same recessed track. The variant class
+   only sets the inset and the radius — the material is the `--thumb-bg` /
+   `--thumb-sh` pair above, so re-tuning the pill re-tunes every selector.
+
+   The rule is: a *track* is `--track` with an inset hairline and no shadow; a
+   *raised* surface (the pill, a resting outline button, a focused field) is
+   `--thumb-bg` with `--thumb-sh`. Nothing in the workspace should invent a
+   third fill. Add a new selector here, not a new gradient.
+   --------------------------------------------------------------------------- */
+
+/* The track every pill travels along. */
+.seg, .days, .navlist, .setnav.pane, .tabbar { --rail-pad:3px }
+.seg { background:var(--track)!important;box-shadow:inset 0 0 0 .5px rgba(17,19,22,.05)!important }
+
+/* The nav rail is a track too, so the pill reads the same as on the tabs. */
+.navlist { position:relative;display:grid;gap:2px }
+.navlist.foot { margin-top:2px }
+.navlist .navi, .navlist .navhas { position:relative;z-index:1 }
+.navi.on { background:transparent!important;box-shadow:none!important }
+.navthumb { left:0;right:0;top:0;border-radius:12px;position:absolute;z-index:0;pointer-events:none }
+/* The Leads row sits inside its dropdown wrapper, so the pill measures the
+   link and the wrapper contributes no offset of its own. */
+.navhas { display:block }
+/* The settings pane carries 6px of padding, so its pill sits inside it. */
+.setnav.pane .vthumb { left:6px;right:6px }
+
+/* Search reads as the same recessed track, and lifts to the pill on focus. */
+.search, .q { background:var(--track)!important;border:0!important;box-shadow:inset 0 0 0 .5px rgba(17,19,22,.05)!important;transition:box-shadow .3s,background .25s,transform .5s var(--spring) }
+.search:hover, .q:hover { background:rgba(17,19,22,.065)!important }
+.q:focus-within, .search:focus-visible { background:var(--thumb-bg)!important;box-shadow:var(--thumb-sh)!important;outline:0 }
+.q.bad, .q.bad:focus-within { box-shadow:0 0 0 1.5px var(--alert)!important }
+.search kbd { background:#ffffffa6;box-shadow:inset 0 0 0 .5px rgba(17,19,22,.08) }
+
+/* Sorting headers and legend chips settle on the same pill when selected. */
+.sortb.on, .drq button.on, .tlegend button:not(.off):active { background:var(--thumb-bg)!important;box-shadow:var(--thumb-sh)!important;color:var(--ink)!important }
+.sortb, .drq button { border-radius:999px;transition:background .2s,box-shadow .3s,color .2s,transform .45s var(--spring) }
+.sortb:hover, .drq button:hover { background:var(--track) }
+
+@media(prefers-reduced-motion:reduce) {
+  .thumb, .navthumb, .vthumb, .tabthumb { transition:none }
+}
+
+/* ---------------------------------------------------------------------------
    Canvas primitives.
 
    The reference app drew the workflow builder with @xyflow/react and loaded

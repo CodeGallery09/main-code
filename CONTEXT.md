@@ -250,6 +250,19 @@ namespaces, no parameter properties).
 - Grid columns holding wide content need `minmax(0,1fr)` or mobile overflows horizontally.
 - The mobile tab bar sizes itself from `--tabs`, set inline by `AppShell` from
   `DASHBOARD_NAV.length`. Add a nav item and it adapts; hardcoding the column count clips the last item.
+- **One sliding pill.** Every selector in the workspace — segmented controls and page tabs, the
+  nav rail and its Integrations/Settings foot group, the settings side tabs, the mobile tab bar —
+  renders `Thumb` from `components/app/ui.tsx`, which slides one raised glass pill across a
+  recessed track. The variant class (`.thumb` / `.tabthumb` / `.navthumb` / `.vthumb`) sets only
+  the inset and radius; the material is the single `--thumb-bg` / `--thumb-sh` pair in the
+  consistency block at the end of `app.css`, and `--track` is the recess every pill travels along.
+  The same pair dresses outline buttons, the focused search field and selected sort headers, so
+  **add a new control to that block rather than inventing a third fill**.
+- `Thumb` measures from its own `parentElement`, not a ref passed in: React attaches a parent's
+  ref *after* its children's layout effects run, so a thumb handed its track's ref measures nothing
+  on the first pass and never appears. It measures with `getBoundingClientRect()` against the
+  track rather than `offsetTop` — the Leads row sits inside the positioned `.navhas` dropdown
+  wrapper, which would otherwise be its offset parent and report zero.
 - `toAppLead` (`lib/app/adapt.ts`) must not append a `Title: …` tag the stored tags already
   carry — `LeadsScreen` keys tag chips by text, so a repeat is a duplicate-key React warning.
 
