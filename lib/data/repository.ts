@@ -18,6 +18,11 @@
  * guessable key, so a missing workspace predicate is an access-control hole, not an optimisation.
  */
 
+import type { LeadProfile } from "@/lib/leads/merge";
+import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
+import type { Mapping, ParsedLead } from "@/lib/leads/validation";
+import type { Table } from "@/lib/leads/table";
+
 import type {
   Analytics,
   Campaign,
@@ -113,6 +118,35 @@ export interface Repository {
   setCampaignStatus(ctx: Ctx, id: string, status: CampaignStatus): Promise<Campaign | null>;
 
   sendMessage(ctx: Ctx, input: SendMessageInput): Promise<Message | null>;
+
+  /* ------------------------------------------------ lead uploads and segments -- */
+
+  /**
+   * Parks a parsed file so the mapping and summary steps don't have to upload it
+   * again. Uploads are scratch space: the memory store keeps them until the
+   * server restarts, which the modal says out loud.
+   */
+  createUpload(ctx: Ctx, input: { fileName: string; fileSize: number; table: Table }): Promise<UploadPreview>;
+  getUpload(ctx: Ctx, id: string): Promise<{ fileName: string; fileSize: number; table: Table } | null>;
+
+  listSegments(ctx: Ctx): Promise<Segment[]>;
+  getSegment(ctx: Ctx, id: string): Promise<Segment | null>;
+
+  /** Saves a validated upload as a segment, merging its rows into lead profiles. */
+  createSegment(
+    ctx: Ctx,
+    input: {
+      uploadId: string;
+      name: string;
+      description: string;
+      mapping: Mapping;
+      report: MappingReport;
+      leads: ParsedLead[];
+    },
+  ): Promise<{ segment: Segment; profilesCreated: number; profilesMerged: number } | null>;
+
+  /** Profiles the uploads have built up, newest first; `segmentId` narrows to one segment. */
+  listProfiles(ctx: Ctx, segmentId?: string): Promise<LeadProfile[]>;
 }
 
 /**

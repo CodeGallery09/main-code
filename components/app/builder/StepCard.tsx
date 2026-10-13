@@ -4,9 +4,13 @@ import type { CSSProperties } from "react";
 import { Glyph } from "../icons";
 import { CHANNEL } from "@/lib/app/channels";
 import {
+  ATTRIBUTE_LABEL,
+  LISTS,
   PORT_LABEL,
+  STEP_ATTRIBUTE,
   STEPS,
   stepLabel,
+  type AudienceList,
   type Port,
   type StepKind,
   type StepNode,
@@ -46,9 +50,13 @@ export function StepCard({
   lonely,
   taken,
   onQuickAdd,
+  lists = LISTS,
+  audienceKey,
 }: {
   node: StepNode;
   stats?: StepStat[];
+  lists?: AudienceList[];
+  audienceKey?: string;
   issue?: string;
   /** The workflow is still just an audience, so the `+` stays visible. */
   lonely: boolean;
@@ -58,6 +66,13 @@ export function StepCard({
   const { kind } = node;
   const ports = STEPS[kind].ports;
   const offsets = portOffsets(kind);
+
+  // A channel step sends to one attribute, so it shows which column of the
+  // chosen segment it reads. Nothing is configured per step: the mapping the
+  // upload set is what the step follows.
+  const attribute = STEP_ATTRIBUTE[kind];
+  const audience = lists.find((l) => l.k === (kind === "audience" ? node.data.list : audienceKey));
+  const column = attribute && audience && audience.columns ? audience.columns[attribute] : undefined;
 
   return (
     <div
@@ -72,7 +87,7 @@ export function StepCard({
         <StepChip kind={kind} />
         <div className="nt">
           <small>{STEPS[kind].label}</small>
-          <b>{stepLabel(kind, node.data)}</b>
+          <b>{stepLabel(kind, node.data, lists)}</b>
         </div>
       </div>
 
@@ -83,6 +98,13 @@ export function StepCard({
               <b>{value}</b> {label}
             </span>
           ))}
+        </div>
+      )}
+
+      {column && attribute && (
+        <div className="nattr" title={`Reads the ${ATTRIBUTE_LABEL[attribute]} column of ${audience ? audience.name : "the segment"}`}>
+          <span className="eyebrow">{ATTRIBUTE_LABEL[attribute]}</span>
+          <b>{column}</b>
         </div>
       )}
 

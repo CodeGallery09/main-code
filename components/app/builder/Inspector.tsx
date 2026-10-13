@@ -21,6 +21,9 @@ import {
   type StepData,
   type StepNode,
   type Workflow,
+  ATTRIBUTE_LABEL,
+  STEP_ATTRIBUTE,
+  type AudienceList,
 } from "@/lib/app/workflow";
 
 /** Shared text area with a merge-variable row and an optional length counter. */
@@ -109,9 +112,14 @@ export function Inspector({
   onClose,
   onDelete,
   onDuplicate,
+  lists = LISTS,
+  audienceKey,
 }: {
   node: StepNode;
   issue?: string;
+  /** Uploaded segments first, then the demo lists. */
+  lists?: AudienceList[];
+  audienceKey?: string;
   onChange: (patch: StepData) => void;
   onClose: () => void;
   onDelete: () => void;
@@ -119,6 +127,11 @@ export function Inspector({
 }) {
   const d = node.data;
   const kind = node.kind;
+  const uploaded = lists.filter((l) => l.src === "Uploaded file");
+  const demo = lists.filter((l) => l.src !== "Uploaded file");
+  const attribute = STEP_ATTRIBUTE[kind];
+  const audience = lists.find((l) => l.k === (kind === "audience" ? d.list : audienceKey));
+  const column = attribute && audience && audience.columns ? audience.columns[attribute] : undefined;
 
   return (
     <aside className="inspector" aria-label="Step settings">
@@ -126,7 +139,7 @@ export function Inspector({
         <StepChip kind={kind} />
         <div>
           <b>{STEPS[kind].label}</b>
-          <small>{stepLabel(kind, d)}</small>
+          <small>{stepLabel(kind, d, lists)}</small>
         </div>
         <button className="ib sm" onClick={onClose} aria-label="Close">
           <Glyph n="x" />
@@ -141,23 +154,75 @@ export function Inspector({
           </div>
         )}
 
+        {attribute && (
+          <div className="fld">
+            <label>Reads from the segment</label>
+            {column ? (
+              <p className="insread">
+                <b>{ATTRIBUTE_LABEL[attribute]}</b> from column “{column}”
+                {audience ? ` in ${audience.name}` : ""} ·{" "}
+                {(audience && audience.reach ? audience.reach[attribute] || 0 : 0).toLocaleString("en-US")} reachable
+              </p>
+            ) : (
+              <p className="insread none">
+                {ATTRIBUTE_LABEL[attribute]} — the chosen audience has no column mapped to it, so this step has
+                nobody to send to.
+              </p>
+            )}
+          </div>
+        )}
+
         {kind === "audience" && (
           <>
             <div className="fld">
-              <label htmlFor="ins-list">List</label>
+              <label htmlFor="ins-list">Audience</label>
               <select
                 id="ins-list"
                 className="sel"
                 value={d.list}
                 onChange={(e) => onChange({ list: e.target.value })}
               >
-                {LISTS.map((l) => (
-                  <option value={l.k} key={l.k}>
-                    {l.name} · {l.n}
-                  </option>
-                ))}
+                {uploaded.length > 0 && (
+                  <optgroup label="File segments">
+                    {uploaded.map((l) => (
+                      <option value={l.k} key={l.k}>
+                        {l.name} · {l.n} reachable
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Demo lists">
+                  {demo.map((l) => (
+                    <option value={l.k} key={l.k}>
+                      {l.name} · {l.n}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
+              <span className="hint">
+                {audience && audience.src === "Uploaded file"
+                  ? "Counted from the leads that file can actually reach, not its row count."
+                  : "Demo lists are illustrative. Upload a file from Leads to use your own leads."}
+              </span>
             </div>
+
+            {audience && audience.columns && Object.keys(audience.columns).length > 0 && (
+              <div className="fld">
+                <label>Channels this segment can reach</label>
+                <div className="insattrs">
+                  {(Object.keys(audience.columns) as (keyof typeof ATTRIBUTE_LABEL)[]).map((key) => (
+                    <span className="insattr" key={key}>
+                      {ATTRIBUTE_LABEL[key]}
+                      <b>{(audience.reach ? audience.reach[key] || 0 : 0).toLocaleString("en-US")}</b>
+                      <small>{audience.columns ? audience.columns[key] : ""}</small>
+                    </span>
+                  ))}
+                </div>
+                <span className="hint">
+                  Channel steps read these columns automatically — there is nothing to set per step.
+                </span>
+              </div>
+            )}
             <div className="fld">
               <label htmlFor="ins-titles">Job titles</label>
               <input

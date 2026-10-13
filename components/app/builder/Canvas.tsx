@@ -16,6 +16,7 @@ import {
   type StepKind,
   type StepNode,
   type StepStat,
+  type AudienceList,
 } from "@/lib/app/workflow";
 
 const MIN_ZOOM = 0.25;
@@ -52,6 +53,10 @@ export type CanvasProps = {
   selected: string | null;
   issues: Record<string, string>;
   stats: Record<string, StepStat[]>;
+  /** Audiences the workflow can start from, so a card can name its segment. */
+  lists: AudienceList[];
+  /** The audience the first step is set to, which channel cards read columns from. */
+  audienceKey?: string;
   /** Bumped by the parent to re-fit the view, after a tidy. */
   fitKey: number;
   onSelect: (id: string | null) => void;
@@ -70,6 +75,8 @@ export function Canvas({
   selected,
   issues,
   stats,
+  lists,
+  audienceKey,
   fitKey,
   onSelect,
   onBeginDrag,
@@ -453,6 +460,8 @@ export function Canvas({
               <StepCard
                 node={node}
                 stats={stats[node.id]}
+                lists={lists}
+                audienceKey={audienceKey}
                 issue={issues[node.id]}
                 lonely={nodes.length <= 1}
                 taken={(port) => taken(node.id, port)}
