@@ -5,7 +5,11 @@ import { Screen } from "./AppShell";
 import { CheckIcon, SearchIcon } from "./icons";
 import { Avatar } from "./ui";
 import { LeadEditor, type LeadDraft } from "./LeadEditor";
+import { UploadLeads } from "./leads/UploadLeads";
 import { api, fieldErrorsOf } from "@/lib/api";
+import { onSegmentSaved, segmentSaved } from "@/lib/app/segments";
+import { ATTRIBUTES } from "@/lib/leads/validation";
+import type { Segment } from "@/lib/leads/segments";
 import { toAppLead, toStage, type AppLead } from "@/lib/app/adapt";
 import { maskPhone, scoreBand, STAGE_COLOR, tagColors, type Stage } from "@/lib/app/leads";
 import type { Campaign, Workspace } from "@/lib/data/types";
@@ -63,6 +67,21 @@ export function LeadsScreen() {
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [members, setMembers] = useState<Workspace["members"]>([]);
+
+  const [segments, setSegments] = useState<Segment[] | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  // Segments come from the API, so an upload made anywhere in the app shows up here.
+  const loadSegments = useCallback(() => {
+    api
+      .segments()
+      .then((r) => setSegments(r.segments))
+      .catch(() => setSegments([]));
+  }, []);
+  useEffect(() => {
+    loadSegments();
+    return onSegmentSaved(() => loadSegments());
+  }, [loadSegments]);
 
   // Debounced so typing in the search box does not fire a request per keystroke.
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -246,6 +265,9 @@ export function LeadsScreen() {
         <button className="ib more" aria-label="More actions">
           ⋯
         </button>
+        <button className="btn line" onClick={() => setUploading(true)}>
+          Upload leads
+        </button>
         <button className="btn pri" onClick={() => setEditing({ ...EMPTY_DRAFT })}>
           New lead
         </button>
@@ -259,6 +281,8 @@ export function LeadsScreen() {
           </button>
         </p>
       )}
+
+      <SegmentList segments={segments} onUpload={() => setUploading(true)} />
 
       <div className="card ltable" aria-busy={loading}>
         <div className="tblw">
@@ -431,6 +455,17 @@ export function LeadsScreen() {
         )}
       </div>
 
+      {uploading && (
+        <UploadLeads
+          onClose={() => setUploading(false)}
+          onSaved={(segment) => {
+            segmentSaved(segment);
+            loadSegments();
+            void load();
+          }}
+        />
+      )}
+
       {editing && (
         <LeadEditor
           draft={editing}
@@ -480,4 +515,65 @@ function draftOf(lead: AppLead): LeadDraft {
     campaignId: lead.campaignId ?? "",
     ownerId: lead.ownerId,
   };
+}
+
+const kb = (bytes: number) =>
+  bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+/**
+ * Segments uploaded from a file. The counts are the ones the upload summary
+ * showed: reachable leads per channel, never the raw row count.
+ */
+function SegmentList({ segments, onUpload }: { segments: Segment[] | null; onUpload: () => void }) {
+  if (segments === null) return null;
+
+  return (
+    <div className="card segs">
+      <div className="segs-h">
+        <div>
+          <span className="eyebrow">File segments</span>
+          <p className="hint">Uploaded lists, with the leads each one can actually reach.</p>
+        </div>
+        <button className="btn line sm" onClick={onUpload}>
+          Upload leads
+        </button>
+      </div>
+
+      {segments.length === 0 ? (
+        <p className="empty">
+          <b>No segments yet</b>
+          <span>Upload a .csv or .xlsx file and map its columns to start one.</span>
+        </p>
+      ) : (
+        <div className="seglist">
+          {segments.map((segment) => (
+            <div className="segcard" key={segment.id}>
+              <div className="seg-t">
+                <b>{segment.name}</b>
+                <span className="spill segpill">
+                  {segment.reachableRows.toLocaleString("en-US")} reachable
+                </span>
+              </div>
+              {segment.description && <p className="hint">{segment.description}</p>}
+              <div className="segmeta">
+                {segment.channels
+                  .filter((c) => c.column)
+                  .map((c) => (
+                    <span className="segch" key={c.attribute}>
+                      {ATTRIBUTES.find((a) => a.key === c.attribute)?.label || c.attribute}
+                      <b>{c.reachable.toLocaleString("en-US")}</b>
+                    </span>
+                  ))}
+              </div>
+              <small className="hint">
+                {segment.fileName} · {kb(segment.fileSize)} · {segment.totalRows.toLocaleString("en-US")} rows ·{" "}
+                {segment.profilesCreated.toLocaleString("en-US")} new profiles,{" "}
+                {segment.profilesMerged.toLocaleString("en-US")} merged into existing leads
+              </small>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

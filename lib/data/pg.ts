@@ -22,6 +22,7 @@
 import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb } from "@/lib/db/client";
+import { MemoryRepository } from "@/lib/data/memory";
 import {
   campaigns as campaignsTable,
   channelQuotas,
@@ -928,5 +929,46 @@ export class PgRepository implements Repository {
       byChannel,
       funnel,
     };
+  }
+
+  /* ------------------------------------------- lead uploads and segments (TODO) --
+   *
+   * The file-upload feature landed from another work stream against the in-memory store, and
+   * its three concepts — parked uploads, segments, and the merged lead profiles behind them —
+   * have no tables yet. Rather than fake persistence or block the feature, these six methods
+   * delegate to the in-memory implementation, which is exactly the behaviour the feature ships
+   * with today (its own modal tells the user an upload is scratch space until the server
+   * restarts).
+   *
+   * What that costs, stated plainly: with DATABASE_URL set, segments and profiles still live in
+   * process memory and are lost on restart, and they are NOT tenant-isolated by the database the
+   * way every other table here is. Giving them real tables is tracked in CONTEXT.md §7 and
+   * should be designed with whoever owns the upload feature — the merge rules in
+   * lib/leads/merge.ts decide what the schema needs to hold.
+   */
+  private readonly scratch = new MemoryRepository();
+
+  createUpload(ctx: Ctx, input: Parameters<Repository["createUpload"]>[1]) {
+    return this.scratch.createUpload(ctx, input);
+  }
+
+  getUpload(ctx: Ctx, id: string) {
+    return this.scratch.getUpload(ctx, id);
+  }
+
+  listSegments(ctx: Ctx) {
+    return this.scratch.listSegments(ctx);
+  }
+
+  getSegment(ctx: Ctx, id: string) {
+    return this.scratch.getSegment(ctx, id);
+  }
+
+  createSegment(ctx: Ctx, input: Parameters<Repository["createSegment"]>[1]) {
+    return this.scratch.createSegment(ctx, input);
+  }
+
+  listProfiles(ctx: Ctx, segmentId?: string) {
+    return this.scratch.listProfiles(ctx, segmentId);
   }
 }

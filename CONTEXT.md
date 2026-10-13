@@ -4,7 +4,7 @@ Orientation file for agents. Read this first; it replaces grepping the tree.
 **Keep it current:** any change that adds a file, a route, a table or an architectural
 rule must update this file in the same commit. See "Maintaining this file" at the end.
 
-Last updated: 2026-10-13 · ~26k lines of source across 115 files.
+Last updated: 2026-10-13 · ~29k lines of source across 128 files.
 
 ---
 
@@ -75,7 +75,7 @@ Status per screen in §3.
 | `repository.ts` | 133 | **The interface every page and route talks to.** `Ctx` is the first arg of every method — tenancy cannot be forgotten. `WriteError` ≠ `null` ≠ throw → 422/404/500. |
 | `index.ts` | 22 | `getRepository()` factory. Returns Postgres when `DATABASE_URL` is set, memory otherwise. |
 | `memory.ts` | 544 | In-memory impl over the seed. No-config fallback; writes last until restart. |
-| `pg.ts` | 700 | Postgres impl via Drizzle. Filters `workspace_id` on every read *and* write (the `ws()` helper). Leads page in SQL; campaigns aggregate in JS. |
+| `pg.ts` | 745 | Postgres impl via Drizzle. Filters `workspace_id` on every read *and* write (the `ws()` helper). Leads page in SQL; campaigns aggregate in JS. **Uploads/segments/profiles delegate to the in-memory store — see §7.** |
 | `seed.ts` | 814 | Demo dataset. The only file that goes away once real data exists. |
 | `query.ts` | 68 | Pure filter/sort/paginate helpers shared by both impls. Import-free, tested. |
 | `validate.ts` | 305 | Write-path validation, `{ok,data}|{ok,errors}`. Import-free, erasable, tested. |
@@ -123,6 +123,13 @@ server-checked `expires_at`, cookie carries an opaque random id only. **Demo mod
 hardcoded account + HMAC cookie, so a bare clone works.
 The session carries the workspace — that is what makes tenancy resolvable from the session
 instead of a forgeable request parameter.
+
+### Lead uploads and segments — `lib/leads/` + `components/app/leads/`
+`parseFile.ts` (csv/xlsx via exceljs) · `validation.ts` (the `ATTRIBUTES` catalogue and column
+mapping) · `merge.ts` (how an uploaded row merges into an existing lead profile) · `phone.ts`
+(libphonenumber-js) · `segments.ts` `table.ts` `limits.ts` `ctx.ts` · `UploadLeads.tsx` is the
+upload modal, and `LeadsScreen` renders the segment list above the table.
+**Backed by the in-memory store only** — see §7.
 
 ### Workspace screens — `components/app/`
 | File | L | Reads from | Live? |
@@ -264,21 +271,26 @@ Roughly in the order they should be closed.
    Leads and Campaigns show the pattern to follow.
 2. **Two data models** bridged by `lib/app/adapt.ts`; converging them removes the adapter and the
    need to add every new field in three places.
-3. **Workflow builder does not persist.** The `workflows` table is ready and unused.
-4. **No execution engine.** `workflow_runs` / `step_jobs` are shaped for it; nothing writes them.
+3. **Uploads, segments and lead profiles have no tables.** The upload feature works against the
+   in-memory store, and `PgRepository` delegates its six methods there, so with `DATABASE_URL`
+   set those rows still live in process memory, vanish on restart, and are not tenant-isolated by
+   the database the way every other table is. Parked uploads are meant to be scratch (the modal
+   says so); segments and profiles are not. `lib/leads/merge.ts` defines what the schema needs.
+4. **Workflow builder does not persist.** The `workflows` table is ready and unused.
+5. **No execution engine.** `workflow_runs` / `step_jobs` are shaped for it; nothing writes them.
    Intended shape: an authenticated `/api/jobs/tick` claiming due rows with
    `FOR UPDATE SKIP LOCKED`, poked by cron (a GitHub Actions schedule is a free MVP scheduler).
-5. **Nothing writes `events`, and no job builds `daily_rollups`.** The seed writes rollups
+6. **Nothing writes `events`, and no job builds `daily_rollups`.** The seed writes rollups
    directly, so analytics is real SQL over invented numbers. `lib/app/metrics.ts` (the PRNG) still
    backs the screens not yet rewired.
-6. **Campaign counters are denormalised and nothing maintains them.** `campaigns.sent/delivered/
+7. **Campaign counters are denormalised and nothing maintains them.** `campaigns.sent/delivered/
    openRate/...` come from the seed; the engine should own them.
-7. **Auth has no OAuth, email verification, password reset or rate limiting**, and roles exist as
+8. **Auth has no OAuth, email verification, password reset or rate limiting**, and roles exist as
    a column (`memberships.role`) that nothing enforces. Better Auth drops in on the same Postgres.
    Sessions are not refreshed on use, so an 8-hour session ends mid-work.
-8. **No `getUser` for team members** — the owner is the only account with a password hash, so
+9. **No `getUser` for team members** — the owner is the only account with a password hash, so
    only one person can sign in.
-9. `gtm_mock.html` at the root is a standalone design reference, not part of the app.
+10. `gtm_mock.html` at the root is a standalone design reference, not part of the app.
 
 ## 8. Running it locally
 

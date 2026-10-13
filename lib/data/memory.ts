@@ -38,6 +38,10 @@ import type {
   WriteError,
 } from "@/lib/data/repository";
 import type { CampaignPatch, LeadPatch } from "@/lib/data/validate";
+import { mergeLeads, type LeadProfile } from "@/lib/leads/merge";
+import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
+import { suggestMapping, type Mapping, type ParsedLead } from "@/lib/leads/validation";
+import type { Table } from "@/lib/leads/table";
 import type {
   Analytics,
   Campaign,
@@ -58,6 +62,26 @@ import type {
   User,
   Workspace,
 } from "@/lib/data/types";
+
+/**
+ * Uploaded files, saved segments and the lead profiles they build up.
+ *
+ * All three live in module state, so they last until the server restarts — the
+ * same deal as every other write in this store. A database implementation of
+ * `Repository` is where they become permanent.
+ */
+const uploads = new Map<string, { fileName: string; fileSize: number; table: Table; at: number }>();
+const segments: Segment[] = [];
+let profiles: LeadProfile[] = [];
+let segmentSeq = 1;
+let profileSeq = 1;
+let uploadSeq = 1;
+
+/** Parsed files are scratch space; drop anything older than an hour. */
+function sweepUploads() {
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  for (const [id, upload] of uploads) if (upload.at < cutoff) uploads.delete(id);
+}
 
 // Mutable copies, so prototype writes are visible on the next read.
 const campaigns: Campaign[] = CAMPAIGNS.map((c) => ({ ...c }));
@@ -542,5 +566,98 @@ export class MemoryRepository implements Repository {
       byChannel,
       funnel,
     };
+  }
+
+  /* ---- lead uploads and segments ---------------------------------------- */
+
+  async createUpload(
+    _ctx: Ctx,
+    input: { fileName: string; fileSize: number; table: Table },
+  ): Promise<UploadPreview> {
+    sweepUploads();
+    const uploadId = "up_" + uploadSeq++;
+    uploads.set(uploadId, { ...input, at: Date.now() });
+    return {
+      uploadId,
+      fileName: input.fileName,
+      fileSize: input.fileSize,
+      headers: input.table.headers,
+      sample: input.table.rows.slice(0, 5),
+      totalRows: input.table.rows.length,
+      suggestedMapping: suggestMapping(input.table.headers),
+    };
+  }
+
+  async getUpload(_ctx: Ctx, id: string) {
+    const upload = uploads.get(id);
+    return upload ? { fileName: upload.fileName, fileSize: upload.fileSize, table: upload.table } : null;
+  }
+
+  async listSegments(_ctx: Ctx): Promise<Segment[]> {
+    return segments.map((s) => ({ ...s })).reverse();
+  }
+
+  async getSegment(_ctx: Ctx, id: string): Promise<Segment | null> {
+    const found = segments.find((s) => s.id === id);
+    return found ? { ...found } : null;
+  }
+
+  async createSegment(
+    ctx: Ctx,
+    input: {
+      uploadId: string;
+      name: string;
+      description: string;
+      mapping: Mapping;
+      report: MappingReport;
+      leads: ParsedLead[];
+    },
+  ) {
+    const upload = uploads.get(input.uploadId);
+    if (!upload) return null;
+
+    const id = "seg_" + segmentSeq++;
+    const now = new Date().toISOString();
+    const merge = mergeLeads(
+      profiles,
+      input.leads.map((lead) => ({
+        row: lead.row,
+        email: lead.email,
+        mobile: lead.mobile,
+        whatsapp: lead.whatsapp,
+        linkedin: lead.linkedin,
+        extra: lead.extra,
+      })),
+      id,
+      now,
+      () => "prof_" + profileSeq++,
+    );
+    profiles = merge.profiles;
+
+    const segment: Segment = {
+      id,
+      name: input.name,
+      description: input.description,
+      fileName: upload.fileName,
+      fileSize: upload.fileSize,
+      mapping: input.mapping,
+      totalRows: input.report.totalRows,
+      reachableRows: input.report.reachableRows,
+      channels: input.report.channels,
+      profilesCreated: merge.created,
+      profilesMerged: merge.merged,
+      errorCount: input.report.errorCount,
+      createdAt: now,
+      createdBy: ctx.userId,
+    };
+    segments.push(segment);
+    uploads.delete(input.uploadId);
+
+    return { segment, profilesCreated: merge.created, profilesMerged: merge.merged };
+  }
+
+  async listProfiles(_ctx: Ctx, segmentId?: string): Promise<LeadProfile[]> {
+    const all = segmentId ? profiles.filter((p) => p.segmentIds.includes(segmentId)) : profiles;
+    return all.map((p) => ({ ...p, segmentIds: [...p.segmentIds], extra: { ...p.extra } })).reverse();
   }
 }

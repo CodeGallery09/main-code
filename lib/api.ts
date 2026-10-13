@@ -20,6 +20,8 @@ import type {
 } from "@/lib/data/types";
 import type { CampaignTotals } from "@/lib/data/repository";
 import type { CampaignPatch, LeadPatch } from "@/lib/data/validate";
+import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
+import type { Mapping } from "@/lib/leads/validation";
 
 /** Field errors a 422 carries, keyed by field name — what the forms render inline. */
 export type FieldErrors = Record<string, string>;
@@ -44,7 +46,9 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
-    headers: init?.body ? { "Content-Type": "application/json", ...init?.headers } : init?.headers,
+    // FormData sets its own content type (with the multipart boundary), so only JSON bodies get one.
+    headers:
+      typeof init?.body === "string" ? { "Content-Type": "application/json", ...init?.headers } : init?.headers,
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
@@ -152,4 +156,25 @@ export const api = {
 
   analytics: (params: { range?: string; channels?: string } = {}) =>
     request<Analytics>(`/api/analytics${qs(params)}`),
+
+  /** Sends the file itself; the server parses it and returns the preview. */
+  uploadLeadFile: (file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return request<UploadPreview>("/api/leads/uploads", { method: "POST", body: form });
+  },
+
+  validateUpload: (uploadId: string, mapping: Mapping) =>
+    request<MappingReport>(`/api/leads/uploads/${encodeURIComponent(uploadId)}/validate`, {
+      method: "POST",
+      body: JSON.stringify({ mapping }),
+    }),
+
+  segments: () => request<{ segments: Segment[] }>("/api/leads/segments"),
+
+  createSegment: (input: { uploadId: string; name: string; description: string; mapping: Mapping }) =>
+    request<{ segment: Segment; profilesCreated: number; profilesMerged: number }>("/api/leads/segments", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
 };
