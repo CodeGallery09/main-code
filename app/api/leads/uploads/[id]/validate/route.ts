@@ -8,16 +8,18 @@
  */
 
 import { getRepository } from "@/lib/data";
-import { fail, json, sessionEmail } from "@/lib/http";
+import { fail, json } from "@/lib/http";
+import { requestCtx } from "@/lib/leads/ctx";
 import { checkPhone } from "@/lib/leads/phone";
 import { MAX_ERRORS, readMapping } from "@/lib/leads/upload";
 import { validateUpload } from "@/lib/leads/validation";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await sessionEmail())) return fail("unauthenticated", "Sign in to upload leads.", 401);
+  const ctx = await requestCtx();
+  if (!ctx) return fail("unauthenticated", "Sign in to upload leads.", 401);
 
   const { id } = await params;
-  const upload = await getRepository().getUpload(id);
+  const upload = await getRepository().getUpload(ctx, id);
   if (!upload) return fail("not_found", "That upload is no longer available. Upload the file again.", 404);
 
   const body = (await request.json().catch(() => null)) as { mapping?: unknown } | null;

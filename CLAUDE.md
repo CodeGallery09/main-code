@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Context map
+
+`CONTEXT.md` in the repo root is the codebase map: file inventory with line counts, the
+architectural seams, a "where do I change X" index, and the hard-won constraints. **Read it
+before exploring the tree** — it is written to answer most orientation questions without opening
+a source file.
+
+**Keep it current in the same commit as the change.** Any work that adds, moves or deletes a
+file, route or database table, changes an architectural rule or seam, makes a screen read live
+data, adds a repository method, closes or uncovers a gap, or discovers a non-obvious constraint
+must update the matching section of `CONTEXT.md` alongside the code. A stale map is worse than
+none, because it is trusted. `CONTEXT.md` ends with a short section spelling out which section to
+touch for which kind of change.
+
 ## Project
 
 Flightpath: a marketing site and prototype workspace for a GTM workflow-orchestration SaaS aimed at SMB sales teams. Routes: the landing page (`/`: Hero → Journey → WhyFlightpath → WorkflowLibrary → FounderBooker), a demo-request page (`/book-demo`), prototype auth pages (`/login`, `/signup`), and the signed-in app under `/dashboard`, including the campaign workflow builder. Stack: Next.js 15 App Router, React 19, TypeScript 5, Tailwind CSS v4 (via `@tailwindcss/postcss`, no `tailwind.config`), ESLint 9 flat config. The only runtime dependency beyond Next and React is `lucide-react`.
@@ -113,6 +127,7 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 **Lead uploads and segments (`lib/leads/`, `/api/leads/*`)**
 - One uploaded file is one **segment**. The flow is three steps in `components/app/leads/UploadLeads.tsx`, opened from the Leads dropdown in the rail (`LeadsNav` in `AppShell.tsx`, rendered into `document.body` because the rail scrolls and is its own stacking context) and from the Leads screen.
 - Files are parsed **on the server only**: `POST /api/leads/uploads` reads `.csv` with our own reader (`lib/leads/table.ts`) and `.xlsx` through `exceljs` (`lib/leads/parseFile.ts`, server-only — the browser imports `lib/leads/limits.ts` for the 64 MB cap instead). The browser only ever sees the headers, the first five rows and a suggested mapping; the parsed file stays behind the repository under an upload id.
+- Every repository call takes `Ctx` first. The three leads routes build theirs from the session cookie via `requestCtx()` in `lib/leads/ctx.ts` — never from the request body, which would be a tenancy bypass. Fold that helper into `lib/http.ts` once `withUser` hands a `Ctx` to its handlers.
 - **Validation is content-based, never header-based** (`lib/leads/validation.ts`, import-free): email needs an `@` with something either side, LinkedIn needs a web URL, and numbers go through `lib/leads/phone.ts`, which is libphonenumber-js `/max` — `isValid()` is the exact-digit rule (+91 passes at 10 digits, fails at 11) and the message names the expected count. Validation takes the phone check as an argument so it stays import-free and testable; `suggestMapping()` only pre-fills the selects.
 - `POST /api/leads/uploads/:id/validate` returns the per-channel reachable counts and the row-by-row error log; `POST /api/leads/segments` re-validates server-side rather than trusting those numbers, then merges.
 - **Dedup and parent-child merging** live in `lib/leads/merge.ts` (import-free): a row matches an existing profile on email, then mobile, WhatsApp, LinkedIn. The parent keeps its id and every value it already had; only the attributes it was missing are filled in from the child, and the profile joins the new segment. Numbers match on digits, LinkedIn URLs on their normalised path. Rows inside one file dedupe the same way.
@@ -125,6 +140,16 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - REST endpoints live under `app/api/*`: `me`, `workspace`, `overview`, `tasks`, `tasks/[id]/complete`, `campaigns`, `campaigns/[id]`, `leads`, `leads/[id]`, `threads`, `threads/[id]`, `threads/[id]/messages`, `analytics`. They share `lib/http.ts` (`withUser`, `json`, `fail`, param parsers) so auth, caching and error shapes are identical: 401 unauthenticated, 404 missing, 422 invalid, `{ error: { code, message } }`.
 - Server components read the repository directly; client components call the typed browser client in `lib/api.ts`. Don't `fetch("/api/...")` by hand.
 - Writes in the memory store last until the server restarts. That is deliberate for the prototype.
+
+**Workflows and the builder**
+- A multichannel campaign *is* a workflow: campaign ids and workflow ids are the same number. `lib/app/workflow.ts` owns the graph model and the `WORKFLOWS` seed; `lib/app/workflowLibrary.ts` derives the handful of numbers the library cards show (it reuses `hasRun` from `lib/app/campaigns.ts`, so a never-published workflow reads "—" on both screens).
+- **The builder has one route: `/dashboard/workflows/[id]`**, with `/new?template=<key>` for a fresh one. `/dashboard/campaigns/[id]` is a permanent redirect to it, kept only so older links work — do not render a second copy of the builder there.
+- `/dashboard/workflows` is the library: `.wfgrid` cards, a dashed "new" card and a `.tplgrid` template picker, all classes the reference CSS already defines.
+
+**Integrations (`/dashboard/integrations`)**
+- `lib/app/integrations.ts` is the catalogue: providers, their state, LinkedIn seats, and sending domains with their DNS records and mailboxes.
+- **LinkedIn and email are the only providers that connect.** WhatsApp Business, Twilio, calendar and the CRMs are `state: "planned"`, which greys the dot, disables the drawer's primary button and says so in a warn box. That is the content rule below, not a styling choice: never offer a connection the product cannot honour.
+- Reached from the rail (below the main nav, next to Settings) via `INTEGRATIONS_HREF` in `lib/nav.ts`.
 
 **Wallpaper is load-bearing.** Glass only reads as glass when there is colour behind it — the app wallpaper on `.app-shell`, and `body::before` on the marketing pages. Flattening either makes every panel look like a plain white card, so check `--tint` / `--g-tint` and the blur before touching them.
 

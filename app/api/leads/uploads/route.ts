@@ -8,7 +8,8 @@
  */
 
 import { getRepository } from "@/lib/data";
-import { fail, json, sessionEmail } from "@/lib/http";
+import { fail, json } from "@/lib/http";
+import { requestCtx } from "@/lib/leads/ctx";
 import { MAX_UPLOAD_BYTES } from "@/lib/leads/limits";
 import { parseLeadFile } from "@/lib/leads/parseFile";
 
@@ -16,7 +17,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
-  if (!(await sessionEmail())) return fail("unauthenticated", "Sign in to upload leads.", 401);
+  const ctx = await requestCtx();
+  if (!ctx) return fail("unauthenticated", "Sign in to upload leads.", 401);
 
   let form: FormData;
   try {
@@ -32,7 +34,7 @@ export async function POST(request: Request) {
   const parsed = await parseLeadFile(file);
   if ("error" in parsed) return fail(parsed.error.code, parsed.error.message, 422);
 
-  const preview = await getRepository().createUpload({
+  const preview = await getRepository().createUpload(ctx, {
     fileName: file.name,
     fileSize: file.size,
     table: parsed.table,

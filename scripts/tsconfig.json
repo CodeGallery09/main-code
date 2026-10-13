@@ -1,0 +1,19 @@
+{
+  // Scripts here run under `node --experimental-strip-types`, which needs explicit `.ts`
+  // extensions on relative imports. The app's tsconfig rejects those (and Next never compiles
+  // this folder), so scripts get their own config and the root one excludes them.
+  // `npm run typecheck` runs both.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "jsx": "react-jsx",
+    "incremental": false,
+    "plugins": [],
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": []
+}

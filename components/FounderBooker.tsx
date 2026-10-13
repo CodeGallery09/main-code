@@ -344,7 +344,7 @@ export function FounderBooker() {
                   </div>
                 </div>
               ) : (
-                <form ref={formRef} onSubmit={onSubmit} noValidate data-pip-host className="grid content-start gap-5 p-6 sm:p-8">
+                <form ref={formRef} method="post" onSubmit={onSubmit} noValidate data-pip-host className="grid content-start gap-5 p-6 sm:p-8">
                   <button type="button" onClick={backToCalendar} className="inline-flex w-fit items-center gap-1.5 rounded-full text-[13.5px] font-bold text-ink-2 hover:text-accent-ink">
                     <ArrowLeft size={15} aria-hidden="true" />
                     Change time

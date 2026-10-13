@@ -22,6 +22,7 @@ import {
   LEADS,
   MESSAGES,
   QUOTAS,
+  TEAM,
   THREADS,
   WORKSPACE,
   buildTrend,
@@ -29,15 +30,17 @@ import {
 import type {
   CampaignQuery,
   CampaignTotals,
+  Ctx,
   Repository,
   SendMessageInput,
   TaskQuery,
   ThreadQuery,
+  WriteError,
 } from "@/lib/data/repository";
+import type { CampaignPatch, LeadPatch } from "@/lib/data/validate";
 import { mergeLeads, type LeadProfile } from "@/lib/leads/merge";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
-import type { Mapping, ParsedLead } from "@/lib/leads/validation";
-import { suggestMapping } from "@/lib/leads/validation";
+import { suggestMapping, type Mapping, type ParsedLead } from "@/lib/leads/validation";
 import type { Table } from "@/lib/leads/table";
 import type {
   Analytics,
@@ -84,7 +87,21 @@ function sweepUploads() {
 const campaigns: Campaign[] = CAMPAIGNS.map((c) => ({ ...c }));
 const messages: Message[] = MESSAGES.map((m) => ({ ...m }));
 const threads: Thread[] = THREADS.map((t) => ({ ...t }));
+const leadRows: Lead[] = LEADS.map((l) => ({ ...l }));
 const trend: TrendPoint[] = buildTrend(90);
+
+/** Monotonic ids for prototype creates, so two leads made in the same millisecond differ. */
+const counters: Record<string, number> = {};
+const nextId = (kind: string) => `${Date.now().toString(36)}${(counters[kind] = (counters[kind] ?? 0) + 1)}`;
+
+/** "Aarav Kapoor" -> "AK". The avatar needs it and the UI never derives it itself. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  const first = parts[0][0] ?? "";
+  const last = parts.length > 1 ? (parts[parts.length - 1][0] ?? "") : "";
+  return (first + last).toUpperCase();
+}
 
 const tasks: Task[] = [
   {
@@ -212,8 +229,8 @@ function headlineMetrics(range: RangeKey): Metric[] {
     metric(
       "active-leads",
       "Active leads",
-      LEADS.filter((l) => l.stage !== "closed").length * 92,
-      LEADS.filter((l) => l.stage !== "closed").length * 88,
+      leadRows.filter((l) => l.stage !== "closed").length * 92,
+      leadRows.filter((l) => l.stage !== "closed").length * 88,
       "count",
       0,
       spark("engaged"),
@@ -221,21 +238,26 @@ function headlineMetrics(range: RangeKey): Metric[] {
   ];
 }
 
+/**
+ * Every method takes `Ctx` to satisfy the interface, but the demo store holds exactly one
+ * workspace, so it cannot actually enforce isolation. That is fine for a fallback with no
+ * persistence — and it is precisely why the Postgres implementation filters on `workspaceId`
+ * in every query rather than inheriting this shortcut.
+ */
 export class MemoryRepository implements Repository {
-  async getUser(email: string): Promise<User> {
-    // The prototype has a single account; a real store would look the user up by email.
-    return { ...DEMO_USER, email: email || DEMO_USER.email };
+  async getUser(ctx: Ctx): Promise<User> {
+    return { ...DEMO_USER, id: ctx.userId || DEMO_USER.id };
   }
 
-  async getWorkspace(): Promise<Workspace> {
+  async getWorkspace(_ctx: Ctx): Promise<Workspace> {
     return { ...WORKSPACE, quotas: QUOTAS.map((q) => ({ ...q })) };
   }
 
-  async getOverview(email: string, range: RangeKey): Promise<Overview> {
+  async getOverview(ctx: Ctx, range: RangeKey): Promise<Overview> {
     const [user, open, live] = await Promise.all([
-      this.getUser(email),
-      this.listTasks({ kind: "all" }),
-      this.listCampaigns({ status: "live" }),
+      this.getUser(ctx),
+      this.listTasks(ctx, { kind: "all" }),
+      this.listCampaigns(ctx, { status: "live" }),
     ]);
     return {
       user,
@@ -246,20 +268,23 @@ export class MemoryRepository implements Repository {
     };
   }
 
-  async listTasks(query: TaskQuery): Promise<Task[]> {
+  async listTasks(_ctx: Ctx, query: TaskQuery): Promise<Task[]> {
     const open = tasks.filter((t) => !t.done);
     if (!query.kind || query.kind === "all") return open.map((t) => ({ ...t }));
     return open.filter((t) => t.kind === query.kind).map((t) => ({ ...t }));
   }
 
-  async completeTask(id: string): Promise<Task | null> {
+  async completeTask(_ctx: Ctx, id: string): Promise<Task | null> {
     const found = tasks.find((t) => t.id === id);
     if (!found) return null;
     found.done = true;
     return { ...found };
   }
 
-  async listCampaigns(query: CampaignQuery): Promise<{ items: Campaign[]; totals: CampaignTotals }> {
+  async listCampaigns(
+    _ctx: Ctx,
+    query: CampaignQuery,
+  ): Promise<{ items: Campaign[]; totals: CampaignTotals }> {
     const items = campaigns.filter(
       (c) =>
         matchesText([c.name], query.q) &&
@@ -287,20 +312,60 @@ export class MemoryRepository implements Repository {
     };
   }
 
-  async getCampaign(id: string): Promise<Campaign | null> {
+  async getCampaign(_ctx: Ctx, id: string): Promise<Campaign | null> {
     const found = campaigns.find((c) => c.id === id);
     return found ? { ...found } : null;
   }
 
-  async setCampaignStatus(id: string, status: CampaignStatus): Promise<Campaign | null> {
+  async createCampaign(_ctx: Ctx, input: CampaignPatch): Promise<Campaign> {
+    const row: Campaign = {
+      id: `c_${nextId("campaign")}`,
+      name: input.name ?? "Untitled campaign",
+      status: input.status ?? "draft",
+      type: input.type ?? "standalone",
+      channels: input.channels ?? [],
+      version: input.type === "multichannel" ? "v1" : null,
+      startedAt: input.startedAt ?? new Date().toISOString(),
+      leads: 0,
+      sent: null,
+      delivered: null,
+      openRate: null,
+      replyRate: null,
+      clicks: null,
+    };
+    campaigns.unshift(row);
+    return { ...row };
+  }
+
+  async updateCampaign(_ctx: Ctx, id: string, patch: CampaignPatch): Promise<Campaign | null> {
+    const found = campaigns.find((c) => c.id === id);
+    if (!found) return null;
+    if (patch.name !== undefined) found.name = patch.name;
+    if (patch.status !== undefined) found.status = patch.status;
+    if (patch.type !== undefined) found.type = patch.type;
+    if (patch.channels !== undefined) found.channels = patch.channels;
+    if (patch.startedAt !== undefined && patch.startedAt !== null) found.startedAt = patch.startedAt;
+    return { ...found };
+  }
+
+  async deleteCampaign(_ctx: Ctx, id: string): Promise<boolean> {
+    const at = campaigns.findIndex((c) => c.id === id);
+    if (at < 0) return false;
+    campaigns.splice(at, 1);
+    // Mirror the database's ON DELETE SET NULL so a lead never points at a campaign that is gone.
+    for (const lead of leadRows) if (lead.campaignId === id) lead.campaignId = null;
+    return true;
+  }
+
+  async setCampaignStatus(_ctx: Ctx, id: string, status: CampaignStatus): Promise<Campaign | null> {
     const found = campaigns.find((c) => c.id === id);
     if (!found) return null;
     found.status = status;
     return { ...found };
   }
 
-  async listLeads(query: LeadQuery): Promise<Paged<Lead>> {
-    const filtered = LEADS.filter(
+  async listLeads(_ctx: Ctx, query: LeadQuery): Promise<Paged<Lead>> {
+    const filtered = leadRows.filter(
       (lead) =>
         matchesText([lead.name, lead.company, ...lead.tags], query.q) &&
         matchesFacet(lead.stage, query.stage) &&
@@ -318,12 +383,85 @@ export class MemoryRepository implements Repository {
     return { ...page, items: page.items.map((lead) => ({ ...lead })) };
   }
 
-  async getLead(id: string): Promise<Lead | null> {
-    const found = LEADS.find((lead) => lead.id === id);
+  async getLead(_ctx: Ctx, id: string): Promise<Lead | null> {
+    const found = leadRows.find((lead) => lead.id === id);
     return found ? { ...found } : null;
   }
 
-  async listThreads(query: ThreadQuery): Promise<Thread[]> {
+  async createLead(_ctx: Ctx, input: LeadPatch): Promise<Lead | WriteError> {
+    if (input.campaignId && !campaigns.some((c) => c.id === input.campaignId)) {
+      return { error: { field: "campaignId", message: "That campaign does not exist." } };
+    }
+    const name = input.name ?? "Unnamed lead";
+    const owner = TEAM.find((m) => m.id === input.ownerId) ?? TEAM[0];
+    const row: Lead = {
+      id: `l_${nextId("lead")}`,
+      name,
+      company: input.company ?? "",
+      title: input.title ?? "",
+      initials: initialsOf(name),
+      phone: input.phone ?? null,
+      email: input.email ?? null,
+      stage: input.stage ?? "reaching",
+      score: input.score ?? 0,
+      source: input.source ?? "form",
+      tags: input.tags ?? [],
+      consent: input.consent ?? false,
+      avgCallSeconds: null,
+      messageCount: 0,
+      callCount: 0,
+      nextStep: input.nextStep ?? "",
+      ownerId: owner.id,
+      ownerName: owner.name,
+      campaignId: input.campaignId ?? null,
+      starred: input.starred ?? false,
+      updatedAt: new Date().toISOString(),
+    };
+    leadRows.unshift(row);
+    return { ...row };
+  }
+
+  async updateLead(_ctx: Ctx, id: string, patch: LeadPatch): Promise<Lead | WriteError | null> {
+    const found = leadRows.find((lead) => lead.id === id);
+    if (!found) return null;
+    if (patch.campaignId && !campaigns.some((c) => c.id === patch.campaignId)) {
+      return { error: { field: "campaignId", message: "That campaign does not exist." } };
+    }
+    if (patch.name !== undefined) {
+      found.name = patch.name;
+      found.initials = initialsOf(patch.name);
+    }
+    if (patch.company !== undefined) found.company = patch.company;
+    if (patch.title !== undefined) found.title = patch.title;
+    if (patch.email !== undefined) found.email = patch.email;
+    if (patch.phone !== undefined) found.phone = patch.phone;
+    if (patch.stage !== undefined) found.stage = patch.stage;
+    if (patch.score !== undefined) found.score = patch.score;
+    if (patch.source !== undefined) found.source = patch.source;
+    if (patch.tags !== undefined) found.tags = patch.tags;
+    if (patch.consent !== undefined) found.consent = patch.consent;
+    if (patch.nextStep !== undefined) found.nextStep = patch.nextStep;
+    if (patch.starred !== undefined) found.starred = patch.starred;
+    if (patch.campaignId !== undefined) found.campaignId = patch.campaignId;
+    if (patch.ownerId !== undefined) {
+      const owner = TEAM.find((m) => m.id === patch.ownerId);
+      if (owner) {
+        found.ownerId = owner.id;
+        found.ownerName = owner.name;
+      }
+    }
+    found.updatedAt = new Date().toISOString();
+    return { ...found };
+  }
+
+  async deleteLead(_ctx: Ctx, id: string): Promise<boolean> {
+    const at = leadRows.findIndex((lead) => lead.id === id);
+    if (at < 0) return false;
+    leadRows.splice(at, 1);
+    return true;
+  }
+
+  async listThreads(_ctx: Ctx, query: ThreadQuery): Promise<Thread[]> {
     const items = threads.filter(
       (t) =>
         matchesText([t.leadName, t.company, t.preview], query.q) &&
@@ -332,7 +470,10 @@ export class MemoryRepository implements Repository {
     return sortBy(items, (t) => t.lastAt, "desc").map((t) => ({ ...t }));
   }
 
-  async getThread(id: string): Promise<{ thread: Thread; messages: Message[] } | null> {
+  async getThread(
+    _ctx: Ctx,
+    id: string,
+  ): Promise<{ thread: Thread; messages: Message[] } | null> {
     const thread = threads.find((t) => t.id === id);
     if (!thread) return null;
     const rows = messages.filter((m) => m.threadId === id);
@@ -343,7 +484,7 @@ export class MemoryRepository implements Repository {
     };
   }
 
-  async sendMessage({ threadId, channel, body }: SendMessageInput): Promise<Message | null> {
+  async sendMessage(_ctx: Ctx, { threadId, channel, body }: SendMessageInput): Promise<Message | null> {
     const thread = threads.find((t) => t.id === threadId);
     if (!thread) return null;
     const message: Message = {
@@ -363,10 +504,10 @@ export class MemoryRepository implements Repository {
     return { ...message };
   }
 
-  async getAnalytics(range: RangeKey, channels: Channel[] | null): Promise<Analytics> {
+  async getAnalytics(_ctx: Ctx, range: RangeKey, channels: Channel[] | null): Promise<Analytics> {
     const days = rangeDays(range);
     const { current, previous, sum } = windows(days);
-    // Channel mix is a fixed split of the totals; a real store would group by channel.
+    // Channel mix is a fixed split of the totals; a real store groups by channel.
     const mix: Record<Channel, number> = {
       linkedin: 0.34,
       email: 0.41,
@@ -429,7 +570,10 @@ export class MemoryRepository implements Repository {
 
   /* ---- lead uploads and segments ---------------------------------------- */
 
-  async createUpload(input: { fileName: string; fileSize: number; table: Table }): Promise<UploadPreview> {
+  async createUpload(
+    _ctx: Ctx,
+    input: { fileName: string; fileSize: number; table: Table },
+  ): Promise<UploadPreview> {
     sweepUploads();
     const uploadId = "up_" + uploadSeq++;
     uploads.set(uploadId, { ...input, at: Date.now() });
@@ -444,29 +588,31 @@ export class MemoryRepository implements Repository {
     };
   }
 
-  async getUpload(id: string) {
+  async getUpload(_ctx: Ctx, id: string) {
     const upload = uploads.get(id);
     return upload ? { fileName: upload.fileName, fileSize: upload.fileSize, table: upload.table } : null;
   }
 
-  async listSegments(): Promise<Segment[]> {
+  async listSegments(_ctx: Ctx): Promise<Segment[]> {
     return segments.map((s) => ({ ...s })).reverse();
   }
 
-  async getSegment(id: string): Promise<Segment | null> {
+  async getSegment(_ctx: Ctx, id: string): Promise<Segment | null> {
     const found = segments.find((s) => s.id === id);
     return found ? { ...found } : null;
   }
 
-  async createSegment(input: {
-    uploadId: string;
-    name: string;
-    description: string;
-    mapping: Mapping;
-    report: MappingReport;
-    leads: ParsedLead[];
-    createdBy: string;
-  }) {
+  async createSegment(
+    ctx: Ctx,
+    input: {
+      uploadId: string;
+      name: string;
+      description: string;
+      mapping: Mapping;
+      report: MappingReport;
+      leads: ParsedLead[];
+    },
+  ) {
     const upload = uploads.get(input.uploadId);
     if (!upload) return null;
 
@@ -502,7 +648,7 @@ export class MemoryRepository implements Repository {
       profilesMerged: merge.merged,
       errorCount: input.report.errorCount,
       createdAt: now,
-      createdBy: input.createdBy,
+      createdBy: ctx.userId,
     };
     segments.push(segment);
     uploads.delete(input.uploadId);
@@ -510,7 +656,7 @@ export class MemoryRepository implements Repository {
     return { segment, profilesCreated: merge.created, profilesMerged: merge.merged };
   }
 
-  async listProfiles(segmentId?: string): Promise<LeadProfile[]> {
+  async listProfiles(_ctx: Ctx, segmentId?: string): Promise<LeadProfile[]> {
     const all = segmentId ? profiles.filter((p) => p.segmentIds.includes(segmentId)) : profiles;
     return all.map((p) => ({ ...p, segmentIds: [...p.segmentIds], extra: { ...p.extra } })).reverse();
   }

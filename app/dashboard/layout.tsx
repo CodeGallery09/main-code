@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import "../app.css";
 import { getRepository } from "@/lib/data";
-import { readSession, SESSION_COOKIE } from "@/lib/auth";
+import { resolveSession, SESSION_COOKIE } from "@/lib/auth";
 import { LOGIN_HREF } from "@/lib/site";
 import { AppShell } from "@/components/app/AppShell";
 
@@ -16,11 +16,14 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const email = readSession((await cookies()).get(SESSION_COOKIE)?.value);
-  if (!email) redirect(LOGIN_HREF);
+  const who = await resolveSession((await cookies()).get(SESSION_COOKIE)?.value);
+  if (!who) redirect(LOGIN_HREF);
 
   // Read straight from the repository on the server; the REST API is there for client components.
-  const user = await getRepository().getUser(email);
+  const user = await getRepository().getUser({ workspaceId: who.workspaceId, userId: who.userId });
+  // A valid session whose user or membership has since been removed: treat it as signed out
+  // rather than rendering a shell with no identity.
+  if (!user) redirect(LOGIN_HREF);
 
   return <AppShell user={user}>{children}</AppShell>;
 }

@@ -9,18 +9,21 @@
  */
 
 import { getRepository } from "@/lib/data";
-import { fail, json, sessionEmail, withUser } from "@/lib/http";
+import { fail, json } from "@/lib/http";
+import { requestCtx } from "@/lib/leads/ctx";
 import { checkPhone } from "@/lib/leads/phone";
 import { MAX_DESCRIPTION, MAX_ERRORS, readMapping } from "@/lib/leads/upload";
 import { validateUpload } from "@/lib/leads/validation";
 
 export async function GET() {
-  return withUser(async () => ({ segments: await getRepository().listSegments() }));
+  const ctx = await requestCtx();
+  if (!ctx) return fail("unauthenticated", "Sign in to use this endpoint.", 401);
+  return json({ segments: await getRepository().listSegments(ctx) });
 }
 
 export async function POST(request: Request) {
-  const email = await sessionEmail();
-  if (!email) return fail("unauthenticated", "Sign in to upload leads.", 401);
+  const ctx = await requestCtx();
+  if (!ctx) return fail("unauthenticated", "Sign in to upload leads.", 401);
 
   const body = (await request.json().catch(() => null)) as
     | { uploadId?: unknown; name?: unknown; description?: unknown; mapping?: unknown }
@@ -38,14 +41,14 @@ export async function POST(request: Request) {
   if (Object.keys(errors).length) return json({ error: { code: "invalid", message: "Check the form.", errors } }, 422);
 
   const repo = getRepository();
-  const upload = await repo.getUpload(uploadId);
+  const upload = await repo.getUpload(ctx, uploadId);
   if (!upload) return fail("not_found", "That upload is no longer available. Upload the file again.", 404);
 
   const summary = validateUpload(upload.table.headers, upload.table.rows, mapping, checkPhone);
   const reachable = summary.leads.filter((lead) => lead.email || lead.mobile || lead.whatsapp || lead.linkedin);
   if (!reachable.length) return fail("no_reachable_leads", "No row in that file is reachable on a mapped channel.", 422);
 
-  const saved = await repo.createSegment({
+  const saved = await repo.createSegment(ctx, {
     uploadId,
     name,
     description,
@@ -64,7 +67,6 @@ export async function POST(request: Request) {
       errorCount: summary.errors.length,
     },
     leads: reachable,
-    createdBy: email,
   });
   if (!saved) return fail("not_found", "That upload is no longer available. Upload the file again.", 404);
 

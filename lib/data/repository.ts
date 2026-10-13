@@ -2,12 +2,20 @@
  * The storage seam.
  *
  * Every page and route handler talks to this interface and nothing else. Adding a real database
- * later means writing one more class that implements `Repository` (e.g. a Prisma or Drizzle
- * version) and returning it from `getRepository()` in lib/data/index.ts — no other file changes.
+ * means writing one more class that implements `Repository` and returning it from
+ * `getRepository()` in lib/data/index.ts — no other file changes.
  *
  * Every method is async and takes plain, serialisable arguments, so an implementation is free to
  * await the network. Methods return `null` rather than throwing when a row is missing; route
  * handlers turn that into a 404.
+ *
+ * **Every method takes `Ctx` first.** This is the single most important rule in the file. A
+ * multi-tenant store that takes the workspace from ambient state will eventually serve one
+ * tenant's rows to another — the bug is invisible in testing, because test data has one tenant.
+ * Threading the workspace through the signature makes a cross-tenant read a type error instead.
+ * Implementations must treat `ctx.workspaceId` as a mandatory filter on every read AND every
+ * write, including by-id lookups: `WHERE id = $1 AND workspace_id = $2`. An id alone is a
+ * guessable key, so a missing workspace predicate is an access-control hole, not an optimisation.
  */
 
 import type { LeadProfile } from "@/lib/leads/merge";
@@ -33,6 +41,16 @@ import type {
   User,
   Workspace,
 } from "@/lib/data/types";
+import type { CampaignPatch, LeadPatch } from "@/lib/data/validate";
+
+/**
+ * Who is asking, and on whose behalf. Resolved from the session by lib/http.ts, never from a
+ * request body or query parameter — a client-supplied workspace id is a tenancy bypass.
+ */
+export type Ctx = {
+  workspaceId: string;
+  userId: string;
+};
 
 export type CampaignQuery = {
   q?: string;
@@ -59,56 +77,87 @@ export type SendMessageInput = {
 };
 
 export interface Repository {
-  /** The signed-in user. `email` comes from the session, so a real store can scope by tenant. */
-  getUser(email: string): Promise<User>;
-  getWorkspace(): Promise<Workspace>;
+  /* --------------------------------------------------------------- reads -- */
+
+  getUser(ctx: Ctx): Promise<User | null>;
+  getWorkspace(ctx: Ctx): Promise<Workspace | null>;
 
   /** Everything the dashboard home screen needs, in one round trip. */
-  getOverview(email: string, range: RangeKey): Promise<Overview>;
+  getOverview(ctx: Ctx, range: RangeKey): Promise<Overview | null>;
 
-  listTasks(query: TaskQuery): Promise<Task[]>;
-  completeTask(id: string): Promise<Task | null>;
+  listTasks(ctx: Ctx, query: TaskQuery): Promise<Task[]>;
+  completeTask(ctx: Ctx, id: string): Promise<Task | null>;
 
-  listCampaigns(query: CampaignQuery): Promise<{ items: Campaign[]; totals: CampaignTotals }>;
-  getCampaign(id: string): Promise<Campaign | null>;
-  setCampaignStatus(id: string, status: CampaignStatus): Promise<Campaign | null>;
+  listCampaigns(ctx: Ctx, query: CampaignQuery): Promise<{ items: Campaign[]; totals: CampaignTotals }>;
+  getCampaign(ctx: Ctx, id: string): Promise<Campaign | null>;
 
-  listLeads(query: LeadQuery): Promise<Paged<Lead>>;
-  getLead(id: string): Promise<Lead | null>;
+  listLeads(ctx: Ctx, query: LeadQuery): Promise<Paged<Lead>>;
+  getLead(ctx: Ctx, id: string): Promise<Lead | null>;
 
-  listThreads(query: ThreadQuery): Promise<Thread[]>;
-  getThread(id: string): Promise<{ thread: Thread; messages: Message[] } | null>;
-  sendMessage(input: SendMessageInput): Promise<Message | null>;
+  listThreads(ctx: Ctx, query: ThreadQuery): Promise<Thread[]>;
+  getThread(ctx: Ctx, id: string): Promise<{ thread: Thread; messages: Message[] } | null>;
 
-  getAnalytics(range: RangeKey, channels: Channel[] | null): Promise<Analytics>;
+  getAnalytics(ctx: Ctx, range: RangeKey, channels: Channel[] | null): Promise<Analytics>;
 
-  /* ---- lead uploads and segments ---------------------------------------- */
+  /* -------------------------------------------------------------- writes -- */
+
+  /**
+   * Inputs are the validated patches from lib/data/validate.ts — already shape-checked, so an
+   * implementation only has to enforce what needs the database: references and uniqueness.
+   * A create whose `campaignId` names a campaign in another workspace must fail, not silently
+   * null the field, so the caller learns the reference was rejected.
+   */
+  createLead(ctx: Ctx, input: LeadPatch): Promise<Lead | WriteError>;
+  updateLead(ctx: Ctx, id: string, patch: LeadPatch): Promise<Lead | WriteError | null>;
+  deleteLead(ctx: Ctx, id: string): Promise<boolean>;
+
+  createCampaign(ctx: Ctx, input: CampaignPatch): Promise<Campaign | WriteError>;
+  updateCampaign(ctx: Ctx, id: string, patch: CampaignPatch): Promise<Campaign | WriteError | null>;
+  deleteCampaign(ctx: Ctx, id: string): Promise<boolean>;
+  /** Sugar over `updateCampaign`; kept because pausing is a one-click action in the UI. */
+  setCampaignStatus(ctx: Ctx, id: string, status: CampaignStatus): Promise<Campaign | null>;
+
+  sendMessage(ctx: Ctx, input: SendMessageInput): Promise<Message | null>;
+
+  /* ------------------------------------------------ lead uploads and segments -- */
 
   /**
    * Parks a parsed file so the mapping and summary steps don't have to upload it
-   * again. Uploads are scratch space: this one is in memory and goes when the
+   * again. Uploads are scratch space: the memory store keeps them until the
    * server restarts, which the modal says out loud.
    */
-  createUpload(input: { fileName: string; fileSize: number; table: Table }): Promise<UploadPreview>;
-  getUpload(id: string): Promise<{ fileName: string; fileSize: number; table: Table } | null>;
+  createUpload(ctx: Ctx, input: { fileName: string; fileSize: number; table: Table }): Promise<UploadPreview>;
+  getUpload(ctx: Ctx, id: string): Promise<{ fileName: string; fileSize: number; table: Table } | null>;
 
-  listSegments(): Promise<Segment[]>;
-  getSegment(id: string): Promise<Segment | null>;
+  listSegments(ctx: Ctx): Promise<Segment[]>;
+  getSegment(ctx: Ctx, id: string): Promise<Segment | null>;
 
   /** Saves a validated upload as a segment, merging its rows into lead profiles. */
-  createSegment(input: {
-    uploadId: string;
-    name: string;
-    description: string;
-    mapping: Mapping;
-    report: MappingReport;
-    leads: ParsedLead[];
-    createdBy: string;
-  }): Promise<{ segment: Segment; profilesCreated: number; profilesMerged: number } | null>;
+  createSegment(
+    ctx: Ctx,
+    input: {
+      uploadId: string;
+      name: string;
+      description: string;
+      mapping: Mapping;
+      report: MappingReport;
+      leads: ParsedLead[];
+    },
+  ): Promise<{ segment: Segment; profilesCreated: number; profilesMerged: number } | null>;
 
   /** Profiles the uploads have built up, newest first; `segmentId` narrows to one segment. */
-  listProfiles(segmentId?: string): Promise<LeadProfile[]>;
+  listProfiles(ctx: Ctx, segmentId?: string): Promise<LeadProfile[]>;
 }
+
+/**
+ * A write the store refused for a reason the caller should see — a dangling reference, a
+ * duplicate. Distinct from `null` (row not found) and from a thrown error (a bug or an outage),
+ * because those three map to different HTTP statuses: 422, 404 and 500.
+ */
+export type WriteError = { error: { field: string; message: string } };
+
+export const isWriteError = (value: unknown): value is WriteError =>
+  typeof value === "object" && value !== null && "error" in value;
 
 export type CampaignTotals = {
   leads: number;

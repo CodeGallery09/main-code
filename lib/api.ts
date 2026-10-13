@@ -19,14 +19,24 @@ import type {
   Workspace,
 } from "@/lib/data/types";
 import type { CampaignTotals } from "@/lib/data/repository";
+import type { CampaignPatch, LeadPatch } from "@/lib/data/validate";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
 import type { Mapping } from "@/lib/leads/validation";
+
+/** Field errors a 422 carries, keyed by field name — what the forms render inline. */
+export type FieldErrors = Record<string, string>;
+
+/** Pulls the per-field errors off an ApiError, or null when it was not a validation failure. */
+export const fieldErrorsOf = (error: unknown): FieldErrors | null =>
+  error instanceof ApiError && error.fields ? error.fields : null;
 
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
     message: string,
+    /** Present on a 422: per-field messages the form shows next to each input. */
+    readonly fields?: Record<string, string>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -42,11 +52,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    const error = (payload as { error?: { code?: string; message?: string } } | null)?.error;
+    const error = (
+      payload as {
+        error?: { code?: string; message?: string; fields?: Record<string, string> };
+      } | null
+    )?.error;
     throw new ApiError(
       response.status,
       error?.code ?? "unknown",
       error?.message ?? "That request failed.",
+      error?.fields,
     );
   }
   return payload as T;
@@ -85,6 +100,21 @@ export const api = {
       body: JSON.stringify({ status }),
     }),
 
+  createCampaign: (input: CampaignPatch) =>
+    request<{ campaign: Campaign }>("/api/campaigns", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  updateCampaign: (id: string, patch: CampaignPatch) =>
+    request<{ campaign: Campaign }>(`/api/campaigns/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+
+  deleteCampaign: (id: string) =>
+    request<{ deleted: string }>(`/api/campaigns/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
   leads: (
     params: {
       q?: string;
@@ -99,6 +129,18 @@ export const api = {
   ) => request<Paged<Lead>>(`/api/leads${qs(params)}`),
 
   lead: (id: string) => request<{ lead: Lead }>(`/api/leads/${encodeURIComponent(id)}`),
+
+  createLead: (input: LeadPatch) =>
+    request<{ lead: Lead }>("/api/leads", { method: "POST", body: JSON.stringify(input) }),
+
+  updateLead: (id: string, patch: LeadPatch) =>
+    request<{ lead: Lead }>(`/api/leads/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+
+  deleteLead: (id: string) =>
+    request<{ deleted: string }>(`/api/leads/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   threads: (params: { filter?: string; q?: string } = {}) =>
     request<{ threads: Thread[] }>(`/api/threads${qs(params)}`),
