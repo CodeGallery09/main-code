@@ -263,6 +263,13 @@ namespaces, no parameter properties).
   on the first pass and never appears. It measures with `getBoundingClientRect()` against the
   track rather than `offsetTop` — the Leads row sits inside the positioned `.navhas` dropdown
   wrapper, which would otherwise be its offset parent and report zero.
+- The shared rim (`app.css`'s `:after` pseudo-element with the xor-mask gradient border) is
+  deliberately **not** on `.card`, `.side` or `.tabbar` — it read as an unwanted white outline on
+  floating cards and the navbar. They keep the `:before` fill/blur, just not that border. Likewise
+  `.navthumb`/`.tabthumb` (the navbar's own pill, desktop and mobile) drop `--thumb-sh`'s outline
+  and white top stroke, keeping only the lift shadow. Both are scoped overrides in the "one sliding
+  pill" consistency block — `--thumb-sh` itself still carries the border for buttons and other
+  pills, so change it there only if the ask is to drop the border everywhere, not just the navbar.
 - `toAppLead` (`lib/app/adapt.ts`) must not append a `Title: …` tag the stored tags already
   carry — `LeadsScreen` keys tag chips by text, so a repeat is a duplicate-key React warning.
 
