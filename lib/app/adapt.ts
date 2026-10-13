@@ -145,7 +145,9 @@ export function relativeTime(iso: string): string {
  */
 export function toAppLead(lead: Lead): AppLead {
   const tags = [...lead.tags];
-  if (lead.title) tags.push(`Title: ${lead.title}`);
+  const titleTag = `Title: ${lead.title}`;
+  // Seeded leads already carry this tag; pushing it again gave the table two identical React keys.
+  if (lead.title && !tags.includes(titleTag)) tags.push(titleTag);
 
   const slug = lead.name
     .toLowerCase()

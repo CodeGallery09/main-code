@@ -156,6 +156,15 @@ Model is `lib/app/workflow.ts` (695L) — import-free and erasable, pinned by
 ours but keeps `.react-flow__*` class names because `app.css` styles them.
 Edits are in-component only — **no persistence yet**; the `workflows` table exists for it.
 
+**Routes.** The builder has exactly one: `/dashboard/workflows/[id]` (and `/new?template=<key>`
+for a blank one, via `blankWorkflow`). `/dashboard/campaigns/[id]` is a `permanentRedirect` to it,
+kept for old links — never render a second builder there. `/dashboard/workflows` is the library
+(`WorkflowsScreen`: `.wfgrid` cards, template picker); its numbers come from
+`lib/app/workflowLibrary.ts`, which reuses `hasRun` so a never-published workflow reads "—".
+A multichannel campaign *is* a workflow (same numeric id). `/dashboard/integrations`
+(`IntegrationsScreen`, `lib/app/integrations.ts`): only LinkedIn and email can connect; every
+other provider is `state: "planned"` with a disabled primary button.
+
 ### Legacy demo data — `lib/app/` (1833L, hardcoded)
 `channels.ts` `leads.ts` `campaigns.ts` `inbox.ts` `workspace.ts` `integrations.ts`
 `workflowLibrary.ts` · `metrics.ts` (241L) is a seeded PRNG walking 180 days, deterministic so
@@ -239,6 +248,10 @@ namespaces, no parameter properties).
   A rule that must beat the global unlayered `:focus-visible` must itself be unlayered.
 - `--hl` must stay **inheriting** (pseudo-elements and inner pills read the animated value).
 - Grid columns holding wide content need `minmax(0,1fr)` or mobile overflows horizontally.
+- The mobile tab bar sizes itself from `--tabs`, set inline by `AppShell` from
+  `DASHBOARD_NAV.length`. Add a nav item and it adapts; hardcoding the column count clips the last item.
+- `toAppLead` (`lib/app/adapt.ts`) must not append a `Title: …` tag the stored tags already
+  carry — `LeadsScreen` keys tag chips by text, so a repeat is a duplicate-key React warning.
 
 **Animation**
 - Animate `transform`/`opacity` only. New looping decorations must be added to the
