@@ -1,5 +1,5 @@
 {
-  "id": "9426036a-d865-4901-8ea1-86ee4c2a7a2e",
+  "id": "4fca4674-8c6e-400d-96a5-83935d6d9353",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1946,7 +1946,8 @@
         "live",
         "scheduled",
         "paused",
-        "draft"
+        "draft",
+        "completed"
       ]
     },
     "public.campaign_type": {
@@ -1994,11 +1995,14 @@
       "name": "lead_stage",
       "schema": "public",
       "values": [
+        "new",
         "reaching",
         "engaged",
         "hot",
         "meeting",
         "nurture",
+        "paused",
+        "stopped",
         "closed"
       ]
     },

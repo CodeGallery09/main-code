@@ -11,9 +11,19 @@
  */
 
 export const CHANNELS = ["linkedin", "email", "whatsapp", "call", "sms"] as const;
-export const LEAD_STAGES = ["reaching", "engaged", "hot", "meeting", "nurture", "closed"] as const;
+export const LEAD_STAGES = [
+  "new",
+  "reaching",
+  "engaged",
+  "hot",
+  "meeting",
+  "nurture",
+  "paused",
+  "stopped",
+  "closed",
+] as const;
 export const LEAD_SOURCES = ["form", "csv", "linkedin", "crm", "event"] as const;
-export const CAMPAIGN_STATUSES = ["live", "scheduled", "paused", "draft"] as const;
+export const CAMPAIGN_STATUSES = ["live", "scheduled", "paused", "draft", "completed"] as const;
 export const CAMPAIGN_TYPES = ["standalone", "multichannel"] as const;
 
 export const NAME_MAX = 120;
@@ -80,6 +90,7 @@ function cleanTags(value: unknown, errors: ValidationErrors): string[] {
 export type LeadInput = {
   name: string;
   company: string;
+  title: string;
   email: string | null;
   phone: string | null;
   stage: (typeof LEAD_STAGES)[number];
@@ -120,6 +131,14 @@ export function validateLead(input: unknown, partial = false): Validation<LeadPa
     else out.company = company;
   } else if (!partial) {
     out.company = "";
+  }
+
+  if (has("title")) {
+    const title = text(input.title);
+    if (title.length > NAME_MAX) errors.title = `Keep the title to ${NAME_MAX} characters.`;
+    else out.title = title;
+  } else if (!partial) {
+    out.title = "";
   }
 
   if (has("email")) {

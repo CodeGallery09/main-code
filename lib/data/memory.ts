@@ -374,6 +374,7 @@ export class MemoryRepository implements Repository {
       id: `l_${nextId("lead")}`,
       name,
       company: input.company ?? "",
+      title: input.title ?? "",
       initials: initialsOf(name),
       phone: input.phone ?? null,
       email: input.email ?? null,
@@ -407,6 +408,7 @@ export class MemoryRepository implements Repository {
       found.initials = initialsOf(patch.name);
     }
     if (patch.company !== undefined) found.company = patch.company;
+    if (patch.title !== undefined) found.title = patch.title;
     if (patch.email !== undefined) found.email = patch.email;
     if (patch.phone !== undefined) found.phone = patch.phone;
     if (patch.stage !== undefined) found.stage = patch.stage;

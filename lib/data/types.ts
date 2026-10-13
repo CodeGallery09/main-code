@@ -9,9 +9,19 @@
  */
 
 export type Channel = "linkedin" | "email" | "whatsapp" | "call" | "sms";
-export type CampaignStatus = "live" | "scheduled" | "paused" | "draft";
+export type CampaignStatus = "live" | "scheduled" | "paused" | "draft" | "completed";
 export type CampaignType = "standalone" | "multichannel";
-export type LeadStage = "reaching" | "engaged" | "hot" | "meeting" | "nurture" | "closed";
+/** Superset of both vocabularies in the codebase — see lib/db/schema.ts for why. */
+export type LeadStage =
+  | "new"
+  | "reaching"
+  | "engaged"
+  | "hot"
+  | "meeting"
+  | "nurture"
+  | "paused"
+  | "stopped"
+  | "closed";
 export type LeadSource = "form" | "csv" | "linkedin" | "crm" | "event";
 export type TaskKind = "reply" | "call" | "review";
 export type Trend = "up" | "down" | "flat";
@@ -77,6 +87,8 @@ export type Lead = {
   id: string;
   name: string;
   company: string;
+  /** Job title. The leads table shows it and derives a "Title: …" tag from it. */
+  title: string;
   initials: string;
   /** Masked in the seed data; a real store would hold the raw value. */
   phone: string | null;

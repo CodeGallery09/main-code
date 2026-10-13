@@ -6,5 +6,5 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const range = parseRange(params.get("range"));
   const channels = parseChannels(params.get("channels"));
-  return withUser(() => getRepository().getAnalytics(range, channels));
+  return withUser((ctx) => getRepository().getAnalytics(ctx, range, channels));
 }

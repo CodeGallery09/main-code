@@ -1491,3 +1491,14 @@ html, body { background:#fafafa }
   .react-flow__panel.bottom { bottom:70px }
   .palette { padding-bottom:86px }
 }
+
+/* Row actions on the leads table. The table already carries nine columns, so a pair of
+   full-width buttons pushed it past its container and clipped "Delete" at the viewport edge
+   (.tblw scrolls, so nothing was unreachable — it just looked broken). A fixed narrow column
+   with compact buttons keeps the table inside its card at desktop widths, and the column
+   drops out below 820px where the horizontal budget is tightest. */
+.tbl.leads .c-act { width:64px;padding-right:14px;padding-left:4px;white-space:nowrap }
+/* Stacked, not side by side: inline they either collided or pushed the table over. */
+.tbl.leads .c-act .fu { flex-direction:column;align-items:flex-end;gap:2px }
+.tbl.leads .c-act .sortb { padding:2px 4px;font-size:11.5px;line-height:1.35 }
+@media(max-width:820px) { .tbl.leads .c-act { display:none } }

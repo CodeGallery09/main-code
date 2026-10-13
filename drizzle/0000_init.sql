@@ -1,9 +1,9 @@
-CREATE TYPE "public"."campaign_status" AS ENUM('live', 'scheduled', 'paused', 'draft');--> statement-breakpoint
+CREATE TYPE "public"."campaign_status" AS ENUM('live', 'scheduled', 'paused', 'draft', 'completed');--> statement-breakpoint
 CREATE TYPE "public"."campaign_type" AS ENUM('standalone', 'multichannel');--> statement-breakpoint
 CREATE TYPE "public"."channel" AS ENUM('linkedin', 'email', 'whatsapp', 'call', 'sms');--> statement-breakpoint
 CREATE TYPE "public"."job_state" AS ENUM('pending', 'claimed', 'done', 'failed', 'cancelled');--> statement-breakpoint
 CREATE TYPE "public"."lead_source" AS ENUM('form', 'csv', 'linkedin', 'crm', 'event');--> statement-breakpoint
-CREATE TYPE "public"."lead_stage" AS ENUM('reaching', 'engaged', 'hot', 'meeting', 'nurture', 'closed');--> statement-breakpoint
+CREATE TYPE "public"."lead_stage" AS ENUM('new', 'reaching', 'engaged', 'hot', 'meeting', 'nurture', 'paused', 'stopped', 'closed');--> statement-breakpoint
 CREATE TYPE "public"."member_role" AS ENUM('owner', 'admin', 'member');--> statement-breakpoint
 CREATE TYPE "public"."message_from" AS ENUM('them', 'us');--> statement-breakpoint
 CREATE TYPE "public"."run_state" AS ENUM('active', 'completed', 'stopped', 'failed');--> statement-breakpoint

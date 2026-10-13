@@ -16,13 +16,13 @@
  * session instead of from a request parameter a caller could forge.
  */
 
-import { createHmac, randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
-import { promisify } from "node:util";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, eq, lt } from "drizzle-orm";
 import { getDb, hasDatabase } from "@/lib/db/client";
 import { memberships, sessions, users, workspaces } from "@/lib/db/schema";
+import { verifyPassword } from "@/lib/password";
 
-const scrypt = promisify(scryptCb);
+export { hashPassword, verifyPassword } from "@/lib/password";
 
 export const SESSION_COOKIE = "fp_session";
 /** 8 hours. Short enough that a stolen cookie has a bounded life. */
@@ -43,33 +43,6 @@ export type Principal = {
 };
 
 const secret = () => process.env.AUTH_SESSION_SECRET ?? "flightpath-dev-only-secret";
-
-/* --------------------------------------------------------------- hashing -- */
-
-const SCRYPT_KEYLEN = 64;
-
-/** Stored as `salt:key`, both hex. A fresh 16-byte salt per password. */
-export async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16);
-  const key = (await scrypt(password, salt, SCRYPT_KEYLEN)) as Buffer;
-  return `${salt.toString("hex")}:${key.toString("hex")}`;
-}
-
-/** Constant-time compare, so a wrong password cannot be narrowed down by timing. */
-export async function verifyPassword(password: string, stored: string | null): Promise<boolean> {
-  if (!stored) return false;
-  const [saltHex, keyHex] = stored.split(":");
-  if (!saltHex || !keyHex) return false;
-  let expected: Buffer;
-  try {
-    expected = Buffer.from(keyHex, "hex");
-  } catch {
-    return false;
-  }
-  if (expected.length !== SCRYPT_KEYLEN) return false;
-  const actual = (await scrypt(password, Buffer.from(saltHex, "hex"), SCRYPT_KEYLEN)) as Buffer;
-  return timingSafeEqual(actual, expected);
-}
 
 /* ----------------------------------------------------------- demo cookie -- */
 

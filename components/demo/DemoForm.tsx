@@ -134,7 +134,7 @@ export function DemoForm({ deliveryConfigured }: { deliveryConfigured: boolean }
   });
 
   return (
-    <form ref={formRef} data-pip-host noValidate onSubmit={onSubmit} aria-describedby={`${uid}-legend`}>
+    <form ref={formRef} method="post" data-pip-host noValidate onSubmit={onSubmit} aria-describedby={`${uid}-legend`}>
       <p id={`${uid}-legend`} className="text-[12.5px] text-muted">
         Fields marked <span className="text-alert">*</span> are required.
       </p>

@@ -45,7 +45,7 @@ export function SignupForm() {
   });
 
   return (
-    <form noValidate onSubmit={onSubmit} className="space-y-5">
+    <form method="post" noValidate onSubmit={onSubmit} className="space-y-5">
       <AuthField label="Full name" htmlFor={`${uid}-name`} error={errors.name} errorId={`${uid}-name-error`}>
         <input {...f("name")} type="text" autoComplete="name" />
       </AuthField>

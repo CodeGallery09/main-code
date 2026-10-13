@@ -39,7 +39,17 @@ export const SIGNAL_LABEL: Record<string, string> = {
   ooo: "Out of office",
 };
 
-export type Stage = "Hot" | "Meeting" | "Engaged" | "Reaching" | "New" | "Nurture" | "Paused" | "Stopped";
+/** "Closed" is a won deal, distinct from "Stopped" (asked not to be contacted). */
+export type Stage =
+  | "Hot"
+  | "Meeting"
+  | "Engaged"
+  | "Reaching"
+  | "New"
+  | "Nurture"
+  | "Paused"
+  | "Stopped"
+  | "Closed";
 
 export const STAGE_COLOR: Record<Stage, string> = {
   Hot: "var(--accent)",
@@ -50,6 +60,7 @@ export const STAGE_COLOR: Record<Stage, string> = {
   Nurture: "#B9A27C",
   Paused: "var(--muted)",
   Stopped: "var(--muted)",
+  Closed: "var(--pos)",
 };
 
 /**

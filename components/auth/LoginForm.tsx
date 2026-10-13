@@ -60,7 +60,7 @@ export function LoginForm() {
   };
 
   return (
-    <form noValidate onSubmit={onSubmit} className="space-y-5">
+    <form method="post" noValidate onSubmit={onSubmit} className="space-y-5">
       <AuthField label="Email" htmlFor={`${uid}-email`} error={errors.email} errorId={`${uid}-email-error`}>
         <input
           ref={emailRef}

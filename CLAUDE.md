@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Context map
+
+`CONTEXT.md` in the repo root is the codebase map: file inventory with line counts, the
+architectural seams, a "where do I change X" index, and the hard-won constraints. **Read it
+before exploring the tree** — it is written to answer most orientation questions without opening
+a source file.
+
+**Keep it current in the same commit as the change.** Any work that adds, moves or deletes a
+file, route or database table, changes an architectural rule or seam, makes a screen read live
+data, adds a repository method, closes or uncovers a gap, or discovers a non-obvious constraint
+must update the matching section of `CONTEXT.md` alongside the code. A stale map is worse than
+none, because it is trusted. `CONTEXT.md` ends with a short section spelling out which section to
+touch for which kind of change.
+
 ## Project
 
 Flightpath: a marketing site and prototype workspace for a GTM workflow-orchestration SaaS aimed at SMB sales teams. Routes: the landing page (`/`: Hero → Journey → WhyFlightpath → WorkflowLibrary → FounderBooker), a demo-request page (`/book-demo`), prototype auth pages (`/login`, `/signup`), and the signed-in app under `/dashboard`, including the campaign workflow builder. Stack: Next.js 15 App Router, React 19, TypeScript 5, Tailwind CSS v4 (via `@tailwindcss/postcss`, no `tailwind.config`), ESLint 9 flat config. The only runtime dependency beyond Next and React is `lucide-react`.

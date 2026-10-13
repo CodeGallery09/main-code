@@ -1,5 +1,6 @@
 import { getRepository } from "@/lib/data";
-import { parseInt10, withUser } from "@/lib/http";
+import { failFields, parseInt10, readJson, withUser } from "@/lib/http";
+import { validateLead } from "@/lib/data/validate";
 import type { LeadQuery, LeadStage } from "@/lib/data/types";
 
 /** GET /api/leads?q=&stage=&ownerId=&campaignId=&sort=&dir=&page=&pageSize= */
@@ -15,5 +16,18 @@ export async function GET(request: Request) {
     page: parseInt10(params.get("page"), 1),
     pageSize: parseInt10(params.get("pageSize"), 25),
   };
-  return withUser(() => getRepository().listLeads(query));
+  return withUser((ctx) => getRepository().listLeads(ctx, query));
+}
+
+/** POST /api/leads — creates a lead. 422 with per-field errors on invalid input. */
+export async function POST(request: Request) {
+  const body = await readJson(request);
+  const checked = validateLead(body);
+  if (!checked.ok) return failFields(checked.errors);
+
+  // withUser maps a WriteError (e.g. a campaign in another workspace) to a 422 for us.
+  return withUser(async (ctx) => {
+    const lead = await getRepository().createLead(ctx, checked.data);
+    return "error" in lead ? lead : { lead };
+  });
 }

@@ -4,8 +4,10 @@
  */
 
 import { cookies } from "next/headers";
-import { SESSION_COOKIE, readSession } from "@/lib/auth";
+import { SESSION_COOKIE, resolveSession, type Principal } from "@/lib/auth";
+import { isWriteError, type Ctx } from "@/lib/data/repository";
 import type { Channel, RangeKey } from "@/lib/data/types";
+import type { ValidationErrors } from "@/lib/data/validate";
 
 export const json = <T>(body: T, status = 200) =>
   Response.json(body, {
@@ -17,20 +19,47 @@ export const json = <T>(body: T, status = 200) =>
 export const fail = (code: string, message: string, status: number) =>
   json({ error: { code, message } }, status);
 
-/** Resolves the signed-in email, or null when the session cookie is missing or forged. */
-export async function sessionEmail(): Promise<string | null> {
-  return readSession((await cookies()).get(SESSION_COOKIE)?.value);
+/** 422 with per-field errors, the shape the client forms already render. */
+export const failFields = (errors: ValidationErrors) =>
+  json({ error: { code: "invalid", message: "Check the highlighted fields.", fields: errors } }, 422);
+
+export const notFound = () => fail("not_found", "That record does not exist.", 404);
+
+/** Resolves the signed-in principal, or null when the cookie is missing, forged or expired. */
+export async function principal(): Promise<Principal | null> {
+  return resolveSession((await cookies()).get(SESSION_COOKIE)?.value);
 }
 
-/** Wraps a handler so unauthenticated calls get a consistent 401 instead of a crash. */
-export async function withUser<T>(run: (email: string) => Promise<T>): Promise<Response> {
-  const email = await sessionEmail();
-  if (!email) return fail("unauthenticated", "Sign in to use this endpoint.", 401);
+/**
+ * Wraps a handler so unauthenticated calls get a consistent 401 instead of a crash.
+ *
+ * The `Ctx` it passes is built **only** from the session — never from a query parameter or
+ * request body. A client-supplied workspace id would be a tenancy bypass: anyone could read
+ * another workspace by editing a URL.
+ */
+export async function withUser<T>(run: (ctx: Ctx) => Promise<T>): Promise<Response> {
+  const who = await principal();
+  if (!who) return fail("unauthenticated", "Sign in to use this endpoint.", 401);
   try {
-    return json(await run(email));
+    const result = await run({ workspaceId: who.workspaceId, userId: who.userId });
+    if (result === null || result === undefined) return notFound();
+    // A repository write that was refused for a stated reason becomes a 422, not a 500.
+    if (isWriteError(result)) {
+      return failFields({ [result.error.field]: result.error.message });
+    }
+    return json(result);
   } catch (error) {
     console.error("[api]", error);
     return fail("server_error", "Something went wrong handling that request.", 500);
+  }
+}
+
+/** Parses a JSON body, returning null when it is absent or malformed. */
+export async function readJson(request: Request): Promise<unknown | null> {
+  try {
+    return await request.json();
+  } catch {
+    return null;
   }
 }
 

@@ -2,82 +2,177 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Screen } from "./AppShell";
 import { SearchIcon } from "./icons";
 import { Dot, fmt, Kpi, Segmented, Switch, Tabs } from "./ui";
+import { CampaignEditor, type CampaignDraft } from "./CampaignEditor";
+import { api, fieldErrorsOf } from "@/lib/api";
+import { toAppCampaign, toChannel, type AppCampaign } from "@/lib/app/adapt";
 import { CHANNEL, CHANNELS, type ChannelKey } from "@/lib/app/channels";
-import {
-  CAMPAIGNS,
-  hasRun,
-  scheduleLabel,
-  STATUS_TAG,
-  type Campaign,
-  type CampaignStatus,
-} from "@/lib/app/campaigns";
-import { campaignMetrics, DAYS, rangeLabel, rate } from "@/lib/app/metrics";
+import { STATUS_TAG } from "@/lib/app/campaigns";
+import type { CampaignStatus } from "@/lib/data/types";
+import type { CampaignTotals } from "@/lib/data/repository";
 
 type StatusFilter = "all" | CampaignStatus;
 type TypeFilter = "all" | "single" | "multi";
-type Period = "7d" | "30d" | "90d";
-
-const WINDOW: Record<Period, number> = { "7d": 7, "30d": 30, "90d": 90 };
 
 /** Only multichannel campaigns have a workflow to open in the builder, which lives
  *  under /dashboard/workflows — campaign ids and workflow ids are the same. */
-const builderHref = (c: Campaign) => (c.type === "multi" ? `/dashboard/workflows/${c.id}` : null);
+const builderHref = (c: AppCampaign) => (c.type === "multi" ? `/dashboard/workflows/${c.id}` : null);
+
+/** "Started 12 Sep" / "Starts 24 Oct" / "Not published" */
+function scheduleLabel(c: AppCampaign) {
+  if (c.status === "draft") return "Not published";
+  if (c.scheduledAt) return `Starts ${c.scheduledAt}`;
+  if (c.startedAt) return `Started ${c.startedAt}`;
+  return "Started today";
+}
+
+/** A draft or an unpublished schedule has no numbers to show yet. */
+const hasRun = (c: AppCampaign) => c.status !== "draft" && !c.scheduledAt;
+
+const EMPTY_DRAFT: CampaignDraft = {
+  id: null,
+  name: "",
+  type: "single",
+  status: "draft",
+  channels: ["mail"],
+  startedAt: "",
+};
 
 export function CampaignsScreen() {
   const router = useRouter();
   const [status, setStatus] = useState<StatusFilter>("all");
   const [type, setType] = useState<TypeFilter>("all");
   const [channel, setChannel] = useState<ChannelKey | "all">("all");
-  const [period, setPeriod] = useState<Period>("30d");
   const [query, setQuery] = useState("");
-  const [paused, setPaused] = useState<number[]>([]);
 
-  const range = { from: DAYS - WINDOW[period], to: DAYS - 1 };
+  const [rows, setRows] = useState<AppCampaign[]>([]);
+  const [counts, setCounts] = useState<Record<StatusFilter, number>>({
+    all: 0,
+    live: 0,
+    scheduled: 0,
+    paused: 0,
+    draft: 0,
+    completed: 0,
+  });
+  const [totals, setTotals] = useState<CampaignTotals>({
+    leads: 0,
+    delivered: 0,
+    openRate: null,
+    replyRate: null,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<CampaignDraft | null>(null);
 
-  // Everything but the status tabs narrows the set the tab counts are taken from.
-  const scoped = CAMPAIGNS.filter(
-    (c) =>
-      (type === "all" || c.type === type) &&
-      (channel === "all" || c.channels.includes(channel)) &&
-      (!query || c.name.toLowerCase().includes(query.toLowerCase())),
-  );
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 250);
+    return () => clearTimeout(timer);
+  }, [query]);
 
-  const countFor = (s: StatusFilter) => scoped.filter((c) => s === "all" || c.status === s).length;
+  const requestId = useRef(0);
 
-  const rows = useMemo(
-    () =>
-      scoped
-        .filter((c) => status === "all" || c.status === status)
-        .map((c) => ({ c, m: hasRun(c) ? campaignMetrics(c.id, c.channels, range.from, range.to) : null })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [status, type, channel, query, period],
-  );
+  const load = useCallback(async () => {
+    const id = ++requestId.current;
+    setLoading(true);
+    try {
+      // Two calls: the filtered rows, and an unfiltered-by-status set so the tab counts
+      // reflect the other filters without the status tab narrowing its own count.
+      const [filtered, forCounts] = await Promise.all([
+        api.campaigns({
+          q: debouncedQuery || undefined,
+          status: status === "all" ? undefined : status,
+          type: type === "all" ? undefined : type === "multi" ? "multichannel" : "standalone",
+          channel: channel === "all" ? undefined : toChannel(channel),
+        }),
+        api.campaigns({
+          q: debouncedQuery || undefined,
+          type: type === "all" ? undefined : type === "multi" ? "multichannel" : "standalone",
+          channel: channel === "all" ? undefined : toChannel(channel),
+        }),
+      ]);
+      if (id !== requestId.current) return;
 
-  const totals = rows.reduce(
-    (acc, { c, m }) =>
-      m
-        ? {
-            leads: acc.leads + c.leads,
-            delivered: acc.delivered + m.delivered,
-            opened: acc.opened + m.opened,
-            openBase: acc.openBase + m.openBase,
-            sent: acc.sent + m.sent,
-            replied: acc.replied + m.replied,
-          }
-        : { ...acc, leads: acc.leads + c.leads },
-    { leads: 0, delivered: 0, opened: 0, openBase: 0, sent: 0, replied: 0 },
-  );
+      setRows(filtered.items.map(toAppCampaign));
+      setTotals(filtered.totals);
+      const tally: Record<StatusFilter, number> = {
+        all: forCounts.items.length,
+        live: 0,
+        scheduled: 0,
+        paused: 0,
+        draft: 0,
+        completed: 0,
+      };
+      for (const c of forCounts.items) tally[c.status] += 1;
+      setCounts(tally);
+      setError(null);
+    } catch (caught) {
+      if (id !== requestId.current) return;
+      setError(caught instanceof Error ? caught.message : "Could not load campaigns.");
+    } finally {
+      if (id === requestId.current) setLoading(false);
+    }
+  }, [debouncedQuery, status, type, channel]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  /** The on/off switch writes a real status change, rather than tracking paused ids locally. */
+  async function toggleOn(c: AppCampaign) {
+    const next: CampaignStatus = c.status === "paused" ? "live" : "paused";
+    setBusyId(c.id);
+    setRows((current) => current.map((r) => (r.id === c.id ? { ...r, status: next } : r)));
+    try {
+      await api.setCampaignStatus(c.id, next);
+    } catch {
+      setRows((current) => current.map((r) => (r.id === c.id ? { ...r, status: c.status } : r)));
+      setError("Could not change that campaign's status.");
+    } finally {
+      setBusyId(null);
+      void load();
+    }
+  }
+
+  async function remove(c: AppCampaign) {
+    if (!window.confirm(`Delete “${c.name}”? Its leads are kept, but unlinked from it.`)) return;
+    setBusyId(c.id);
+    try {
+      await api.deleteCampaign(c.id);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not delete that campaign.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function save(draft: CampaignDraft) {
+    const payload = {
+      name: draft.name,
+      type: draft.type === "multi" ? ("multichannel" as const) : ("standalone" as const),
+      status: draft.status,
+      channels: draft.channels.map(toChannel),
+      startedAt: draft.startedAt || null,
+    };
+    try {
+      if (draft.id) await api.updateCampaign(draft.id, payload);
+      else await api.createCampaign(payload);
+      setEditing(null);
+      await load();
+      return null;
+    } catch (caught) {
+      return fieldErrorsOf(caught) ?? { _: caught instanceof Error ? caught.message : "Could not save." };
+    }
+  }
 
   /** Columns read "—" until a campaign has actually sent something. */
-  const cell = (m: ReturnType<typeof campaignMetrics> | null, render: (v: NonNullable<typeof m>) => string) =>
-    m && m.sent >= 1 ? render(m) : "—";
-
-  const isOn = (c: Campaign) =>
-    (c.status === "live" || c.status === "scheduled") && !paused.includes(c.id);
+  const cell = (c: AppCampaign, render: (c: AppCampaign) => string) =>
+    hasRun(c) && (c.sent ?? 0) >= 1 ? render(c) : "—";
 
   return (
     <Screen title="Campaigns">
@@ -86,16 +181,16 @@ export function CampaignsScreen() {
           value={status}
           onChange={setStatus}
           items={[
-            ["all", "All", countFor("all")],
-            ["live", "Live", countFor("live")],
-            ["scheduled", "Scheduled", countFor("scheduled")],
-            ["paused", "Paused", countFor("paused")],
-            ["draft", "Draft", countFor("draft")],
+            ["all", "All", counts.all],
+            ["live", "Live", counts.live],
+            ["scheduled", "Scheduled", counts.scheduled],
+            ["paused", "Paused", counts.paused],
+            ["draft", "Draft", counts.draft],
           ]}
         />
-        <Link className="btn pri" href="/dashboard/workflows/new">
+        <button className="btn pri" onClick={() => setEditing({ ...EMPTY_DRAFT })}>
           Create campaign
-        </Link>
+        </button>
       </div>
 
       <div className="lfilters">
@@ -135,39 +230,28 @@ export function CampaignsScreen() {
         </select>
 
         <span className="sp" />
-
-        <div className="drpre">
-          <Segmented<Period>
-            value={period}
-            onChange={setPeriod}
-            items={[
-              ["7d", "7D"],
-              ["30d", "30D"],
-              ["90d", "90D"],
-            ]}
-          />
-          <div className="drp">
-            <button className="drbtn" aria-haspopup="dialog" aria-expanded="false">
-              <span className="num">{rangeLabel(range.from, range.to)}</span>
-              <span className="chev" aria-hidden="true">
-                ⌄
-              </span>
-            </button>
-          </div>
-        </div>
+        <Link className="btn" href="/dashboard/workflows/new">
+          New workflow
+        </Link>
       </div>
+
+      {error && (
+        <p className="empty" role="status">
+          {error}{" "}
+          <button className="sortb" onClick={() => void load()}>
+            Retry
+          </button>
+        </p>
+      )}
 
       <div className="kpis">
         <Kpi label="Leads" value={fmt(totals.leads)} />
         <Kpi label="Delivered" value={fmt(totals.delivered)} />
-        <Kpi
-          label="Open rate"
-          value={totals.openBase ? `${rate(totals.opened, totals.openBase).toFixed(1)}%` : "—"}
-        />
-        <Kpi label="Reply rate" value={totals.sent ? `${rate(totals.replied, totals.sent).toFixed(1)}%` : "—"} />
+        <Kpi label="Open rate" value={totals.openRate === null ? "—" : `${totals.openRate.toFixed(1)}%`} />
+        <Kpi label="Reply rate" value={totals.replyRate === null ? "—" : `${totals.replyRate.toFixed(1)}%`} />
       </div>
 
-      <div className="card ltable">
+      <div className="card ltable" aria-busy={loading}>
         <div className="tblw">
           <table className="tbl leads camps">
             <thead>
@@ -183,29 +267,27 @@ export function CampaignsScreen() {
                 <th className="r">Open rate</th>
                 <th className="r">Reply rate</th>
                 <th className="r hide-m">Clicks</th>
+                <th className="r" aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ c, m }) => {
-                const tag = STATUS_TAG[paused.includes(c.id) ? "paused" : c.status];
+              {rows.map((c) => {
+                const tag = STATUS_TAG[c.status];
                 const href = builderHref(c);
                 return (
                   <tr
                     className={href ? "click" : ""}
                     key={c.id}
+                    aria-busy={busyId === c.id}
                     onClick={href ? () => router.push(href) : undefined}
                   >
-                    <td>
+                    <td onClick={(e) => e.stopPropagation()}>
                       <span>
                         <Switch
-                          on={isOn(c)}
-                          disabled={c.status === "completed" || c.status === "draft"}
+                          on={c.status === "live" || c.status === "scheduled"}
+                          disabled={c.status === "completed" || c.status === "draft" || busyId === c.id}
                           label={`${c.name} on`}
-                          onChange={() =>
-                            setPaused((p) =>
-                              p.includes(c.id) ? p.filter((id) => id !== c.id) : [...p, c.id],
-                            )
-                          }
+                          onChange={() => void toggleOn(c)}
                         />
                       </span>
                     </td>
@@ -223,8 +305,9 @@ export function CampaignsScreen() {
                         <small>
                           {c.type === "single" ? (
                             <>
-                              <Dot k={c.channels[0]} />
-                              {CHANNEL[c.channels[0]].name} · Standalone · {scheduleLabel(c)}
+                              {c.channels[0] && <Dot k={c.channels[0]} />}
+                              {c.channels[0] ? `${CHANNEL[c.channels[0]].name} · ` : ""}Standalone ·{" "}
+                              {scheduleLabel(c)}
                             </>
                           ) : (
                             <>
@@ -243,14 +326,31 @@ export function CampaignsScreen() {
                       <span className={"tag " + tag.tone}>{tag.label}</span>
                     </td>
                     <td className="r num">{fmt(c.leads)}</td>
-                    <td className="r num hide-m">{cell(m, (v) => fmt(v.sent))}</td>
-                    <td className="r num">{cell(m, (v) => fmt(v.delivered))}</td>
+                    <td className="r num hide-m">{cell(c, (v) => fmt(v.sent ?? 0))}</td>
+                    <td className="r num">{cell(c, (v) => fmt(v.delivered ?? 0))}</td>
                     <td className="r num">
-                      {cell(m, (v) => (v.openBase ? `${rate(v.opened, v.openBase).toFixed(1)}%` : "—"))}
+                      {cell(c, (v) => (v.openRate === null ? "—" : `${v.openRate.toFixed(1)}%`))}
                     </td>
-                    <td className="r num">{cell(m, (v) => `${rate(v.replied, v.sent).toFixed(1)}%`)}</td>
+                    <td className="r num">
+                      {cell(c, (v) => (v.replyRate === null ? "—" : `${v.replyRate.toFixed(1)}%`))}
+                    </td>
                     <td className="r num hide-m">
-                      {cell(m, (v) => (v.clicks >= 1 ? fmt(v.clicks) : "—"))}
+                      {cell(c, (v) => ((v.clicks ?? 0) >= 1 ? fmt(v.clicks ?? 0) : "—"))}
+                    </td>
+                    <td className="r" onClick={(e) => e.stopPropagation()}>
+                      <span className="fu">
+                        <button className="sortb" aria-label={`Edit ${c.name}`} onClick={() => setEditing(draftOf(c))}>
+                          Edit
+                        </button>
+                        <button
+                          className="sortb"
+                          aria-label={`Delete ${c.name}`}
+                          disabled={busyId === c.id}
+                          onClick={() => void remove(c)}
+                        >
+                          Delete
+                        </button>
+                      </span>
                     </td>
                   </tr>
                 );
@@ -258,8 +358,22 @@ export function CampaignsScreen() {
             </tbody>
           </table>
         </div>
-        {rows.length === 0 && <p className="empty">No campaigns match those filters.</p>}
+        {rows.length === 0 && !loading && <p className="empty">No campaigns match those filters.</p>}
+        {loading && rows.length === 0 && <p className="empty">Loading campaigns…</p>}
       </div>
+
+      {editing && <CampaignEditor draft={editing} onCancel={() => setEditing(null)} onSave={save} />}
     </Screen>
   );
+}
+
+function draftOf(c: AppCampaign): CampaignDraft {
+  return {
+    id: c.id,
+    name: c.name,
+    type: c.type,
+    status: c.status,
+    channels: c.channels,
+    startedAt: "",
+  };
 }

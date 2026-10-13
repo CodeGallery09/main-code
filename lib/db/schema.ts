@@ -37,14 +37,29 @@ import {
  * keep bad values out of the database rather than trusting the application. */
 
 export const channelEnum = pgEnum("channel", ["linkedin", "email", "whatsapp", "call", "sms"]);
-export const campaignStatusEnum = pgEnum("campaign_status", ["live", "scheduled", "paused", "draft"]);
+export const campaignStatusEnum = pgEnum("campaign_status", [
+  "live",
+  "scheduled",
+  "paused",
+  "draft",
+  "completed",
+]);
 export const campaignTypeEnum = pgEnum("campaign_type", ["standalone", "multichannel"]);
+/**
+ * The union of both vocabularies the app grew: lib/data used 6 stages, the workspace screens
+ * used 8. Widening the database to the superset keeps the mapping in lib/app/adapt.ts lossless —
+ * squeezing "new"/"paused"/"stopped" into "reaching"/"nurture"/"closed" would silently destroy
+ * the distinction between a lead who never got touched and one who asked to be left alone.
+ */
 export const leadStageEnum = pgEnum("lead_stage", [
+  "new",
   "reaching",
   "engaged",
   "hot",
   "meeting",
   "nurture",
+  "paused",
+  "stopped",
   "closed",
 ]);
 export const leadSourceEnum = pgEnum("lead_source", ["form", "csv", "linkedin", "crm", "event"]);
@@ -169,6 +184,8 @@ export const leads = pgTable(
       .references(() => workspaces.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     company: text("company").notNull().default(""),
+    /** Job title. The leads table shows it and derives a "Title: …" tag from it. */
+    title: text("title").notNull().default(""),
     phone: text("phone"),
     email: text("email"),
     stage: leadStageEnum("stage").notNull().default("reaching"),
