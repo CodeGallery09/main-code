@@ -330,6 +330,14 @@ npm run dev
 Without `DATABASE_URL` the app falls back to `MemoryRepository` and the single demo account, so a
 bare clone still runs — but nothing persists, and the live screens show the in-memory seed.
 
+**Deploys.** `vercel.json` carries one key, `ignoreCommand`: Vercel skips the build unless
+`VERCEL_GIT_COMMIT_REF` is exactly `main` or `dev`, so only those two branches deploy and feature
+branches stay local to development. The exit codes are inverted from the obvious reading — **exit 0
+skips the build, exit 1 (or any non-zero) builds it**. Vercel reads this file from the branch it is
+about to deploy, so a branch cut before this landed still deploys until it picks the file up.
+To deploy another branch, add it to that test rather than editing the dashboard, so the rule stays
+in version control.
+
 ---
 
 ## Maintaining this file
