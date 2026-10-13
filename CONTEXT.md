@@ -272,6 +272,21 @@ namespaces, no parameter properties).
   pills, so change it there only if the ask is to drop the border everywhere, not just the navbar.
 - `toAppLead` (`lib/app/adapt.ts`) must not append a `Title: …` tag the stored tags already
   carry — `LeadsScreen` keys tag chips by text, so a repeat is a duplicate-key React warning.
+- **Marketing typography (akkari.io-inspired pass).** `app/globals.css`'s `@theme inline` now
+  wires `--font-serif` to `var(--font-display)` (Instrument Serif) and `--font-mono` to
+  `var(--font-code)` (JetBrains Mono) — both already loaded in `app/layout.tsx` but previously
+  unused by the marketing site (unlike `app/app.css`, which wired them correctly from the start).
+  `.eyebrow` and `.btn-primary` use the mono face, uppercase; `.display`/`.font-serif` loosened
+  their letter-spacing since a mono-adjacent serif reads cramped at the old system-sans value.
+  `body::before`'s wallpaper is toned down and warmed (lower gradient alpha, cream base) to match;
+  it is still colour, so glass still has something to bend — don't flatten it further.
+- **`.hero-cta-bar`** (`Hero.tsx`, wraps the two hero CTA buttons) is the one deliberately
+  concentrated glass moment on the landing page, added alongside the existing per-surface glass.
+  It is in the glass-skin selector list and `SiteGlass.tsx`'s `LENS_TARGETS`/`SPECULAR_TARGETS`
+  like any other surface (add new glass controls to all three together). Its border-radius is
+  `var(--radius-lg)` below the `sm:` breakpoint and `999px` above it — stacked on mobile, two
+  full-pill buttons inside a 999px capsule pinch at the waist, so the full pill only applies once
+  the row goes horizontal (must track the markup's own `sm:flex-row`).
 
 **Animation**
 - Animate `transform`/`opacity` only. New looping decorations must be added to the
