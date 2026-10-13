@@ -22,7 +22,7 @@ import {
 import { DASHBOARD_NAV, INTEGRATIONS_HREF, SETTINGS_HREF } from "@/lib/nav";
 import { TASKS } from "@/lib/app/inbox";
 import { avatarTint, initials } from "@/lib/app/leads";
-import { useThumb } from "./ui";
+import { Thumb } from "./ui";
 import { UploadLeads } from "./leads/UploadLeads";
 import { segmentSaved } from "@/lib/app/segments";
 
@@ -80,6 +80,7 @@ export function AppShell({ user, children }: { user: { name: string; org: string
         </Link>
 
         <nav className="navlist">
+          <Thumb selector=".navi.on" deps={[pathname]} axis="y" variant="navthumb" />
           {DASHBOARD_NAV.map((item) => {
             const Icon = ICONS[item.icon];
             const badge = BADGES[item.href];
@@ -108,23 +109,26 @@ export function AppShell({ user, children }: { user: { name: string; org: string
 
         <span className="grow" />
 
-        <Link
-          className={"navi" + (isCurrent(INTEGRATIONS_HREF) ? " on" : "")}
-          href={INTEGRATIONS_HREF}
-          aria-current={isCurrent(INTEGRATIONS_HREF) ? "page" : undefined}
-        >
-          <IntegrationsIcon />
-          <span className="lbl">Integrations</span>
-        </Link>
+        <nav className="navlist foot" aria-label="Workspace">
+          <Thumb selector=".navi.on" deps={[pathname]} axis="y" variant="navthumb" />
+          <Link
+            className={"navi" + (isCurrent(INTEGRATIONS_HREF) ? " on" : "")}
+            href={INTEGRATIONS_HREF}
+            aria-current={isCurrent(INTEGRATIONS_HREF) ? "page" : undefined}
+          >
+            <IntegrationsIcon />
+            <span className="lbl">Integrations</span>
+          </Link>
 
-        <Link
-          className={"navi" + (isCurrent(SETTINGS_HREF) ? " on" : "")}
-          href={SETTINGS_HREF}
-          aria-current={isCurrent(SETTINGS_HREF) ? "page" : undefined}
-        >
-          <SettingsIcon />
-          <span className="lbl">Settings</span>
-        </Link>
+          <Link
+            className={"navi" + (isCurrent(SETTINGS_HREF) ? " on" : "")}
+            href={SETTINGS_HREF}
+            aria-current={isCurrent(SETTINGS_HREF) ? "page" : undefined}
+          >
+            <SettingsIcon />
+            <span className="lbl">Settings</span>
+          </Link>
+        </nav>
 
         <div className="me">
           <span className="av" style={{ background: tint, color: ink }}>
@@ -263,17 +267,14 @@ export function Screen({ title, children }: { title: string; children: React.Rea
  */
 function TabBar({ pathname, isCurrent }: { pathname: string; isCurrent: (href: string) => boolean }) {
   const router = useRouter();
-  const ref = useRef<HTMLElement>(null);
-  const thumb = useThumb(ref, "button.on", [pathname]);
   return (
     <nav
       className="tabbar"
       aria-label="Sections"
-      ref={ref}
       // The bar splits evenly across however many sections the nav carries.
       style={{ "--tabs": DASHBOARD_NAV.length } as React.CSSProperties}
     >
-      {thumb && <span className="tabthumb" style={{ transform: `translateX(${thumb.a}px)`, width: thumb.s }} />}
+      <Thumb deps={[pathname]} variant="tabthumb" />
       {DASHBOARD_NAV.map((item) => {
         const Icon = ICONS[item.icon];
         const on = isCurrent(item.href);

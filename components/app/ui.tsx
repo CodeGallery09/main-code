@@ -77,31 +77,93 @@ export function Meter({ value, max, color }: { value: number; max: number; color
 }
 
 /**
- * Tracks the selected child so the segmented control can slide a thumb to it.
- * Measured after layout, and re-measured whenever the deps change.
+ * The sliding glass pill, and the only one in the workspace.
+ *
+ * Every selector that moves a raised white pill to the current choice — the
+ * segmented controls and page tabs, the nav rail, the settings side tabs, the
+ * mobile tab bar — renders this. The variant class only supplies the inset
+ * (how far the pill is held off the track) and the corner radius; the material
+ * itself comes from one `--thumb-bg` / `--thumb-sh` pair in `app.css`, so
+ * re-tuning the pill anywhere re-tunes it everywhere.
+ *
+ * It is a sibling of the buttons rather than a background on the selected one,
+ * which is what lets it travel: only its transform changes between selections,
+ * so the browser animates one element instead of cross-fading two.
+ *
+ * It measures from its own parent rather than a ref passed down. React attaches
+ * a parent's ref *after* its children's layout effects run, so a thumb handed
+ * its track's ref measured nothing on the first pass and never appeared; its
+ * own `parentElement` is already there.
  */
-export function useThumb(
-  ref: React.RefObject<HTMLElement | null>,
-  selector: string,
-  deps: unknown[],
-  axis: "x" | "y" = "x",
-) {
+export function Thumb({
+  selector = "button.on",
+  deps,
+  axis = "x",
+  variant = "thumb",
+  inset = 0,
+}: {
+  /** What to measure inside the track. */
+  selector?: string;
+  deps: unknown[];
+  axis?: "x" | "y";
+  /** Which inset/radius variant to wear: thumb | tabthumb | navthumb | vthumb. */
+  variant?: "thumb" | "tabthumb" | "navthumb" | "vthumb";
+  /** Pulls the pill back by the track's own padding. */
+  inset?: number;
+}) {
+  const self = useRef<HTMLSpanElement>(null);
   const [box, setBox] = useState<{ a: number; s: number } | null>(null);
+  // The first measurement places the pill; it must not glide in from zero.
+  const [ready, setReady] = useState(false);
+
   useLayoutEffect(() => {
-    const root = ref.current;
-    if (!root) return;
+    const track = self.current?.parentElement;
+    if (!track) return;
+    let frame = 0;
     const measure = () => {
-      const el = root.querySelector<HTMLElement>(selector);
+      const el = track.querySelector<HTMLElement>(selector);
       if (!el) return setBox(null);
-      setBox(axis === "x" ? { a: el.offsetLeft, s: el.offsetWidth } : { a: el.offsetTop, s: el.offsetHeight });
+      // Measured against the track's own box rather than `offsetTop`/`offsetLeft`:
+      // some rows sit inside a positioned wrapper (the Leads dropdown), which
+      // would otherwise be the offset parent and report zero.
+      const a = el.getBoundingClientRect();
+      const b = track.getBoundingClientRect();
+      setBox(
+        axis === "x"
+          ? { a: a.left - b.left + track.scrollLeft, s: a.width }
+          : { a: a.top - b.top + track.scrollTop, s: a.height },
+      );
+      frame = requestAnimationFrame(() => setReady(true));
     };
     measure();
     const observer = new ResizeObserver(measure);
-    observer.observe(root);
-    return () => observer.disconnect();
+    observer.observe(track);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
-  return box;
+
+  // Always mounted, so the pill glides between selections instead of
+  // re-appearing; it is simply invisible until there is something to sit under.
+  return (
+    <span
+      ref={self}
+      className={variant}
+      aria-hidden="true"
+      style={
+        box
+          ? {
+              ...(axis === "x"
+                ? { transform: `translateX(${box.a - inset}px)`, width: box.s }
+                : { transform: `translateY(${box.a - inset}px)`, height: box.s }),
+              ...(ready ? null : { transition: "none" }),
+            }
+          : { opacity: 0 }
+      }
+    />
+  );
 }
 
 export type SegItem<T extends string> = [value: T, label: string, count?: number | null];
@@ -118,11 +180,9 @@ export function Segmented<T extends string>({
   items: SegItem<T>[];
   className?: string;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const thumb = useThumb(ref, "button.on", [value, items.map((i) => i.join()).join()]);
   return (
-    <div className={"seg" + (className ? " " + className : "")} role="tablist" ref={ref}>
-      {thumb && <span className="thumb" style={{ transform: `translateX(${thumb.a - 3}px)`, width: thumb.s }} />}
+    <div className={"seg" + (className ? " " + className : "")} role="tablist">
+      <Thumb deps={[value, items.map((i) => i.join()).join()]} inset={3} />
       {items.map(([v, label, count]) => (
         <button
           key={v}
@@ -154,11 +214,9 @@ export function SideTabs<T extends string>({
   onChange: (next: T) => void;
   items: [T, string][];
 }) {
-  const ref = useRef<HTMLElement>(null);
-  const thumb = useThumb(ref, "button.on", [value], "y");
   return (
-    <nav className="setnav pane" ref={ref}>
-      {thumb && <span className="vthumb" style={{ transform: `translateY(${thumb.a}px)`, height: thumb.s }} />}
+    <nav className="setnav pane">
+      <Thumb deps={[value]} axis="y" variant="vthumb" />
       {items.map(([v, label]) => (
         <button key={v} className={value === v ? "on" : ""} onClick={() => onChange(v)}>
           {label}
