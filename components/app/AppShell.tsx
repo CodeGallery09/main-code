@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Glass from "./Glass";
 import {
   AnalyticsIcon,
@@ -20,6 +21,8 @@ import { DASHBOARD_NAV, SETTINGS_HREF } from "@/lib/nav";
 import { TASKS } from "@/lib/app/inbox";
 import { avatarTint, initials } from "@/lib/app/leads";
 import { useThumb } from "./ui";
+import { UploadLeads } from "./leads/UploadLeads";
+import { segmentSaved } from "@/lib/app/segments";
 
 const ICONS = {
   home: HomeIcon,
@@ -38,6 +41,7 @@ const BADGES: Record<string, number> = {
 export function AppShell({ user, children }: { user: { name: string; org: string }; children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [tint, ink] = avatarTint(user.name);
 
   // The deepest matching route wins, so /dashboard only lights up on Home itself.
@@ -76,9 +80,8 @@ export function AppShell({ user, children }: { user: { name: string; org: string
           {DASHBOARD_NAV.map((item) => {
             const Icon = ICONS[item.icon];
             const badge = BADGES[item.href];
-            return (
+            const link = (
               <Link
-                key={item.href}
                 className={"navi" + (isCurrent(item.href) ? " on" : "")}
                 href={item.href}
                 aria-current={isCurrent(item.href) ? "page" : undefined}
@@ -88,6 +91,15 @@ export function AppShell({ user, children }: { user: { name: string; org: string
                 {badge ? <span className="bdg">{badge}</span> : null}
               </Link>
             );
+            // Leads carries a dropdown; hovering or focusing it opens straight away.
+            if (item.icon === "leads") {
+              return (
+                <LeadsNav key={item.href} href={item.href} onUpload={() => setUploading(true)}>
+                  {link}
+                </LeadsNav>
+              );
+            }
+            return <div key={item.href}>{link}</div>;
           })}
         </nav>
 
@@ -111,7 +123,82 @@ export function AppShell({ user, children }: { user: { name: string; org: string
 
       {children}
 
+      {uploading && (
+        <UploadLeads
+          onClose={() => setUploading(false)}
+          onSaved={(segment) => segmentSaved(segment)}
+        />
+      )}
+
       <TabBar pathname={pathname} isCurrent={isCurrent} />
+    </div>
+  );
+}
+
+/**
+ * The Leads row and its dropdown, which opens the moment the row is hovered or
+ * focused. The menu is rendered into the document body rather than the rail:
+ * the rail scrolls and sits in its own stacking context, so a menu inside it is
+ * both clipped and painted under the page.
+ */
+function LeadsNav({ href, onUpload, children }: { href: string; onUpload: () => void; children: React.ReactNode }) {
+  const row = useRef<HTMLDivElement>(null);
+  const shut = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  const open = () => {
+    if (shut.current) clearTimeout(shut.current);
+    const box = row.current?.getBoundingClientRect();
+    if (box) setAt({ top: box.top - 6, left: box.right - 6 });
+  };
+  // A moment's grace, so the pointer can travel from the row to the menu.
+  const close = () => {
+    if (shut.current) clearTimeout(shut.current);
+    shut.current = setTimeout(() => setAt(null), 160);
+  };
+
+  const menu = at && (
+    <div
+      className="qmenu navmenu"
+      role="menu"
+      aria-label="Leads"
+      style={{ top: at.top, left: at.left }}
+      onMouseEnter={open}
+      onMouseLeave={close}
+    >
+      <Link className="navmi" role="menuitem" href={href} onClick={() => setAt(null)}>
+        All leads
+      </Link>
+      <button
+        className="navmi"
+        role="menuitem"
+        onClick={() => {
+          setAt(null);
+          onUpload();
+        }}
+      >
+        Upload leads
+      </button>
+    </div>
+  );
+
+  return (
+    <div
+      className="navhas"
+      ref={row}
+      onMouseEnter={open}
+      onMouseLeave={close}
+      onFocus={open}
+      onBlur={close}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") setAt(null);
+      }}
+    >
+      {children}
+      {mounted && menu ? createPortal(menu, document.body) : null}
     </div>
   );
 }

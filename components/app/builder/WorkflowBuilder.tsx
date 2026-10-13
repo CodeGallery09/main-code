@@ -9,6 +9,7 @@ import { StepChip } from "./StepCard";
 import { CHANNEL } from "@/lib/app/channels";
 import {
   LISTS,
+  type AudienceList,
   NODE_W,
   PALETTE,
   STEPS,
@@ -27,8 +28,25 @@ import {
   type StepNode,
   type Workflow,
 } from "@/lib/app/workflow";
+import { api } from "@/lib/api";
+import { onSegmentSaved } from "@/lib/app/segments";
+import type { Segment } from "@/lib/leads/segments";
 
 const CAMPAIGNS_HREF = "/dashboard/campaigns";
+
+/**
+ * A saved segment as an audience: its size is the reachable count the upload
+ * summary reported, and each channel keeps the column it was mapped to.
+ */
+function asAudience(segment: Segment): AudienceList {
+  const reach: AudienceList["reach"] = {};
+  const columns: AudienceList["columns"] = {};
+  for (const channel of segment.channels) {
+    reach[channel.attribute] = channel.reachable;
+    if (channel.column) columns[channel.attribute] = channel.column;
+  }
+  return { k: segment.id, name: segment.name, n: segment.reachableRows, src: "Uploaded file", reach, columns };
+}
 
 const STATUS_TAG = {
   live: ["pos", "Live"],
@@ -73,6 +91,24 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
   useEffect(() => reserveIds(workflow.nodes), [workflow]);
 
   const channelOff = useCallback((ch: StepChannel) => channelsOff.includes(ch), [channelsOff]);
+
+  /**
+   * Audiences the first step can start from: segments uploaded from a file,
+   * then the demo lists. A segment's size is its reachable count, not its row
+   * count, and it carries the column each channel reads.
+   */
+  const [uploaded, setUploaded] = useState<AudienceList[]>([]);
+  const loadSegments = useCallback(() => {
+    api
+      .segments()
+      .then(({ segments }) => setUploaded(segments.map(asAudience)))
+      .catch(() => setUploaded([]));
+  }, []);
+  useEffect(() => {
+    loadSegments();
+    return onSegmentSaved(() => loadSegments());
+  }, [loadSegments]);
+  const lists = useMemo(() => [...uploaded, ...LISTS], [uploaded]);
 
   const toast = useCallback((text: string, undo?: () => void) => {
     const id = Date.now() + Math.random();
@@ -159,8 +195,8 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
   );
 
   const stats = useMemo(
-    () => (meta.status === "draft" ? {} : stepStats(nodes, edges)),
-    [nodes, edges, meta.status],
+    () => (meta.status === "draft" ? {} : stepStats(nodes, edges, lists)),
+    [nodes, edges, meta.status, lists],
   );
 
   const allowed = (kind: StepKind) => {
@@ -311,7 +347,7 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
   const step = panel?.type === "node" ? nodes.find((n) => n.id === panel.id) : null;
   const [tone, label] = STATUS_TAG[meta.status];
   const audience = nodes.find((n) => n.kind === "audience");
-  const list = audience && LISTS.find((l) => l.k === audience.data.list);
+  const list = audience && lists.find((l) => l.k === audience.data.list);
 
   return (
     <div className="builder">
@@ -412,6 +448,8 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
             selected={selected}
             issues={shown}
             stats={stats}
+            lists={lists}
+            audienceKey={audience ? audience.data.list : undefined}
             fitKey={fitKey}
             onSelect={(id) => {
               setSelected(id);
@@ -463,6 +501,8 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
           <Inspector
             node={step}
             issue={issues[step.id]}
+            lists={lists}
+            audienceKey={audience ? audience.data.list : undefined}
             onChange={(patch) => patchStep(step.id, patch)}
             onClose={() => setPanel(null)}
             onDelete={() => removeStep(step.id)}
