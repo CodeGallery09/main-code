@@ -1621,3 +1621,377 @@ html, body { background:#fafafa }
 .tbl.leads .c-act .fu { flex-direction:column;align-items:flex-end;gap:2px }
 .tbl.leads .c-act .sortb { padding:2px 4px;font-size:11.5px;line-height:1.35 }
 @media(max-width:820px) { .tbl.leads .c-act { display:none } }
+
+/* ---------------------------------------------------------------------------
+   Configuration screen (/dashboard/configuration).
+
+   Two blocks. First the `.cf-*` material, lifted from the configuration design
+   reference the user supplied so the screen matches it exactly — it is built on
+   the same tokens as the rest of this stylesheet, so it needs nothing new. Then
+   the `.cfg` scope, which is the only thing that differs from the reference.
+
+   Every selector here is new; nothing above is touched. The sequence editor
+   rules (`.cf-steps`, `.cf-pv*`, `.cf-phone*`, `.cf-ab`, `.cf-tok` …) are kept
+   with the rest of their block but render nothing yet — opening a sequence to
+   edit its steps is a later pass, the same arrangement as the `.react-flow__*`
+   rules above.
+   --------------------------------------------------------------------------- */
+
+.cf { display:grid;grid-template-columns:236px minmax(0,1fr);gap:var(--g);align-items:start }
+.cf-nav { position:sticky;top:6px;padding:8px;display:grid;gap:2px;overflow:visible }
+.cf-grp { padding:14px 10px 4px }
+.cf-ni { display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:12px;font-size:13.5px;color:var(--ink-2);font-weight:500;text-align:left;width:100%;transition:background .2s,box-shadow .25s }
+.cf-ni:hover { background:var(--track) }
+.cf-ni.on { background:var(--thumb-bg);box-shadow:var(--thumb-sh);color:var(--ink) }
+.cf-ni .cdot { margin:0 }
+.cf-sp { width:7px;height:7px;flex:none }
+.cf-warn { width:7px;height:7px;border-radius:50%;background:#c2552b;margin-left:auto;flex:none }
+.cf-navon .bdg { background:#c2552b }
+.cf-main { min-width:0;display:grid;gap:var(--g) }
+.cf-head>div { display:flex;align-items:center;gap:16px;flex-wrap:wrap }
+.cf-head h2 { font-family:var(--serif);font-weight:400;font-size:30px;line-height:1;letter-spacing:-.01em }
+.cf-tabs { margin:0!important }
+.cf-stack { display:grid;gap:var(--g);min-width:0 }
+.cf-sub { display:block;color:var(--muted);font-size:12.5px;font-weight:400;margin-top:2px }
+.cf-body { padding:6px 18px 16px }
+.cf-row { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:13px 0;border-top:1px solid rgba(17,19,22,.06) }
+.cf-body>.cf-row:first-child,.cf-body>.cf-issues+.cf-row { border-top:0 }
+.cf-rl b { font-size:13.5px;font-weight:600;display:flex;gap:6px;align-items:center }
+.cf-rl small { display:block;color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.4;max-width:560px }
+.cf-lock { display:inline-grid;color:var(--muted) }
+.cf-lock .i { width:12px;height:12px }
+.cf-rc { display:flex;justify-content:flex-end;align-items:center;min-width:0 }
+.cf-limit { display:grid;grid-template-columns:auto 150px;grid-template-areas:"st me" "st sm";gap:5px 14px;align-items:center }
+.cf-limit>.stepper,.cf-limit>.num { grid-area:st }
+.cf-limit .cf-meter { grid-area:me }
+.cf-limit small { grid-area:sm;font-size:11.5px }
+.cf-meter { position:relative;height:6px;border-radius:99px;background:#11131612 }
+.cf-meter i { display:block;height:100%;border-radius:inherit;background:#111316;transition:width .4s var(--spring) }
+.cf-meter i.over { background:#c2552b }
+.cf-meter b { position:absolute;top:-3px;width:2px;height:12px;margin-left:-1px;background:#11131659;border-radius:2px }
+.cf-bad { color:#b4441e!important }
+.cf-in { width:260px }
+.cf-in.wide { width:400px;max-width:100% }
+.cf-in.sm { width:120px }
+.cf-saved { display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);white-space:nowrap }
+.cf-saved .i { width:14px;height:14px }
+.cf-saved.on { color:#2f6b4f }
+.cf-find { position:relative }
+.cf-find .search { cursor:text }
+.cf-find .search input { border:0;background:transparent;outline:0;font:inherit;color:var(--ink);width:100%;min-width:0 }
+.cf-findpop { position:absolute!important;inset:46px 0 auto auto!important;width:330px;padding:6px;z-index:60;display:grid;gap:1px;max-height:none }
+.cf-findpop button { display:grid;gap:1px;text-align:left;padding:8px 10px;border-radius:10px;font-size:13.5px }
+.cf-findpop button:hover { background:var(--track) }
+.cf-findpop small { color:var(--muted);font-size:12px }
+.cf-health { display:grid;grid-template-columns:300px minmax(0,1fr) }
+.cf-hl { padding:22px;border-right:1px solid rgba(17,19,22,.06);display:grid;gap:12px;align-content:start }
+.cf-score { display:flex;align-items:baseline;gap:8px }
+.cf-score b { font-family:var(--serif);font-weight:400;font-size:60px;line-height:.9 }
+.cf-score span { color:var(--muted);font-size:13.5px }
+.cf-bar { height:8px;border-radius:99px;background:#11131612;overflow:hidden }
+.cf-bar i { display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#3e7e5f,#2a8c6c);transition:width .6s var(--spring) }
+.cf-checks { list-style:none;margin:0;padding:8px 12px }
+.cf-checks li { display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 8px;border-bottom:1px solid rgba(17,19,22,.06) }
+.cf-checks li:last-child { border-bottom:0 }
+.cf-dot { width:9px;height:9px;border-radius:50% }
+.cf-checks li.bad .cf-dot { background:#c2552b;box-shadow:0 0 0 4px #c2552b1f }
+.cf-checks li.info .cf-dot { background:#b5841a }
+.cf-checks li.ok .i { color:#2a8c6c;width:15px;height:15px }
+.cf-checks li.ok { grid-template-columns:auto minmax(0,1fr) }
+.cf-checks b { font-size:13.5px;font-weight:600;display:block }
+.cf-checks small { color:var(--muted);font-size:12.5px;line-height:1.4 }
+.cf-checks li.more { grid-template-columns:1fr;padding:10px 8px }
+.cf-chgrid { display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--g) }
+.cf-ch { display:grid;gap:14px;padding:16px;text-align:left;align-content:start }
+.cf-ch b { font-size:14px;font-weight:600 }
+.cf-ch .tag { font-size:11px;height:20px;padding:0 7px }
+.cf-chs { display:grid;gap:4px;font-size:12.5px;color:var(--ink-2) }
+.cf-g2 { gap:var(--g)!important;align-items:start }
+.cf-sum { display:flex;justify-content:space-between;gap:12px;width:100%;padding:11px 0;border-top:1px solid rgba(17,19,22,.06);font-size:13.5px;text-align:left }
+.cf-body>.cf-sum:first-child { border-top:0 }
+.cf-sum:hover { color:var(--ink) }
+.cf-sum .muted { text-align:right }
+.cf-lh { gap:14px;flex-wrap:wrap }
+.cf-tbl td { vertical-align:middle }
+.cf-ell { display:block;max-width:440px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.mono { font-family:var(--mono);font-size:12.5px }
+.cf-vhead { display:flex;align-items:center;gap:10px;flex-wrap:wrap }
+.cf-vname { font-family:var(--serif);font-size:25px;line-height:1.2;border:0;background:transparent;padding:2px 8px;border-radius:10px;min-width:0;max-width:100%;color:var(--ink) }
+.cf-vname.mono { font-family:var(--mono);font-size:17px }
+.cf-vname:hover { background:var(--track) }
+.cf-vname:focus { outline:0;background:#fff;box-shadow:var(--thumb-sh) }
+.cf-state { font-size:12.5px;color:var(--muted) }
+.cf-state.dirty { color:#a26b12 }
+.cf-banner { display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:14px;background:#1113160d;font-size:13px;flex-wrap:wrap }
+.cf-banner .sp { flex:1 }
+.cf-issues { display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:14px;background:#fbede7;color:#9a3a19;font-size:13px;line-height:1.4 }
+.cf-issues .i { width:15px;height:15px;flex:none }
+.cf-issues.soft { background:#fbf3e4;color:#8a5a1f }
+.cf-body>.cf-issues { margin:6px 0 4px }
+.cf-seq { display:grid;grid-template-columns:300px minmax(0,1fr);gap:var(--g);align-items:start }
+.cf-seq.wa { grid-template-columns:minmax(0,1fr) 340px }
+.cf-steps { position:sticky;top:6px }
+.cf-steps ol { list-style:none;margin:0;padding:8px }
+.cf-steps li { display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px;border-radius:14px;cursor:pointer;position:relative;transition:background .2s,box-shadow .25s }
+.cf-steps li:not(:last-child):after { content:"";position:absolute;left:21px;top:36px;bottom:-12px;width:1.5px;background:#1113161f }
+.cf-steps li:hover { background:var(--track) }
+.cf-steps li.on { background:var(--thumb-bg);box-shadow:var(--thumb-sh) }
+.cf-sn { width:24px;height:24px;border-radius:50%;background:#111316;color:#fff;font-size:11.5px;font-weight:600;display:grid;place-items:center;position:relative;z-index:1 }
+.cf-sm b { font-size:13px;font-weight:600;display:flex;gap:6px;align-items:center }
+.cf-sm b .tag { height:18px;font-size:10.5px;padding:0 6px }
+.cf-sm small { color:var(--muted);font-size:12px }
+.cf-sx { display:flex;opacity:0;transition:opacity .15s }
+.cf-steps li:hover .cf-sx,.cf-steps li.on .cf-sx { opacity:1 }
+.ib.xs { width:24px;height:24px;border-radius:7px }
+.ib.xs .i { width:13px;height:13px }
+.cf-add { padding:4px 16px 16px }
+.cf-addm { display:grid;gap:2px;padding:6px;border-radius:14px;background:#11131608 }
+.cf-addm .pi { justify-content:flex-start;height:34px;padding:0 10px;border-radius:10px;font-size:13px;display:flex;align-items:center }
+.cf-ed .card-h { gap:10px }
+.cf-timing { display:grid;grid-template-columns:auto 220px auto;gap:16px;align-items:end;padding:6px 0 16px;border-bottom:1px solid rgba(17,19,22,.06);margin-bottom:16px }
+.cf-timing .fld { margin:0!important }
+.cf-timing>small { grid-column:1/-1 }
+.cf-biz { gap:8px;font-size:13px;align-items:center;display:flex;flex-wrap:wrap }
+.cf-split { display:grid;gap:8px;padding:12px 14px;border-radius:14px;background:#11131608;margin-bottom:16px }
+.cf-split input[type=range] { accent-color:#111316 }
+.cf-ab { display:flex;flex-wrap:wrap;gap:8px;font-size:12.5px }
+.cf-ab span { padding:5px 11px;border-radius:99px;background:#fff;box-shadow:0 0 0 .5px #1113161a }
+.cf-ab span.win { background:#e4f1ea;color:#2f5d46;box-shadow:none }
+.cf-nocontent { padding:14px;border-radius:14px;background:#11131608;color:var(--ink-2);font-size:13px;line-height:1.5 }
+.cf-body .fld { margin-bottom:14px }
+.cf-prev { display:grid;gap:10px;margin-top:4px }
+.cf-prev .seg { justify-self:end }
+.cf-pv { border-radius:16px;padding:14px 16px;background:#fff;box-shadow:0 0 0 .5px #1113161a,0 10px 24px -18px #11131659;font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word }
+.cf-pv.li { border-top-left-radius:4px;max-width:520px }
+.cf-pvs { font-weight:600;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(17,19,22,.06) }
+.cf-tok { background:#2a8c6c1a;border-radius:4px;padding:0 2px }
+.cf-tok.miss { background:#fbede7;color:#9a3a19 }
+.cf-pvw { display:grid;gap:4px;font-size:12.5px;color:#9a3a19 }
+.cf-tw { display:grid;gap:8px;margin-top:16px;padding-top:16px;border-top:1px solid rgba(17,19,22,.06) }
+.cf-test { display:flex;gap:8px }
+.cf-test .inp { flex:1;min-width:0 }
+.cf-vars .snip { color:#5b3f86 }
+.cf-script { padding:6px 18px 18px;display:grid;gap:14px }
+.cf-script p { margin:5px 0 0;font-size:13.5px;line-height:1.55;white-space:pre-wrap }
+.cf-vmap { display:grid;gap:6px }
+.cf-vm { display:grid;grid-template-columns:52px auto minmax(0,1fr);gap:10px;align-items:center;font-size:13px }
+.cf-btnrow { display:flex;gap:8px;margin-bottom:6px;align-items:center }
+.cf-btnrow .sel { width:150px;flex:none }
+.cf-phonecard { position:sticky;top:6px }
+.cf-phone { margin:6px 16px 16px;padding:18px 14px;border-radius:22px;background:#ece5da;min-height:260px;display:grid;align-content:start;gap:6px }
+.cf-phone.sms { background:#f1f2f4 }
+.cf-wab { background:#fff;border-radius:4px 14px 14px;padding:10px 12px 20px;position:relative;font-size:13.5px;line-height:1.5;max-width:92%;box-shadow:0 1px 1px #00000014 }
+.cf-wab b { display:block;margin-bottom:4px }
+.cf-wab p { margin:0;white-space:pre-wrap;word-break:break-word }
+.cf-wab small { display:block;color:#8a8f96;font-size:11.5px;margin-top:6px }
+.cf-wab time { position:absolute;right:9px;bottom:4px;font-size:10.5px;color:#8a8f96 }
+.cf-waimg { height:110px;border-radius:8px;background:linear-gradient(135deg,#d9dce1,#eef0f2);display:grid;place-items:center;color:#8a8f96;font-size:12px;margin-bottom:8px }
+.cf-wabtn { background:#fff;border-radius:10px;text-align:center;padding:9px;font-size:13px;color:#1f7a5c;font-weight:500;max-width:92%;box-shadow:0 1px 1px #00000014 }
+.cf-dom { display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 0;border-top:1px solid rgba(17,19,22,.06) }
+.cf-body>.cf-dom:first-child { border-top:0 }
+.cf-chips { display:flex;gap:6px;flex-wrap:wrap }
+.cf-tbl.inner { margin:0 -18px;width:calc(100% + 36px) }
+.cf-tbl.inner th:first-child,.cf-tbl.inner td:first-child { padding-left:18px }
+.cf-tbl.inner th:last-child,.cf-tbl.inner td:last-child { padding-right:18px }
+.cf-foot { display:block;padding-top:12px }
+.cf-q { display:flex;align-items:center;gap:3px }
+.cf-q i { width:18px;height:6px;border-radius:3px;background:#2a8c6c }
+.cf-q b { margin-left:8px;font-size:13.5px }
+.cf-sub2 { padding:0 0 12px }
+.cf-out { display:grid;grid-template-columns:210px auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px 0 }
+.cf-kw { display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-end;max-width:440px }
+.cf-kw .tag button { margin-left:4px;color:var(--muted);font-size:14px;line-height:1 }
+.cf-kw .inp { width:130px;height:30px }
+.cf-card .cf-kw { justify-content:flex-start }
+.cf-vrow { display:grid;grid-template-columns:150px 180px minmax(0,1fr) 120px;gap:12px;align-items:center;padding:8px 0;border-top:1px solid rgba(17,19,22,.06);font-size:13.5px }
+.cf-vrow.head { font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);border-top:0 }
+.cf-vrow.snip { grid-template-columns:150px minmax(0,1fr) }
+.inp.warnin { box-shadow:0 0 0 1px #e3b79f,inset 0 1px 2px #1113160d }
+.cf-big b { font-family:var(--serif);font-weight:400;font-size:46px;line-height:1;display:block;margin-bottom:4px }
+.cf-big { margin-bottom:8px }
+.cf-mv { cursor:pointer }
+.cf-r { justify-self:end }
+@media(max-width:1280px) {
+  .cf-chgrid {grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:1180px) {
+  .cf-health {grid-template-columns:minmax(0,1fr)}
+  .cf-hl {border-right:0;border-bottom:1px solid rgba(17,19,22,.06)}
+  .cf-seq,.cf-seq.wa {grid-template-columns:minmax(0,1fr)}
+  .cf-steps,.cf-phonecard {position:static}
+  .cf-vrow {grid-template-columns:130px minmax(0,1fr) 110px}
+  .cf-vrow>:nth-child(2) {display:none}
+}
+@media(max-width:820px) {
+  .cf {grid-template-columns:minmax(0,1fr)}
+  .cf-nav {position:static;display:flex;overflow-x:auto;scrollbar-width:none;gap:2px;padding:4px}
+  .cf-nav::-webkit-scrollbar {display:none}
+  .cf-grp {display:none}
+  .cf-ni {width:auto;flex:none;white-space:nowrap}
+  .cf-row {grid-template-columns:minmax(0,1fr);gap:10px}
+  .cf-rc {justify-content:flex-start}
+  .cf-in,.cf-in.wide {width:100%}
+  .cf-chgrid {grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cf-timing {grid-template-columns:minmax(0,1fr)}
+  .cf-out {grid-template-columns:minmax(0,1fr) auto}
+  .cf-out>.muted {display:none}
+  .cf-out .sel {grid-column:1}
+  .cf-dom {grid-template-columns:minmax(0,1fr)}
+  .cf-saved {display:none}
+  .cf-find .search {width:44px;padding:0;justify-content:center}
+  .cf-find .search input {display:none}
+  .cf-limit {grid-template-columns:auto minmax(0,1fr)}
+}
+.cf-cnt { margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:#111316;color:#fff;font-size:10.5px;font-weight:600;display:inline-grid;place-items:center }
+.cf-vhead { flex-wrap:nowrap }
+.cf-vname { flex:1 1 140px;width:0;text-overflow:ellipsis }
+.cf-vhead>*:not(.cf-vname) { flex:none }
+.cf-vhead .sp { flex:0 0 4px }
+.cf-seq { grid-template-columns:320px minmax(0,1fr) }
+.cf-timing { grid-template-columns:auto minmax(160px,220px) auto }
+.cf-biz { white-space:nowrap }
+.cf-ed,.cf-steps,.cf-phonecard { min-width:0 }
+@media(max-width:1180px) {
+  .cf-seq,.cf-seq.wa {grid-template-columns:minmax(0,1fr)}
+  .cf-steps,.cf-phonecard {position:relative}
+}
+@media(max-width:820px) {
+  .cf-vhead {flex-wrap:wrap}
+  .cf-vname {flex:1 1 100%;order:2;width:auto}
+  .cf-vhead .ib {order:1}
+  .cf-vhead>:not(.ib):not(.cf-vname) {order:3}
+  .cf-timing {grid-template-columns:minmax(0,1fr)}
+  .cf-biz {white-space:normal}
+}
+.cf-main,.cf-stack { grid-template-columns:minmax(0,1fr) }
+@media(max-width:820px) {
+  .cf-vname {width:100%;min-width:0}
+}
+.navi.cf-navon,.navi.cf-navon:hover { background:var(--thumb-bg)!important;box-shadow:var(--thumb-sh)!important;color:var(--ink) }
+.cf { grid-template-columns:minmax(0,1fr)!important }
+.cf-ttabs { position:relative;display:flex;gap:30px;border-bottom:1px solid rgba(17,19,22,.1);overflow-x:auto;scrollbar-width:none;padding:0 2px }
+.cf-ttabs::-webkit-scrollbar { display:none }
+.cf-ttabs button { position:relative;display:inline-flex;align-items:center;gap:7px;height:46px;font-size:14px;font-weight:500;color:var(--muted);white-space:nowrap;background:none;border:0;padding:0;transition:color .2s }
+.cf-ttabs button:hover,.cf-ttabs button.on { color:var(--ink) }
+.cf-ttabs .cf-cnt { margin-left:0 }
+.cf-uline { position:absolute;left:0;bottom:-1px;height:2px;border-radius:2px;background:#111316;transition:transform .5s var(--spring),width .5s var(--spring) }
+.cf-head { margin-top:-2px }
+@media(max-width:820px) {
+  .cf-ttabs {gap:22px}
+  .cf-ttabs button {height:42px;font-size:13.5px}
+}
+.cf-head>.seg { display:inline-flex!important;width:max-content;max-width:100% }
+.cf-cardgrid { display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px }
+.cf-tile { padding:14px 16px 16px;display:grid;gap:10px;align-content:start;text-align:left }
+.cf-tileh { display:flex;align-items:center;gap:8px }
+.cf-tileh .btn,.cf-tileh .tag { flex:none;margin-left:auto }
+.cf-tilename { display:flex;align-items:center;gap:7px;min-width:0;flex:1 1 auto }
+.cf-tilename b { font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.cf-tilename .tag { font-size:10px;height:18px;padding:0 6px;flex:none;margin-left:0 }
+.cf-tilesub { display:block;color:var(--muted);font-size:12px;margin-top:-4px }
+.cf-liprofile { display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;text-decoration:none;margin-top:-4px }
+.cf-liprofile:hover { color:var(--ink);text-decoration:underline }
+.cf-liprofile .cdot { margin:0;width:6px;height:6px }
+.cf-tile .cf-issues.sm { padding:7px 10px;font-size:11.5px;border-radius:10px;gap:6px }
+.cf-tile .cf-issues.sm .i { width:13px;height:13px }
+.cf-tilegrid { display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;padding-top:8px;border-top:1px solid rgba(17,19,22,.06) }
+.cf-tilegrid .cf-span2 { grid-column:1/-1 }
+.cf-list { display:grid;gap:6px;align-content:start }
+.cf-lilabel { display:flex;align-items:baseline;gap:4px;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted) }
+.cf-lilabel small { font-size:9.5px;font-weight:500;text-transform:none;letter-spacing:0 }
+.cf-lilabel .i { width:11px;height:11px;color:var(--muted) }
+.cf-tilenum { font-size:17px;font-weight:600;line-height:1 }
+.cf-limit-c { display:flex;flex-direction:column;gap:6px;width:100% }
+.stepper.xs { align-self:start }
+.stepper.xs button { width:22px;height:22px;font-size:13px }
+.stepper.xs span { min-width:24px;font-size:12px }
+.cf-meter.sm { height:4px }
+.cf-meter.sm b { top:-2px;height:8px;width:1.5px }
+.cf-mbico { width:28px;height:28px;border-radius:9px;background:var(--track);display:grid;place-items:center;flex:none;color:var(--ink-2) }
+.cf-mbico .i { width:14px;height:14px }
+.cf-domname { font-size:14px }
+.cf-seqcards { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--g) }
+.cf-seqcard { display:grid;gap:8px;padding:16px;text-align:left;align-content:start }
+.cf-seqcard b { font-size:14.5px;font-weight:600 }
+.cf-seqmeta { display:flex;gap:14px;font-size:12.5px;color:var(--ink-2);flex-wrap:wrap }
+.cf-seqmeta .r { margin-left:auto;font-weight:600;color:var(--ink) }
+.cf-seqedit { margin-top:2px }
+@media(max-width:1180px) {
+  .cf-seqcards {grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:820px) {
+  .cf-seqcards {grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:540px) {
+  .cf-cardgrid {grid-template-columns:minmax(0,1fr)}
+}
+/* ---------------------------------------------------------------------------
+   The akkari skin, on this screen only.
+
+   The marketing site moved to akkari.io's typographic and colour language (see
+   globals.css): a near-flat #FAFAF8 page, near-black ink, and headlines in a
+   medium-weight monospace face. Configuration wears the same skin so it reads
+   like the home pages, while the rail and the other screens keep the workspace's
+   cream one — the two stylesheets stay separate, and this is one scope inside
+   app.css, not a second theme.
+
+   It is token-only on purpose. `Screen` puts `.cfg` on the scrolling column, so
+   every rule above (cards, tables, tags, the sliding pill, the glass skin) reads
+   the new values without a single override. Moving `.cfg` onto `.app-shell`
+   would take the whole workspace with it.
+   --------------------------------------------------------------------------- */
+
+.cfg {
+  --bg:#FAFAF8;
+  --surface:#fff;
+  --surface-2:#F2F2EF;
+  --surface-3:#EAEAE5;
+  --ink:#0A0A0A;
+  --ink-2:#3F3F46;
+  --muted:#71717A;
+  --line:rgb(10 10 10 / .08);
+  --line-strong:rgb(10 10 10 / .14);
+  --accent:#0A0A0A;
+  --accent-ink:#0A0A0A;
+  --accent-soft:#F1F1F0;
+  /* akkari's headlines are a monospace face at weight 500, not a serif. The
+     licensed faces (Ioskeley, Berkeley Mono) are not ours to ship, so this is
+     the same JetBrains Mono stack globals.css settled on for the marketing
+     site, through the --font-code variable app/layout.tsx puts on <html>. */
+  --serif:var(--font-code),"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  background:var(--bg);
+}
+/* A monospace face already reads bold at 500 and needs none of a serif's
+   negative tracking, so every heading drawn in --serif is re-weighted here. */
+.cfg .top h1, .cfg .cf-head h2, .cfg .cf-score b, .cfg .cf-big b, .cfg .cf-vname { font-weight:500;letter-spacing:-.005em }
+.cfg .top h1 { font-size:25px }
+
+/* The tab strip and the "changes last for this visit" line share one row, and
+   the strip scrolls on its own below the two-column breakpoint. */
+.cf-head { gap:16px;flex-wrap:wrap;align-items:center }
+/* The strip scrolls rather than wraps: the sliding pill travels along one row,
+   so a second row would leave it sitting under the wrong tab. */
+.cf-head .seg.tabs { margin-bottom:0;flex:1 1 420px;min-width:0;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none }
+.cf-head .seg.tabs::-webkit-scrollbar { display:none }
+.cf-main { display:grid;gap:var(--g) }
+/* A sub-tab track is as wide as its own choices, not the column it sits in. */
+.cf-stack>.seg { justify-self:start;max-width:100% }
+/* Snippet bodies are one or two lines, not a paragraph box. */
+.cf-vrow.snip .ta { min-height:58px }
+@media(max-width:820px) {
+  .cf-health { grid-template-columns:minmax(0,1fr) }
+  .cf-hl { border-right:0;border-bottom:1px solid var(--line) }
+  .cf-chgrid { grid-template-columns:repeat(2,minmax(0,1fr)) }
+  .cf-g2, .grid2.cf-g2 { grid-template-columns:minmax(0,1fr) }
+  .cf-vrow, .cf-vrow.head { grid-template-columns:minmax(0,1fr);gap:6px }
+  .cf-vrow.head { display:none }
+  .cf-out { grid-template-columns:minmax(0,1fr);gap:6px }
+  .cf-out span[aria-hidden] { display:none }
+  .cf-row { grid-template-columns:minmax(0,1fr);gap:10px }
+  .cf-rc { justify-content:flex-start }
+  .cf-in, .cf-in.wide { width:100% }
+}
+@media(max-width:560px) {
+  .cf-chgrid { grid-template-columns:minmax(0,1fr) }
+  .cf-tilegrid { grid-template-columns:minmax(0,1fr) }
+}

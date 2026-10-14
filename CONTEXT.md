@@ -4,7 +4,7 @@ Orientation file for agents. Read this first; it replaces grepping the tree.
 **Keep it current:** any change that adds a file, a route, a table or an architectural
 rule must update this file in the same commit. See "Maintaining this file" at the end.
 
-Last updated: 2026-10-13 · ~29k lines of source across 128 files.
+Last updated: 2026-10-14 · ~32k lines of source across 135 files.
 
 ---
 
@@ -145,6 +145,7 @@ upload modal, and `LeadsScreen` renders the segment list above the table.
 | `SettingsScreen.tsx` | 153 | `lib/app/workspace` | no |
 | `WorkflowsScreen.tsx` | 175 | `lib/app/workflowLibrary` | no |
 | `IntegrationsScreen.tsx` | 342 | `lib/app/integrations` | no |
+| `ConfigurationScreen.tsx` + `configuration/` | 1628 | `lib/app/configuration` | no |
 | `ui.tsx` `charts.tsx` `icons.tsx` | 628 | — | shared controls, SVG charts, 24px icons |
 | `Glass.tsx` `glass.ts` | 285 | — | refraction + specular runtime |
 
@@ -165,9 +166,27 @@ A multichannel campaign *is* a workflow (same numeric id). `/dashboard/integrati
 (`IntegrationsScreen`, `lib/app/integrations.ts`): only LinkedIn and email can connect; every
 other provider is `state: "planned"` with a disabled primary button.
 
-### Legacy demo data — `lib/app/` (1833L, hardcoded)
+### Configuration — `/dashboard/configuration`
+`ConfigurationScreen.tsx` + `components/app/configuration/` (`Overview`, `ChannelTabs`,
+`RuleTabs`, `parts`), reading `lib/app/configuration.ts`. Nine tabs: an overview of the setup
+checks that are failing, one per channel (LinkedIn, Email, WhatsApp, Calls, SMS), then
+Variables, Sending rules and Compliance. Reached from the rail's **foot group**, with
+Integrations and Settings — it is workspace-level setup, not a working screen, so it stays out
+of `DASHBOARD_NAV` and off the mobile tab bar. `CONFIGURATION_HREF` is in `lib/nav.ts`.
+
+Three things to know before changing it:
+- **Edits are in-component only.** Every switch, stepper and field holds state for the length of
+  the visit; there is no configuration store or route behind it. Each tab carries the
+  `<DemoNote>` saying so, and the figures are sample data, not measurements (§6).
+- **WhatsApp, Calls and SMS carry `<PlannedNote>`** and disable their primary buttons, for the
+  same reason Integrations marks them planned (§6). *Known inconsistency:* `SettingsScreen`
+  still shows those three as "Connected", because `lib/app/workspace.ts` predates the rule.
+- **It wears the akkari skin, nothing else does.** See §5.
+
+
+### Legacy demo data — `lib/app/` (2631L, hardcoded)
 `channels.ts` `leads.ts` `campaigns.ts` `inbox.ts` `workspace.ts` `integrations.ts`
-`workflowLibrary.ts` · `metrics.ts` (241L) is a seeded PRNG walking 180 days, deterministic so
+`configuration.ts` (798L — the Configuration screen's content) `workflowLibrary.ts` · `metrics.ts` (241L) is a seeded PRNG walking 180 days, deterministic so
 the screens still on it agree with each other · **`adapt.ts` (200L) bridges to `lib/data`** and is
 import-free at runtime, so `tests/adapt.test.mjs` pins every channel and stage round-trip.
 
@@ -204,6 +223,8 @@ namespaces, no parameter properties).
 | Add a glass surface | selector list in the glass-skin block at the end of the stylesheet **AND** the lens/specular lists in `glass.ts` / `SiteGlass.tsx`. Miss one → renders flat. |
 | Add a nav item | `lib/nav.ts` (workspace) or `lib/site.ts` (marketing) |
 | Add a builder step kind | `STEPS` + `defaults()` + `stepLabel()` in `lib/app/workflow.ts`; tests pin the five seeded graphs |
+| Add a Configuration setting | the data in `lib/app/configuration.ts`, then the tab in `components/app/configuration/`. Rows are `<Row>`/`<ToggleRowView>` from `parts.tsx` — don't hand-roll one. |
+| Re-skin a single workspace screen | a token-only scope at the end of `app.css` (`.cfg` is the one example) passed as `Screen`'s `className`. Never fork a rule. |
 
 ---
 
@@ -263,6 +284,16 @@ namespaces, no parameter properties).
   on the first pass and never appears. It measures with `getBoundingClientRect()` against the
   track rather than `offsetTop` — the Leads row sits inside the positioned `.navhas` dropdown
   wrapper, which would otherwise be its offset parent and report zero.
+- **The akkari skin is a token scope, not a theme.** `.cfg` at the end of `app.css` flips the
+  colour and font tokens (`#FAFAF8` page, `#0A0A0A` ink, the mono display face) on the
+  Configuration column only, and `Screen` puts it on `.main`. Every rule above reads the new
+  values with no override, so nothing is forked — and moving `.cfg` onto `.app-shell` would take
+  the whole workspace with it. The display face is a monospace stack at **weight 500**: akkari's
+  own headlines render in Ioskeley/Berkeley Mono, which are not ours to ship, so marketing and
+  this scope both fall back to JetBrains Mono (`--font-code`, set on `<html>` in `app/layout.tsx`).
+  A monospace face already reads bold at 500 and needs none of a serif's negative tracking.
+- The Configuration tab strip **scrolls, it does not wrap**: `Thumb` translates along one row, so
+  a second row leaves the pill sitting under the wrong tab.
 - The shared rim (`app.css`'s `:after` pseudo-element with the xor-mask gradient border) is
   deliberately **not** on `.card`, `.side` or `.tabbar` — it read as an unwanted white outline on
   floating cards and the navbar. They keep the `:before` fill/blur, just not that border. Likewise
@@ -317,9 +348,9 @@ namespaces, no parameter properties).
 
 Roughly in the order they should be closed.
 
-1. **Seven screens still read `lib/app/` constants** (Home, Inbox, Analytics, Settings,
-   Workflows, Integrations, AppShell counts) — they render demo data regardless of the database.
-   Leads and Campaigns show the pattern to follow.
+1. **Eight screens still read `lib/app/` constants** (Home, Inbox, Analytics, Settings,
+   Workflows, Integrations, Configuration, AppShell counts) — they render demo data regardless of
+   the database. Leads and Campaigns show the pattern to follow.
 2. **Two data models** bridged by `lib/app/adapt.ts`; converging them removes the adapter and the
    need to add every new field in three places.
 3. **Uploads, segments and lead profiles have no tables.** The upload feature works against the
@@ -328,6 +359,12 @@ Roughly in the order they should be closed.
    the database the way every other table is. Parked uploads are meant to be scratch (the modal
    says so); segments and profiles are not. `lib/leads/merge.ts` defines what the schema needs.
 4. **Workflow builder does not persist.** The `workflows` table is ready and unused.
+4b. **Configuration does not persist either, and has no sequence editor.** Every control holds
+   state for the visit. The design reference also opens a sequence/script into a step editor
+   (step list, A/B variants, traffic split, token palette, live preview, send-test); the
+   `.cf-steps` / `.cf-pv*` / `.cf-phone*` / `.cf-ab` / `.cf-tok` rules in `app.css` are the
+   reference's own and are waiting for it. Nothing renders them today, and sequence rows do not
+   open.
 5. **No execution engine.** `workflow_runs` / `step_jobs` are shaped for it; nothing writes them.
    Intended shape: an authenticated `/api/jobs/tick` claiming due rows with
    `FOR UPDATE SKIP LOCKED`, poked by cron (a GitHub Actions schedule is a free MVP scheduler).
