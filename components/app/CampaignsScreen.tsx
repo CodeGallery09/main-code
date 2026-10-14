@@ -228,11 +228,6 @@ export function CampaignsScreen() {
             </option>
           ))}
         </select>
-
-        <span className="sp" />
-        <Link className="btn" href="/dashboard/workflows/new">
-          New workflow
-        </Link>
       </div>
 
       {error && (

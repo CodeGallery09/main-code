@@ -12,6 +12,7 @@
 
 import { useState } from "react";
 import { CHANNEL } from "@/lib/app/channels";
+import { CAMPAIGNS } from "@/lib/app/campaigns";
 import {
   CALLER_IDS,
   CALL_DIALER,
@@ -60,7 +61,7 @@ import {
 
 /* ========== LinkedIn ====================================================== */
 
-export function LinkedInTab() {
+export function LinkedInTab({ scopeCampaignId = null }: { scopeCampaignId?: number | null }) {
   const [sub, setSub] = useState<"accounts" | "sequences">("accounts");
   const rules = useToggles(LINKEDIN_ACCOUNT_RULES);
   const [numbers, setNumbers] = useState(() =>
@@ -82,7 +83,7 @@ export function LinkedInTab() {
         <>
           <div className="cf-cardgrid">
             {LINKEDIN_SEATS.map((seat) => (
-              <Seat key={seat.id} seat={seat} />
+              <Seat key={seat.id} seat={seat} scopeCampaignId={scopeCampaignId} />
             ))}
           </div>
 
@@ -123,7 +124,13 @@ export function LinkedInTab() {
   );
 }
 
-function Seat({ seat }: { seat: (typeof LINKEDIN_SEATS)[number] }) {
+function Seat({
+  seat,
+  scopeCampaignId,
+}: {
+  seat: (typeof LINKEDIN_SEATS)[number];
+  scopeCampaignId: number | null;
+}) {
   const out = seat.state === "signed_out";
   const [limits, setLimits] = useState({
     connections: seat.connections,
@@ -132,6 +139,11 @@ function Seat({ seat }: { seat: (typeof LINKEDIN_SEATS)[number] }) {
   });
   const set = (k: keyof typeof limits) => (v: number) => setLimits((l) => ({ ...l, [k]: v }));
 
+  // A LinkedIn seat is shared: the same person can run more than one campaign at once.
+  const [campaignIds, setCampaignIds] = useState(seat.campaignIds);
+  const addable = CAMPAIGNS.filter((c) => c.channels.includes("li") && !campaignIds.includes(c.id));
+  const inScope = scopeCampaignId != null && campaignIds.includes(scopeCampaignId);
+
   return (
     <section className="card cf-tile">
       <div className="cf-tileh">
@@ -139,6 +151,7 @@ function Seat({ seat }: { seat: (typeof LINKEDIN_SEATS)[number] }) {
         <span className="cf-tilename">
           <b>{seat.name}</b>
           <span className={"tag " + (out ? "alert" : "pos")}>{out ? "Log in again" : "Healthy"}</span>
+          {inScope && <span className="tag acc">Selected campaign</span>}
         </span>
         <button type="button" className={"btn xs " + (out ? "pri" : "ghost")}>
           {out ? "Reconnect" : "Pause"}
@@ -180,6 +193,48 @@ function Seat({ seat }: { seat: (typeof LINKEDIN_SEATS)[number] }) {
           safe={100}
         />
         <TileFigure label="InMail" unit="left" value={seat.inmail ?? "—"} />
+
+        <div className="cf-list cf-span2">
+          <TileLabel label="Used by campaigns" />
+          <div className="cf-chips" style={{ marginTop: 4 }}>
+            {campaignIds.length === 0 && <small className="muted">Not used by any campaign</small>}
+            {campaignIds.map((id) => {
+              const campaign = CAMPAIGNS.find((c) => c.id === id);
+              if (!campaign) return null;
+              return (
+                <button
+                  type="button"
+                  className="tag acc"
+                  key={id}
+                  onClick={() => setCampaignIds((ids) => ids.filter((x) => x !== id))}
+                  aria-label={`Stop using ${seat.name} for ${campaign.name}`}
+                >
+                  {campaign.name}
+                  <Glyph n="x" className="i" />
+                </button>
+              );
+            })}
+          </div>
+          {addable.length > 0 && (
+            <select
+              className="sel"
+              style={{ marginTop: 6 }}
+              value=""
+              aria-label={`Add a campaign to ${seat.name}`}
+              onChange={(e) => {
+                const id = Number(e.target.value);
+                if (id) setCampaignIds((ids) => [...ids, id]);
+              }}
+            >
+              <option value="">Add to a campaign…</option>
+              {addable.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -237,7 +292,7 @@ function SequenceCards({
 
 /* ========== Email ========================================================= */
 
-export function EmailTab() {
+export function EmailTab({ scopeCampaignId = null }: { scopeCampaignId?: number | null }) {
   const [sub, setSub] = useState<"mailboxes" | "sequences" | "tracking">("mailboxes");
 
   return (
@@ -252,7 +307,7 @@ export function EmailTab() {
         ]}
       />
 
-      {sub === "mailboxes" && <Mailboxes />}
+      {sub === "mailboxes" && <Mailboxes scopeCampaignId={scopeCampaignId} />}
       {sub === "sequences" && (
         <SequenceCards channel="Email" sequences={EMAIL_SEQUENCES} metric="reply" />
       )}
@@ -263,13 +318,28 @@ export function EmailTab() {
   );
 }
 
-function Mailboxes() {
+function Mailboxes({ scopeCampaignId }: { scopeCampaignId: number | null }) {
   const [caps, setCaps] = useState(() =>
     Object.fromEntries(MAILBOXES.map((m) => [m.address, m.cap])),
   );
   const [rotate, setRotate] = useState(() =>
     Object.fromEntries(MAILBOXES.map((m) => [m.address, m.rotate])),
   );
+  // Email is exclusive: a mailbox sends for one campaign at a time, so assigning it
+  // elsewhere always frees it from wherever it was.
+  const [assigned, setAssigned] = useState<Record<string, number | null>>(() =>
+    Object.fromEntries(MAILBOXES.map((m) => [m.address, m.campaignId])),
+  );
+  const mailCampaigns = CAMPAIGNS.filter((c) => c.channels.includes("mail"));
+  const assign = (address: string, campaignId: number | null) =>
+    setAssigned((current) => {
+      const next = { ...current };
+      if (campaignId != null) {
+        for (const key of Object.keys(next)) if (next[key] === campaignId) next[key] = null;
+      }
+      next[address] = campaignId;
+      return next;
+    });
 
   return (
     <>
@@ -310,7 +380,7 @@ function Mailboxes() {
 
       <Panel
         title="Mailboxes"
-        sub="Sending is spread across them with rotation on; keep each under 60/day for cold email."
+        sub="Sending is spread across them with rotation on; keep each under 60/day for cold email. Each mailbox sends for one campaign at a time — assigning it elsewhere frees it."
         action={
           <button type="button" className="btn sm line">
             Add mailbox
@@ -329,6 +399,9 @@ function Mailboxes() {
                   <span className={"tag " + (m.state === "warm" ? "pos" : "hl")}>
                     {m.state === "warm" ? "Warm" : "Warming"}
                   </span>
+                  {scopeCampaignId != null && assigned[m.address] === scopeCampaignId && (
+                    <span className="tag acc">Selected campaign</span>
+                  )}
                 </span>
               </div>
               <span className="cf-tilesub">
@@ -356,6 +429,23 @@ function Mailboxes() {
                     label={`Rotate ${m.address}`}
                     onChange={() => setRotate((r) => ({ ...r, [m.address]: !r[m.address] }))}
                   />
+                </div>
+                <div className="cf-list cf-span2">
+                  <TileLabel label="Assigned campaign" />
+                  <select
+                    className="sel"
+                    style={{ marginTop: 4 }}
+                    value={assigned[m.address] ?? ""}
+                    aria-label={`Assign a campaign to ${m.address}`}
+                    onChange={(e) => assign(m.address, e.target.value ? Number(e.target.value) : null)}
+                  >
+                    <option value="">Unassigned</option>
+                    {mailCampaigns.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </article>
