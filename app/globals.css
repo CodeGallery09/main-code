@@ -71,7 +71,10 @@
   --color-alert: var(--alert);
   --color-alert-soft: var(--alert-soft);
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", var(--font-body), system-ui, sans-serif;
-  --font-serif: var(--font-display), "Instrument Serif", -apple-system, BlinkMacSystemFont, "SF Pro Display", var(--font-body), system-ui, sans-serif; /* name kept for the font-serif utility; it is the bold display face */
+  /* akkari's own headlines are set in mono too (confirmed via its rendered font: weight 500,
+     ui-monospace stack) — not a serif. --font-serif keeps its name (other utilities reference it)
+     but now aliases the mono stack; --font-display (Instrument Serif) stays loaded but unused here. */
+  --font-serif: var(--font-code), "JetBrains Mono", -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-body), system-ui, monospace;
   --font-mono: var(--font-code), "JetBrains Mono", -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-body), system-ui, monospace; /* akkari-style mono voice for eyebrows, labels and CTAs */
   --shadow-card: var(--shadow-card);
   --shadow-float: var(--shadow-float);
@@ -99,12 +102,12 @@ body {
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(1000px 760px at 6% -8%, rgb(150 182 255 / 0.28), transparent 68%),
-    radial-gradient(880px 700px at 96% 2%, rgb(206 172 255 / 0.22), transparent 70%),
-    radial-gradient(900px 720px at 84% 70%, rgb(140 224 203 / 0.2), transparent 70%),
-    radial-gradient(820px 680px at 0% 78%, rgb(255 198 160 / 0.26), transparent 70%),
-    radial-gradient(700px 560px at 50% 112%, rgb(168 196 255 / 0.22), transparent 70%),
-    linear-gradient(180deg, #faf8f3, #f1ede2);
+    radial-gradient(1000px 760px at 6% -8%, rgb(150 182 255 / 0.16), transparent 68%),
+    radial-gradient(880px 700px at 96% 2%, rgb(206 172 255 / 0.13), transparent 70%),
+    radial-gradient(900px 720px at 84% 70%, rgb(140 224 203 / 0.11), transparent 70%),
+    radial-gradient(820px 680px at 0% 78%, rgb(255 198 160 / 0.15), transparent 70%),
+    radial-gradient(700px 560px at 50% 112%, rgb(168 196 255 / 0.13), transparent 70%),
+    linear-gradient(180deg, #f8f7f3, #f3f1e9);
 }
 
 ::selection {
@@ -141,17 +144,16 @@ body::before {
 
 .display {
   font-family: var(--font-serif);
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   line-height: 1.02;
   text-wrap: balance;
 }
 .display em { font-style: normal; color: var(--muted); }
 
-/* The display face (font-serif) is always bold; utilities can still override.
-   Letter-spacing is looser than the old system-sans value: a mono-adjacent
-   serif reads cramped at -0.04em. */
-.font-serif { font-weight: 700; letter-spacing: -0.015em; }
+/* The display face (font-serif) is medium-weight mono, like akkari's own headlines — a monospace
+   face already reads bold at weight 500, and needs none of a serif's negative tracking. */
+.font-serif { font-weight: 500; letter-spacing: -0.005em; }
 .font-mono { font-weight: 500; font-variant-numeric: tabular-nums; }
 
 /* Liquid glass panes. The material itself lives in the glass skin at the end of
