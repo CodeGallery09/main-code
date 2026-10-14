@@ -40,7 +40,10 @@ These are the only genuinely confusing things in the codebase. Everything else i
 ### 2a. Two stylesheets, deliberately separate
 `globals.css` (marketing) and `app.css` (workspace) are **not** shared. A redesign that put the
 landing page on `app.css` was rolled back. `app.css` is imported by `app/dashboard/layout.tsx`
-only. Both implement an iOS "liquid glass" look through different means.
+only. The marketing site still implements an iOS "liquid glass" look (`globals.css` +
+`SiteGlass.tsx`). **The workspace does not any more**: a later pass flattened every dashboard
+surface to opaque `var(--surface)` panels on a flat `#FAFAF8` background — see §5, "Workspace is
+flat, not glass."
 
 ### 2b. Two data models, bridged by an adapter
 This is the big one.
@@ -147,7 +150,7 @@ upload modal, and `LeadsScreen` renders the segment list above the table.
 | `IntegrationsScreen.tsx` | 342 | `lib/app/integrations` | no |
 | `ConfigurationScreen.tsx` + `configuration/` | 1805 | `lib/app/configuration`, `lib/app/campaigns` | no |
 | `ui.tsx` `charts.tsx` `icons.tsx` | 628 | — | shared controls, SVG charts, 24px icons |
-| `Glass.tsx` `glass.ts` | 285 | — | refraction + specular runtime |
+| `glass.ts` | ~230 | — | refraction + specular runtime, **marketing-only now** (see §5) |
 
 ### Workflow builder — `components/app/builder/` (1719L)
 `WorkflowBuilder.tsx` owns state (nodes, edges, undo/redo, toasts) · `Canvas.tsx` is the
@@ -166,6 +169,14 @@ A multichannel campaign *is* a workflow (same numeric id) **in the demo data lay
 the id-mismatch gap in §7. `/dashboard/integrations` (`IntegrationsScreen`,
 `lib/app/integrations.ts`): only LinkedIn and email can connect; every other provider is
 `state: "planned"` with a disabled primary button.
+
+**Workflows are campaign-scoped, with a jump dropdown everywhere a workflow is shown.**
+`WorkflowsScreen.tsx`'s header and `WorkflowBuilder.tsx`'s toolbar (`.bh`) both carry a
+`<select>` of `CAMPAIGNS.filter(c => c.type === "multi")` (same filter in both, kept local to
+each file rather than shared, since it's one line) that routes to `/dashboard/workflows/<id>` on
+change — the same pattern as Configuration's campaign picker (above). The builder's select is
+keyed by `workflow.id`; a draft not yet in `CAMPAIGNS` (new/unsaved) gets a synthetic option so
+the control never shows empty.
 
 **Campaign creation has one entry point.** `CampaignsScreen`'s "Create campaign" button (opening
 `CampaignEditor`) is now the only way in: the sidebar used to carry a second "New campaign" button
@@ -190,7 +201,8 @@ Three things to know before changing it:
 - **WhatsApp, Calls and SMS carry `<PlannedNote>`** and disable their primary buttons, for the
   same reason Integrations marks them planned (§6). *Known inconsistency:* `SettingsScreen`
   still shows those three as "Connected", because `lib/app/workspace.ts` predates the rule.
-- **It wears the akkari skin, nothing else does.** See §5.
+- **The akkari palette/font used to be scoped to this screen alone** (a `.cfg` class). It is now
+  the whole dashboard's default — see §5, "Workspace is flat, not glass."
 
 **Campaign scoping.** The `cf-head` row carries a campaign picker (`CAMPAIGNS` from
 `lib/app/campaigns.ts`, demo data, same as the Workflows library) alongside the tab strip, so it
@@ -245,12 +257,12 @@ namespaces, no parameter properties).
 | Change the schema | edit `lib/db/schema.ts` → `npm run db:generate` → review the SQL → `npm run db:migrate`. Never hand-write a migration or `db:push`. |
 | Make another screen live | copy the Leads pattern: `api.*` in a `useEffect`, map through `lib/app/adapt.ts`, server-side filters, optimistic writes with rollback |
 | Re-theme marketing | `:root` in `app/globals.css` + `@theme inline`. Grep `rgb(` and `pipSvg.ts` for hardcoded brand colours. |
-| Re-theme workspace | `:root` tokens in `app/app.css`. It is vendored — change tokens, not rules. |
-| Add a glass surface | selector list in the glass-skin block at the end of the stylesheet **AND** the lens/specular lists in `glass.ts` / `SiteGlass.tsx`. Miss one → renders flat. |
+| Re-theme workspace | `:root` tokens in `app/app.css`. It is vendored, multi-pass — change the **final** `:root`/flattening block at the true end of the file, since same-specificity CSS means last-in-source wins over every earlier redeclaration. |
+| Add a glass surface (marketing only) | selector list in `globals.css`'s glass-skin block **AND** `SiteGlass.tsx`'s lens/specular lists. Miss one → renders flat. The workspace has no glass surfaces any more — see §5. |
 | Add a nav item | `lib/nav.ts` (workspace) or `lib/site.ts` (marketing) |
 | Add a builder step kind | `STEPS` + `defaults()` + `stepLabel()` in `lib/app/workflow.ts`; tests pin the five seeded graphs |
 | Add a Configuration setting | the data in `lib/app/configuration.ts`, then the tab in `components/app/configuration/`. Rows are `<Row>`/`<ToggleRowView>` from `parts.tsx` — don't hand-roll one. |
-| Re-skin a single workspace screen | a token-only scope at the end of `app.css` (`.cfg` is the one example) passed as `Screen`'s `className`. Never fork a rule. |
+| Re-skin a single workspace screen | there is no scope mechanism for this any more (the old `.cfg` scope was removed once its palette became the dashboard-wide default — see §5). A screen that must differ needs its own new token scope, the same shape `.cfg` used to be. |
 
 ---
 
@@ -284,51 +296,68 @@ namespaces, no parameter properties).
   beats hydration navigates to `?email=…&password=…` — credentials into the URL bar, history
   and server logs. Found by a browser test clicking before React attached.
 
-**CSS / glass**
+**Workspace is flat, not glass**
+- The dashboard used to carry the same "liquid glass" material as the marketing site (blur,
+  translucent tint, specular rim). It was removed for performance and for a minimalist look, and
+  the fix lives in **one block at the true end of `app.css`**, after everything else — `app.css`
+  is a vendored, multi-pass file (its own header names 8 "layers," but in practice `:root` and the
+  master surface selector get redeclared several times across historical passes), so rather than
+  hunt every scattered `backdrop-filter`/`:root`/gradient declaration, the final block wins by
+  plain CSS cascade order (same specificity, last in source) and is the one place "the look"
+  belongs now. That block: disables `backdrop-filter` everywhere (`*, *::before, *::after`);
+  restores opaque `var(--surface)` + `var(--line)` on the master glass-surface selector list
+  (`.card,.pane,.side,.modal,…`) and `display:none`s its `:before`/`:after` specular/refraction
+  pseudo-elements; flattens `.btn.pri/.acc/.warn`, `.thumb`/`.navthumb`/`.vthumb`/`.tabthumb` and
+  the toggle switch from glossy gradients to solid token fills; sets `html, body` to `#FAFAF8` and
+  hides `.bgfx` (the animated blob wallpaper); and trims `.card`/`.wfc`/`.kpi`/`.cf-tile` padding
+  and radius plus the `--g`/`--pr` spacing tokens for smaller cards and shorter pages. **Add any
+  new dashboard surface's flat styling there, not to the older glass-era blocks above it** — they
+  still exist (harmless, since the final block overrides them) but are not where edits belong.
+- `components/app/glass.ts` (the refraction/specular runtime) **still exists but is no longer
+  mounted on the dashboard** — `components/app/Glass.tsx` (the component that mounted it there)
+  was deleted and `AppShell.tsx` no longer renders it. The module is kept because the marketing
+  site's `SiteGlass.tsx` still imports it; don't delete `glass.ts` itself.
+- The akkari palette/mono-font pair used to be scoped to Configuration alone via a `.cfg` class
+  (`Screen`'s `className`). That scope is gone — its tokens are now set directly in the base
+  `:root` at the top of `app.css` (further overridden by the final flattening block's `--accent`
+  values, same cascade rule as above), so the whole dashboard wears it by default. There is no
+  per-screen scope mechanism left; a screen that must differ needs a new one, shaped like `.cfg`
+  was.
+- `toAppLead` (`lib/app/adapt.ts`) must not append a `Title: …` tag the stored tags already
+  carry — `LeadsScreen` keys tag chips by text, so a repeat is a duplicate-key React warning.
+
+**CSS / glass (marketing site only — `globals.css` + `SiteGlass.tsx`)**
 - Three Chromium rules silently kill `backdrop-filter`, all found by testing the rendered page:
   the element having its own `filter`; sitting inside `isolation: isolate`; or **any** ancestor
   holding a transform — including the identity transform a forwards-filling animation leaves
   behind (hence `.intro-nav` fills `backwards`).
-- The wallpaper (`body::before`, `.app-shell`) is **load-bearing** — glass needs colour behind it
-  to bend. Flatten it and every panel becomes a plain white card.
+- The wallpaper (`body::before` on the marketing pages) is **load-bearing** — glass needs colour
+  behind it to bend. Flatten it and every panel becomes a plain white card. (The dashboard's own
+  wallpaper/glass is gone on purpose — see "Workspace is flat, not glass" above; this rule is
+  marketing-only now.)
 - Shared component classes stay inside `@layer components` so utilities can still override them.
   A rule that must beat the global unlayered `:focus-visible` must itself be unlayered.
 - `--hl` must stay **inheriting** (pseudo-elements and inner pills read the animated value).
 - Grid columns holding wide content need `minmax(0,1fr)` or mobile overflows horizontally.
+
+**Workspace layout (still applies — not glass-related)**
 - The mobile tab bar sizes itself from `--tabs`, set inline by `AppShell` from
   `DASHBOARD_NAV.length`. Add a nav item and it adapts; hardcoding the column count clips the last item.
 - **One sliding pill.** Every selector in the workspace — segmented controls and page tabs, the
   nav rail and its Integrations/Settings foot group, the settings side tabs, the mobile tab bar —
-  renders `Thumb` from `components/app/ui.tsx`, which slides one raised glass pill across a
-  recessed track. The variant class (`.thumb` / `.tabthumb` / `.navthumb` / `.vthumb`) sets only
-  the inset and radius; the material is the single `--thumb-bg` / `--thumb-sh` pair in the
-  consistency block at the end of `app.css`, and `--track` is the recess every pill travels along.
-  The same pair dresses outline buttons, the focused search field and selected sort headers, so
-  **add a new control to that block rather than inventing a third fill**.
+  renders `Thumb` from `components/app/ui.tsx`, which slides one raised pill across a recessed
+  track. The variant class (`.thumb` / `.tabthumb` / `.navthumb` / `.vthumb`) sets only the inset
+  and radius; the material is the single `--thumb-bg` / `--thumb-sh` pair (now flat `var(--surface)`
+  + a hairline, per the final flattening block above, not a glossy gradient), and `--track` is the
+  recess every pill travels along. **Add a new control to that pair rather than inventing a third
+  fill.**
 - `Thumb` measures from its own `parentElement`, not a ref passed in: React attaches a parent's
   ref *after* its children's layout effects run, so a thumb handed its track's ref measures nothing
   on the first pass and never appears. It measures with `getBoundingClientRect()` against the
   track rather than `offsetTop` — the Leads row sits inside the positioned `.navhas` dropdown
   wrapper, which would otherwise be its offset parent and report zero.
-- **The akkari skin is a token scope, not a theme.** `.cfg` at the end of `app.css` flips the
-  colour and font tokens (`#FAFAF8` page, `#0A0A0A` ink, the mono display face) on the
-  Configuration column only, and `Screen` puts it on `.main`. Every rule above reads the new
-  values with no override, so nothing is forked — and moving `.cfg` onto `.app-shell` would take
-  the whole workspace with it. The display face is a monospace stack at **weight 500**: akkari's
-  own headlines render in Ioskeley/Berkeley Mono, which are not ours to ship, so marketing and
-  this scope both fall back to JetBrains Mono (`--font-code`, set on `<html>` in `app/layout.tsx`).
-  A monospace face already reads bold at 500 and needs none of a serif's negative tracking.
 - The Configuration tab strip **scrolls, it does not wrap**: `Thumb` translates along one row, so
   a second row leaves the pill sitting under the wrong tab.
-- The shared rim (`app.css`'s `:after` pseudo-element with the xor-mask gradient border) is
-  deliberately **not** on `.card`, `.side` or `.tabbar` — it read as an unwanted white outline on
-  floating cards and the navbar. They keep the `:before` fill/blur, just not that border. Likewise
-  `.navthumb`/`.tabthumb` (the navbar's own pill, desktop and mobile) drop `--thumb-sh`'s outline
-  and white top stroke, keeping only the lift shadow. Both are scoped overrides in the "one sliding
-  pill" consistency block — `--thumb-sh` itself still carries the border for buttons and other
-  pills, so change it there only if the ask is to drop the border everywhere, not just the navbar.
-- `toAppLead` (`lib/app/adapt.ts`) must not append a `Title: …` tag the stored tags already
-  carry — `LeadsScreen` keys tag chips by text, so a repeat is a duplicate-key React warning.
 - **Marketing typography (akkari.io-inspired pass).** `app/globals.css`'s `@theme inline` wires
   **both** `--font-serif` and `--font-mono` to `var(--font-code)` (JetBrains Mono, already loaded
   in `app/layout.tsx`) — akkari's own headlines render in a monospace face (confirmed via its

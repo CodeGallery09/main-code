@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BackIcon, Glyph, SettingsIcon } from "../icons";
 import { Canvas, type CanvasApi } from "./Canvas";
 import { Inspector, WorkflowSettings } from "./Inspector";
 import { StepChip } from "./StepCard";
 import { CHANNEL } from "@/lib/app/channels";
+import { CAMPAIGNS } from "@/lib/app/campaigns";
 import {
   LISTS,
   type AudienceList,
@@ -33,6 +35,9 @@ import { onSegmentSaved } from "@/lib/app/segments";
 import type { Segment } from "@/lib/leads/segments";
 
 const CAMPAIGNS_HREF = "/dashboard/campaigns";
+
+/** Only a multichannel campaign has a workflow — see `lib/app/campaigns`. */
+const WORKFLOW_CAMPAIGNS = CAMPAIGNS.filter((c) => c.type === "multi");
 
 /**
  * A saved segment as an audience: its size is the reachable count the upload
@@ -66,6 +71,7 @@ type Snapshot = { nodes: StepNode[]; edges: FlowEdge[] };
  * no workflow store behind it yet.
  */
 export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Workflow; channelsOff?: StepChannel[] }) {
+  const router = useRouter();
   const [meta, setMeta] = useState<Workflow>(workflow);
   const [nodes, setNodes] = useState<StepNode[]>(workflow.nodes);
   const [edges, setEdges] = useState<FlowEdge[]>(workflow.edges);
@@ -355,6 +361,21 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
         <Link className="ib" href={CAMPAIGNS_HREF} aria-label="Back to campaigns">
           <BackIcon />
         </Link>
+        <select
+          className="sel pill hide-s"
+          aria-label="Switch campaign"
+          value={workflow.id}
+          onChange={(e) => router.push(`/dashboard/workflows/${e.target.value}`)}
+        >
+          {!WORKFLOW_CAMPAIGNS.some((c) => c.id === workflow.id) && (
+            <option value={workflow.id}>{meta.name}</option>
+          )}
+          {WORKFLOW_CAMPAIGNS.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
         <input
           className="name"
           value={meta.name}

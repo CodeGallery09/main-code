@@ -19,7 +19,12 @@
  * builder. Nothing renders them today; they are kept so the port stays verbatim.
  * ------------------------------------------------------------------------- */
 
-:root { --bg:#F7F1E8;--surface:#FFFBF5;--surface-2:#F1E8DB;--surface-3:#EADFCE;--ink:#2B2118;--ink-2:#4A3E33;--muted:#6F6354;--line:#E6DBCB;--line-strong:#D5C6B0;--accent:#B24E26;--accent-ink:#8A3A19;--accent-soft:#F4DFD2;--hl:#C9922E;--hl-soft:#F5E8C8;--hl-ink:#7A5310;--pos:#4F6B45;--pos-soft:#E3EBDD;--alert:#A93A23;--alert-soft:#F6DED6;--shadow:rgb(20 22 26 / .26);--li:#C2477E;--mail:#C2552B;--wa:#2A8C6C;--call:#B5841A;--sms:#9A5BB5;--font:var(--font-body),"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--mono:var(--font-code),"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;--serif:var(--font-display),"Instrument Serif",Georgia,serif;--ease:cubic-bezier(.22,1,.36,1);--side:228px;--side-c:68px;--top:60px }
+/* Flat, minimal palette — the whole dashboard now wears the Configuration
+   screen's akkari tokens (see the removed .cfg scope below), not just that
+   one screen. Status/semantic and channel-brand colors (hl/pos/alert, li/
+   mail/wa/call/sms) are untouched: those mean something and aren't part of
+   the "accent" re-skin. */
+:root { --bg:#FAFAF8;--surface:#fff;--surface-2:#F2F2EF;--surface-3:#EAEAE5;--ink:#0A0A0A;--ink-2:#3F3F46;--muted:#71717A;--line:rgb(10 10 10 / .08);--line-strong:rgb(10 10 10 / .14);--accent:#0A0A0A;--accent-ink:#0A0A0A;--accent-soft:#F1F1F0;--hl:#C9922E;--hl-soft:#F5E8C8;--hl-ink:#7A5310;--pos:#4F6B45;--pos-soft:#E3EBDD;--alert:#A93A23;--alert-soft:#F6DED6;--shadow:rgb(20 22 26 / .26);--li:#C2477E;--mail:#C2552B;--wa:#2A8C6C;--call:#B5841A;--sms:#9A5BB5;--font:var(--font-body),"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--mono:var(--font-code),"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;--serif:var(--font-code),"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;--ease:cubic-bezier(.22,1,.36,1);--side:228px;--side-c:68px;--top:60px }
 * { box-sizing:border-box;margin:0;padding:0 }
 html, body, #root { height:100% }
 body { background:var(--bg);color:var(--ink);font:400 14px/1.5 var(--font);-webkit-font-smoothing:antialiased;overflow-x:hidden }
@@ -31,7 +36,7 @@ ul, ol { list-style:none }
 .i { width:18px;height:18px;flex-shrink:0 }
 .num { font-variant-numeric:tabular-nums }
 .muted { color:var(--muted) }
-.serif { font-family:var(--serif);font-weight:400;letter-spacing:-.01em }
+.serif { font-family:var(--serif);font-weight:500;letter-spacing:-.005em }
 .eyebrow { font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500 }
 .sr { position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap }
 .app { display:grid;grid-template-columns:var(--side) minmax(0,1fr);height:100vh;transition:grid-template-columns .25s var(--ease) }
@@ -64,7 +69,7 @@ ul, ol { list-style:none }
 .collapsed .new { padding:0;width:44px;margin-inline:auto }
 .main { min-width:0;display:flex;flex-direction:column;height:100vh;overflow:hidden }
 .top { flex-shrink:0;height:var(--top);display:flex;align-items:center;gap:10px;padding:0 24px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 92%,transparent) }
-.top h1 { font-family:var(--serif);font-weight:400;font-size:27px;letter-spacing:-.01em;line-height:1;white-space:nowrap }
+.top h1 { font-family:var(--serif);font-weight:500;font-size:25px;letter-spacing:-.005em;line-height:1;white-space:nowrap }
 .top .mlogo { display:none }
 .top-r { margin-left:auto;display:flex;align-items:center;gap:8px }
 .search { display:flex;align-items:center;gap:9px;height:36px;width:260px;padding:0 6px 0 12px;border:1px solid var(--line-strong);border-radius:999px;background:var(--surface);color:var(--muted);font-size:13.5px;text-align:left;transition:border-color .2s }
@@ -1319,7 +1324,7 @@ body:has(.wizf) .toasts, body:has(.react-flow) .toasts { bottom:92px!important }
   .lfilters .seg { order:3 }
 }
 .wizt.show { display:block!important }
-:root { --g:16px;--pr:22px;--maxw:1360px;--hdr:56px }
+:root { --g:12px;--pr:16px;--maxw:1360px;--hdr:52px }
 html, body { background:#fafafa }
 .app, .app.collapsed { padding:0;gap:0;height:100vh }
 .app { grid-template-columns:calc(var(--side) + var(--g)) minmax(0,1fr) }
@@ -1649,7 +1654,7 @@ html, body { background:#fafafa }
 .cf-navon .bdg { background:#c2552b }
 .cf-main { min-width:0;display:grid;gap:var(--g) }
 .cf-head>div { display:flex;align-items:center;gap:16px;flex-wrap:wrap }
-.cf-head h2 { font-family:var(--serif);font-weight:400;font-size:30px;line-height:1;letter-spacing:-.01em }
+.cf-head h2 { font-family:var(--serif);font-weight:500;font-size:30px;line-height:1;letter-spacing:-.005em }
 .cf-tabs { margin:0!important }
 .cf-stack { display:grid;gap:var(--g);min-width:0 }
 .cf-sub { display:block;color:var(--muted);font-size:12.5px;font-weight:400;margin-top:2px }
@@ -1686,7 +1691,7 @@ html, body { background:#fafafa }
 .cf-health { display:grid;grid-template-columns:300px minmax(0,1fr) }
 .cf-hl { padding:22px;border-right:1px solid rgba(17,19,22,.06);display:grid;gap:12px;align-content:start }
 .cf-score { display:flex;align-items:baseline;gap:8px }
-.cf-score b { font-family:var(--serif);font-weight:400;font-size:60px;line-height:.9 }
+.cf-score b { font-family:var(--serif);font-weight:500;letter-spacing:-.005em;font-size:60px;line-height:.9 }
 .cf-score span { color:var(--muted);font-size:13.5px }
 .cf-bar { height:8px;border-radius:99px;background:#11131612;overflow:hidden }
 .cf-bar i { display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#3e7e5f,#2a8c6c);transition:width .6s var(--spring) }
@@ -1716,7 +1721,7 @@ html, body { background:#fafafa }
 .cf-ell { display:block;max-width:440px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
 .mono { font-family:var(--mono);font-size:12.5px }
 .cf-vhead { display:flex;align-items:center;gap:10px;flex-wrap:wrap }
-.cf-vname { font-family:var(--serif);font-size:25px;line-height:1.2;border:0;background:transparent;padding:2px 8px;border-radius:10px;min-width:0;max-width:100%;color:var(--ink) }
+.cf-vname { font-family:var(--serif);font-weight:500;letter-spacing:-.005em;font-size:25px;line-height:1.2;border:0;background:transparent;padding:2px 8px;border-radius:10px;min-width:0;max-width:100%;color:var(--ink) }
 .cf-vname.mono { font-family:var(--mono);font-size:17px }
 .cf-vname:hover { background:var(--track) }
 .cf-vname:focus { outline:0;background:#fff;box-shadow:var(--thumb-sh) }
@@ -1807,7 +1812,7 @@ html, body { background:#fafafa }
 .cf-vrow.head { font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);border-top:0 }
 .cf-vrow.snip { grid-template-columns:150px minmax(0,1fr) }
 .inp.warnin { box-shadow:0 0 0 1px #e3b79f,inset 0 1px 2px #1113160d }
-.cf-big b { font-family:var(--serif);font-weight:400;font-size:46px;line-height:1;display:block;margin-bottom:4px }
+.cf-big b { font-family:var(--serif);font-weight:500;letter-spacing:-.005em;font-size:46px;line-height:1;display:block;margin-bottom:4px }
 .cf-big { margin-bottom:8px }
 .cf-mv { cursor:pointer }
 .cf-r { justify-self:end }
@@ -1926,45 +1931,14 @@ html, body { background:#fafafa }
   .cf-cardgrid {grid-template-columns:minmax(0,1fr)}
 }
 /* ---------------------------------------------------------------------------
-   The akkari skin, on this screen only.
-
-   The marketing site moved to akkari.io's typographic and colour language (see
-   globals.css): a near-flat #FAFAF8 page, near-black ink, and headlines in a
-   medium-weight monospace face. Configuration wears the same skin so it reads
-   like the home pages, while the rail and the other screens keep the workspace's
-   cream one — the two stylesheets stay separate, and this is one scope inside
-   app.css, not a second theme.
-
-   It is token-only on purpose. `Screen` puts `.cfg` on the scrolling column, so
-   every rule above (cards, tables, tags, the sliding pill, the glass skin) reads
-   the new values without a single override. Moving `.cfg` onto `.app-shell`
-   would take the whole workspace with it.
+   The akkari skin used to be scoped to this screen alone (a `.cfg` class on
+   the scrolling column, flipping tokens for Configuration only). The whole
+   dashboard now wears it by default (see the base :root above and the flat,
+   glass-free surfaces at the end of this file), so that scope and its token
+   overrides are gone — Configuration no longer needs to differ from any
+   other screen. The layout rules below (tab strip, two-column grid) are
+   still genuinely specific to this screen and stay.
    --------------------------------------------------------------------------- */
-
-.cfg {
-  --bg:#FAFAF8;
-  --surface:#fff;
-  --surface-2:#F2F2EF;
-  --surface-3:#EAEAE5;
-  --ink:#0A0A0A;
-  --ink-2:#3F3F46;
-  --muted:#71717A;
-  --line:rgb(10 10 10 / .08);
-  --line-strong:rgb(10 10 10 / .14);
-  --accent:#0A0A0A;
-  --accent-ink:#0A0A0A;
-  --accent-soft:#F1F1F0;
-  /* akkari's headlines are a monospace face at weight 500, not a serif. The
-     licensed faces (Ioskeley, Berkeley Mono) are not ours to ship, so this is
-     the same JetBrains Mono stack globals.css settled on for the marketing
-     site, through the --font-code variable app/layout.tsx puts on <html>. */
-  --serif:var(--font-code),"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
-  background:var(--bg);
-}
-/* A monospace face already reads bold at 500 and needs none of a serif's
-   negative tracking, so every heading drawn in --serif is re-weighted here. */
-.cfg .top h1, .cfg .cf-head h2, .cfg .cf-score b, .cfg .cf-big b, .cfg .cf-vname { font-weight:500;letter-spacing:-.005em }
-.cfg .top h1 { font-size:25px }
 
 /* The tab strip and the "changes last for this visit" line share one row, and
    the strip scrolls on its own below the two-column breakpoint. */
@@ -1995,3 +1969,83 @@ html, body { background:#fafafa }
   .cf-chgrid { grid-template-columns:minmax(0,1fr) }
   .cf-tilegrid { grid-template-columns:minmax(0,1fr) }
 }
+
+/* ---------------------------------------------------------------------------
+   Flat, minimal, no-glass finish.
+
+   This file is a vendored, multi-pass port (see the header comment) — the
+   same :root tokens and the same master surface selector get redeclared
+   several times earlier in the cascade, each pass layering on more glass
+   (tint, blur, specular rim, glossy gradients). Rather than hunt every one
+   of those scattered declarations, this block is the definitive last word:
+   same specificity, last in source order, so it wins outright and is the one
+   place future edits to "the look" belong. It does three things:
+
+     1. Converges the palette on the flat #FAFAF8 / near-black ink pair and
+        kills the decorative animated .bgfx wallpaper blobs.
+     2. Turns off backdrop-filter and the glass :before/:after paint on every
+        surface — blur + saturate compositing is the single most expensive
+        thing this stylesheet does per frame, so removing it is the real
+        performance win, not just a visual one. Surfaces fall back to opaque
+        var(--surface) + var(--line), which is what "minimalism" asks for too.
+     3. Flattens the remaining glossy gradients (primary/accent/warn buttons,
+        the sliding pill, the toggle switch) to solid token fills, and trims
+        card/tile padding and radius so panels read smaller and pages read
+        shorter.
+
+   components/app/glass.ts keeps running (it is shared with the marketing
+   site's SiteGlass.tsx) but every dashboard surface it targets is opaque
+   with no backdrop-filter, so its output has nothing left to render against
+   here — see AppShell.tsx, which no longer mounts it on this stylesheet's
+   routes at all.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --accent:#0A0A0A;--accent-ink:#0A0A0A;--accent-soft:#F1F1F0;
+  --tint:transparent;--blur:0px;--sat:100%;--hl:0;--mx:50%;--my:50%;
+  --g-fill:var(--surface);--g-fill-strong:var(--surface);--g-border:var(--line);
+  --g-blur:none;--g-shadow:0 0 0 .5px var(--line);--g-shadow-lift:0 20px 44px -26px var(--shadow);
+  --thumb-bg:var(--surface);--thumb-sh:0 0 0 .5px var(--line);--thumb-sh-h:0 0 0 .5px var(--line-strong);
+}
+html, body { background:#FAFAF8 }
+.bgfx, .bgfx * { display:none!important }
+
+*, *::before, *::after { backdrop-filter:none!important;-webkit-backdrop-filter:none!important }
+
+.card, .pane, .side, .modal, .drawer, .cmdk, .pop, .rowpop, .qmenu, .inspector,
+.palette, .search, .sendsw, .seg, .chtog, .btn.line, .tabbar, .fpnode, .q,
+.stepper, .bulkbar, .toast, .react-flow__controls, .react-flow__minimap {
+  background:var(--surface)!important;border-color:var(--line)!important;
+  box-shadow:0 0 0 .5px var(--line)!important;isolation:auto;transition:box-shadow .2s,border-color .2s;
+}
+.seg, .search, .q { background:var(--surface-2)!important }
+.bulkbar, .toast { background:#121417!important;color:#fff;box-shadow:none!important }
+:is(.card,.pane,.side,.modal,.drawer,.cmdk,.pop,.rowpop,.qmenu,.inspector,.palette,
+   .search,.sendsw,.seg,.chtog,.btn.line,.tabbar,.fpnode,.q,.stepper,.bulkbar,.toast,
+   .react-flow__controls,.react-flow__minimap):before,
+:is(.pane,.modal,.drawer,.cmdk,.pop,.rowpop,.qmenu,.inspector,.palette,.search,
+   .sendsw,.seg,.chtog,.btn.line,.fpnode,.q,.stepper,.bulkbar,.toast,
+   .react-flow__controls,.react-flow__minimap):after {
+  display:none!important;
+}
+.card:hover, .th.on { box-shadow:0 0 0 .5px var(--line-strong)!important }
+
+.btn.pri, .btn.acc, .btn.warn { box-shadow:none!important }
+.thumb, .navthumb, .vthumb, .tabthumb,
+.btn.line, .drbtn, .chtog, .sel.pill, .verbtn, .typepill {
+  background:var(--surface)!important;box-shadow:0 0 0 .5px var(--line)!important;
+}
+:is(.btn.line,.drbtn,.chtog,.sel.pill,.verbtn,.typepill):hover { box-shadow:0 0 0 .5px var(--line-strong)!important }
+.sw.on { background:var(--ink) }
+.sw:after { background:#fff;box-shadow:0 0 0 .5px var(--line) }
+
+/* Smaller cards, shorter pages. */
+.card { border-radius:14px }
+.modal, .cmdk { border-radius:16px }
+.card-h { padding:13px 15px 0;min-height:38px }
+.card-b { padding:11px 15px 15px }
+.kpi { padding:12px 14px 10px }
+.wfc { padding:14px;gap:10px }
+.cf-tile { padding:11px 13px 13px }
+.typecard { padding:18px 18px 16px;min-height:0 }
+.stats, .kpis { margin-bottom:12px }

@@ -5,11 +5,6 @@
  * can run. Nine tabs — an overview of what is broken, one per channel, then the
  * variables, sending rules and compliance that apply across all of them.
  *
- * It wears the marketing site's akkari-style skin rather than the workspace's
- * cream one: the `.cfg` scope at the end of `app/app.css` flips the tokens on
- * this column only (#FAFAF8 page, near-black ink, the mono display face), so
- * the screen reads like the home page while the rail keeps the shared chrome.
- *
  * Edits live in component state for the length of the visit; there is no
  * configuration store behind it yet, and every tab says so.
  */
@@ -31,7 +26,7 @@ export function ConfigurationScreen() {
   const scopedCampaign = scope === "all" ? null : CAMPAIGNS.find((c) => c.id === scope) ?? null;
 
   return (
-    <Screen title="Configuration" className="cfg">
+    <Screen title="Configuration">
       <div className="cf-main">
         <div className="cf-head between">
           <Tabs<ConfigTab>
