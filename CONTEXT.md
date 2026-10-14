@@ -145,7 +145,7 @@ upload modal, and `LeadsScreen` renders the segment list above the table.
 | `SettingsScreen.tsx` | 153 | `lib/app/workspace` | no |
 | `WorkflowsScreen.tsx` | 175 | `lib/app/workflowLibrary` | no |
 | `IntegrationsScreen.tsx` | 342 | `lib/app/integrations` | no |
-| `ConfigurationScreen.tsx` + `configuration/` | 1628 | `lib/app/configuration` | no |
+| `ConfigurationScreen.tsx` + `configuration/` | 1805 | `lib/app/configuration`, `lib/app/campaigns` | no |
 | `ui.tsx` `charts.tsx` `icons.tsx` | 628 | — | shared controls, SVG charts, 24px icons |
 | `Glass.tsx` `glass.ts` | 285 | — | refraction + specular runtime |
 
@@ -162,9 +162,18 @@ for a blank one, via `blankWorkflow`). `/dashboard/campaigns/[id]` is a `permane
 kept for old links — never render a second builder there. `/dashboard/workflows` is the library
 (`WorkflowsScreen`: `.wfgrid` cards, template picker); its numbers come from
 `lib/app/workflowLibrary.ts`, which reuses `hasRun` so a never-published workflow reads "—".
-A multichannel campaign *is* a workflow (same numeric id). `/dashboard/integrations`
-(`IntegrationsScreen`, `lib/app/integrations.ts`): only LinkedIn and email can connect; every
-other provider is `state: "planned"` with a disabled primary button.
+A multichannel campaign *is* a workflow (same numeric id) **in the demo data layer only** — see
+the id-mismatch gap in §7. `/dashboard/integrations` (`IntegrationsScreen`,
+`lib/app/integrations.ts`): only LinkedIn and email can connect; every other provider is
+`state: "planned"` with a disabled primary button.
+
+**Campaign creation has one entry point.** `CampaignsScreen`'s "Create campaign" button (opening
+`CampaignEditor`) is now the only way in: the sidebar used to carry a second "New campaign" button
+straight into a blank, unnamed workflow (`AppShell`, `href="/dashboard/workflows/new"`), and
+`CampaignsScreen` carried a third, "New workflow", doing the same — both bypassed the name/type/
+status/channel form and were removed. Starting a workflow from a template (`WorkflowsScreen`'s
+"New workflow" + picker) is unaffected; it is the builder's own entry point, not a competing
+campaign-creation path.
 
 ### Configuration — `/dashboard/configuration`
 `ConfigurationScreen.tsx` + `components/app/configuration/` (`Overview`, `ChannelTabs`,
@@ -183,10 +192,27 @@ Three things to know before changing it:
   still shows those three as "Connected", because `lib/app/workspace.ts` predates the rule.
 - **It wears the akkari skin, nothing else does.** See §5.
 
+**Campaign scoping.** The `cf-head` row carries a campaign picker (`CAMPAIGNS` from
+`lib/app/campaigns.ts`, demo data, same as the Workflows library) alongside the tab strip, so it
+shows on every tab. Only the LinkedIn and Email tabs read it (`scopeCampaignId` prop into
+`LinkedInTab`/`EmailTab`): picking a campaign tags the seat or mailbox that serves it with a
+"Selected campaign" badge, and a multichannel pick adds an "Open workflow" link to its builder.
+Sending rules, variables and compliance stay workspace-wide on purpose — they are not per-campaign
+in the product brief, so the picker does not filter them; the screen says this under the tab
+strip when a campaign is selected.
+
+**Channel assignment is exclusive for email, shared for LinkedIn.** `Mailbox.campaignId` is a
+single `number | null` — a mailbox sends for one campaign at a time, and `Mailboxes()`'s `assign()`
+clears any other mailbox already holding that campaign id when it is reassigned, so the rule holds
+even though nothing is persisted. `LinkedInSeat.campaignIds` is a `number[]` — a seat can carry
+several campaigns at once, with no such exclusivity. Both are edited from a "Used by campaigns" /
+"Assigned campaign" control on the seat/mailbox tile in `ChannelTabs.tsx`, state-only like the rest
+of the screen.
+
 
 ### Legacy demo data — `lib/app/` (2631L, hardcoded)
 `channels.ts` `leads.ts` `campaigns.ts` `inbox.ts` `workspace.ts` `integrations.ts`
-`configuration.ts` (798L — the Configuration screen's content) `workflowLibrary.ts` · `metrics.ts` (241L) is a seeded PRNG walking 180 days, deterministic so
+`configuration.ts` (829L — the Configuration screen's content) `workflowLibrary.ts` · `metrics.ts` (241L) is a seeded PRNG walking 180 days, deterministic so
 the screens still on it agree with each other · **`adapt.ts` (200L) bridges to `lib/data`** and is
 import-free at runtime, so `tests/adapt.test.mjs` pins every channel and stage round-trip.
 
@@ -358,6 +384,17 @@ Roughly in the order they should be closed.
    set those rows still live in process memory, vanish on restart, and are not tenant-isolated by
    the database the way every other table is. Parked uploads are meant to be scratch (the modal
    says so); segments and profiles are not. `lib/leads/merge.ts` defines what the schema needs.
+3b. **A live multichannel campaign's "open workflow" link 404s.** `CampaignsScreen` links a
+   `type: "multi"` campaign to `/dashboard/workflows/{c.id}`, but live campaigns come from
+   `lib/data/seed.ts` with string ids (`"c_netnew"`, ...), while the builder's `getWorkflow` reads
+   the demo `WORKFLOWS` array in `lib/app/workflow.ts`, keyed by small integers (`1`, `2`, ...) —
+   `getWorkflow(Number("c_netnew"))` is `getWorkflow(NaN)`, so the route 404s for every real
+   campaign today. It only "works" for the Configuration screen's own picker and the Workflows
+   library, because both of those stay on the demo `lib/app/campaigns.ts` ids throughout. Found
+   while wiring the Configuration screen's per-campaign "Open workflow" link (kept pointed at the
+   demo ids, so it works) rather than the live Campaigns table (left as-is, so as not to paper
+   over a 404 with a change that only hides it). Fixing this for real needs the builder rewired
+   onto `Repository` (ties into gap 4), not a cosmetic id translation.
 4. **Workflow builder does not persist.** The `workflows` table is ready and unused.
 4b. **Configuration does not persist either, and has no sequence editor.** Every control holds
    state for the visit. The design reference also opens a sequence/script into a step editor

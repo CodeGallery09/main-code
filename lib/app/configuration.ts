@@ -198,6 +198,11 @@ export type LinkedInSeat = {
   visits: number;
   /** InMail credits left, or null when the seat cannot report them. */
   inmail: number | null;
+  /**
+   * Campaign ids (from `lib/app/campaigns`) this seat currently sends for.
+   * A LinkedIn seat is shared: it can carry more than one campaign at once.
+   */
+  campaignIds: number[];
 };
 
 export const LINKEDIN_SEATS: LinkedInSeat[] = [
@@ -210,6 +215,7 @@ export const LINKEDIN_SEATS: LinkedInSeat[] = [
     messages: 60,
     visits: 80,
     inmail: 38,
+    campaignIds: [1, 13],
   },
   {
     id: "neha",
@@ -220,6 +226,7 @@ export const LINKEDIN_SEATS: LinkedInSeat[] = [
     messages: 50,
     visits: 60,
     inmail: null,
+    campaignIds: [3],
   },
 ];
 
@@ -419,11 +426,34 @@ export type Mailbox = {
   health: number;
   cap: number;
   rotate: boolean;
+  /**
+   * The one campaign (from `lib/app/campaigns`) this mailbox sends for, or
+   * null when it is unassigned. Unlike a LinkedIn seat, a mailbox is
+   * exclusive to a single campaign at a time, so sending from the same
+   * address never crosses two campaigns' reputations.
+   */
+  campaignId: number | null;
 };
 
 export const MAILBOXES: Mailbox[] = [
-  { address: "aarav@acme.co", provider: "Google Workspace", state: "warm", health: 96, cap: 60, rotate: true },
-  { address: "neha@acme.co", provider: "Google Workspace", state: "warm", health: 91, cap: 50, rotate: true },
+  {
+    address: "aarav@acme.co",
+    provider: "Google Workspace",
+    state: "warm",
+    health: 96,
+    cap: 60,
+    rotate: true,
+    campaignId: 1,
+  },
+  {
+    address: "neha@acme.co",
+    provider: "Google Workspace",
+    state: "warm",
+    health: 91,
+    cap: 50,
+    rotate: true,
+    campaignId: 2,
+  },
   {
     address: "sales@getacme.io",
     provider: "Microsoft 365",
@@ -432,6 +462,7 @@ export const MAILBOXES: Mailbox[] = [
     health: 74,
     cap: 20,
     rotate: false,
+    campaignId: null,
   },
 ];
 

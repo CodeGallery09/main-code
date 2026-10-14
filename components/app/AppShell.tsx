@@ -74,13 +74,6 @@ export function AppShell({ user, children }: { user: { name: string; org: string
           </button>
         </div>
 
-        <Link className="btn pri new" href="/dashboard/workflows/new" title="New campaign">
-          <span className="lbl">New campaign</span>
-          <span className="cplus" aria-hidden="true">
-            +
-          </span>
-        </Link>
-
         <nav className="navlist">
           <Thumb selector=".navi.on" deps={[pathname]} axis="y" variant="navthumb" />
           {DASHBOARD_NAV.map((item) => {

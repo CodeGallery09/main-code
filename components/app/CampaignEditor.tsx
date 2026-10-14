@@ -142,7 +142,7 @@ export function CampaignEditor({ draft, onCancel, onSave }: Props) {
 
           <fieldset>
             <legend>Channels</legend>
-            <div className="chtog">
+            <div className="chips">
               {CHANNELS.map((c) => (
                 <label key={c.k} className="chip">
                   <input
