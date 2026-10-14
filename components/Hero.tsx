@@ -237,15 +237,16 @@ export function Hero() {
       ref={sectionRef}
       id="top"
       data-pip-section="hero"
-      data-nav-dark
       aria-labelledby="hero-title"
       className="hero"
     >
       <div ref={stickyRef} className="hero-sticky">
-        <div className="hero-sky intro-fade" style={d(0)} aria-hidden="true" />
         <div className="hero-wrap container-page relative pt-14 pb-20 md:pt-20">
           <div className="hero-copy text-center">
             <div ref={copyRef}>
+              <p className="eyebrow intro mb-4" style={d(0)}>
+                GTM workflow orchestration
+              </p>
               <h1 id="hero-title" className="display text-[3rem] text-ink sm:text-6xl lg:text-[clamp(3.6rem,5.4vw,5.6rem)]">
                 <Words text="Your GTM motion," start={80} />
                 <br />
@@ -266,7 +267,10 @@ export function Hero() {
                 Flightpath runs LinkedIn and email as one workflow, reads how every lead engages, and routes the next step.
                 Every workflow is benchmarked.
               </p>
-              <div className="intro mt-8 flex flex-col justify-center gap-3 sm:flex-row" style={d(680)}>
+              <div
+                className="hero-cta-bar intro mx-auto mt-8 flex w-fit flex-col gap-2 sm:flex-row"
+                style={d(680)}
+              >
                 <Link href={DEMO_HREF} className="btn btn-primary">
                   Book a demo
                   <ArrowRight size={16} className="btn-arrow" aria-hidden="true" />

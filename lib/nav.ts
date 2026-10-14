@@ -9,6 +9,7 @@ export const DASHBOARD_NAV = [
   { href: "/dashboard/analytics", label: "Analytics", icon: "analytics" },
 ] as const;
 
+export const CONFIGURATION_HREF = "/dashboard/configuration";
 export const SETTINGS_HREF = "/dashboard/settings";
 export const INTEGRATIONS_HREF = "/dashboard/integrations";
 

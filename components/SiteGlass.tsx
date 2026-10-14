@@ -15,11 +15,11 @@ import { mountLens, mountSpecular } from "./app/glass";
 
 /** Panes big enough for the refracted edge to read. */
 const LENS_TARGETS =
-  ".card,.glass,.glass-lg,.hero-frame-bg,.hcard,.jr-card,.btn,.field,.bk-day,.bk-slot,.why-chip,.uf-chip,.glass-row";
+  ".card,.glass,.glass-lg,.hero-frame-bg,.hcard,.jr-card,.btn,.field,.bk-day,.bk-slot,.why-chip,.uf-chip,.glass-row,.hero-cta-bar";
 
 /** Everything whose highlight follows the pointer. */
 const SPECULAR_TARGETS =
-  ".lg-nav,.navlink,.card,.glass,.glass-lg,.hero-frame-bg,.hcard,.jr-card,.wf-box,.btn,.field,.bk-nav,.bk-day,.bk-slot,.why-chip,.uf-chip,.tag-sample,.glass-row";
+  ".lg-nav,.navlink,.card,.glass,.glass-lg,.hero-frame-bg,.hcard,.jr-card,.wf-box,.btn,.field,.bk-nav,.bk-day,.bk-slot,.why-chip,.uf-chip,.tag-sample,.glass-row,.hero-cta-bar";
 
 export function SiteGlass() {
   useEffect(() => {
