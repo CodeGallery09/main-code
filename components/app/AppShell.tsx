@@ -9,6 +9,7 @@ import {
   AnalyticsIcon,
   BellIcon,
   CampaignsIcon,
+  ConfigurationIcon,
   HomeIcon,
   InboxIcon,
   IntegrationsIcon,
@@ -19,8 +20,9 @@ import {
   SettingsIcon,
   WorkflowsIcon,
 } from "./icons";
-import { DASHBOARD_NAV, INTEGRATIONS_HREF, SETTINGS_HREF } from "@/lib/nav";
+import { CONFIGURATION_HREF, DASHBOARD_NAV, INTEGRATIONS_HREF, SETTINGS_HREF } from "@/lib/nav";
 import { TASKS } from "@/lib/app/inbox";
+import { CONFIG_ISSUES } from "@/lib/app/configuration";
 import { avatarTint, initials } from "@/lib/app/leads";
 import { Thumb } from "./ui";
 import { UploadLeads } from "./leads/UploadLeads";
@@ -111,6 +113,16 @@ export function AppShell({ user, children }: { user: { name: string; org: string
 
         <nav className="navlist foot" aria-label="Workspace">
           <Thumb selector=".navi.on" deps={[pathname]} axis="y" variant="navthumb" />
+          <Link
+            className={"navi" + (isCurrent(CONFIGURATION_HREF) ? " on" : "")}
+            href={CONFIGURATION_HREF}
+            aria-current={isCurrent(CONFIGURATION_HREF) ? "page" : undefined}
+          >
+            <ConfigurationIcon />
+            <span className="lbl">Configuration</span>
+            {CONFIG_ISSUES ? <span className="bdg">{CONFIG_ISSUES}</span> : null}
+          </Link>
+
           <Link
             className={"navi" + (isCurrent(INTEGRATIONS_HREF) ? " on" : "")}
             href={INTEGRATIONS_HREF}
@@ -248,10 +260,24 @@ export function TopBar({ title }: { title: string }) {
   );
 }
 
-/** The scrolling column to the right of the rail. */
-export function Screen({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * The scrolling column to the right of the rail.
+ *
+ * `className` lands on the column itself, so a screen can re-theme its own
+ * tokens — Configuration passes `cfg` to wear the marketing site's akkari skin
+ * without touching the rail or any other screen.
+ */
+export function Screen({
+  title,
+  className = "",
+  children,
+}: {
+  title: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="main">
+    <div className={"main" + (className ? " " + className : "")}>
       <TopBar title={title} />
       <div className="scroll">
         <div className="page">{children}</div>
