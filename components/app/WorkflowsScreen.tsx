@@ -9,6 +9,10 @@ import { Dot, fmt, Tabs } from "./ui";
 import { channelNames, STATUS_TAG, type WorkflowSummary } from "@/lib/app/workflowLibrary";
 import { TEMPLATES } from "@/lib/app/workflow";
 import type { WorkflowStatus } from "@/lib/app/workflow";
+import { CAMPAIGNS } from "@/lib/app/campaigns";
+
+/** Only a multichannel campaign has a workflow — see `lib/app/campaigns`. */
+const WORKFLOW_CAMPAIGNS = CAMPAIGNS.filter((c) => c.type === "multi");
 
 type Filter = "all" | WorkflowStatus;
 
@@ -19,6 +23,7 @@ type Filter = "all" | WorkflowStatus;
 export function WorkflowsScreen({ workflows }: { workflows: WorkflowSummary[] }) {
   const router = useRouter();
   const [filter, setFilter] = useState<Filter>("all");
+  const [jump, setJump] = useState("");
   const [query, setQuery] = useState("");
   const [picking, setPicking] = useState(false);
 
@@ -42,6 +47,23 @@ export function WorkflowsScreen({ workflows }: { workflows: WorkflowSummary[] })
             ["draft", "Draft", countFor("draft")],
           ]}
         />
+        <select
+          className="sel pill"
+          aria-label="Jump to a campaign's workflow"
+          value={jump}
+          onChange={(e) => {
+            const id = e.target.value;
+            setJump(id);
+            if (id) router.push(`/dashboard/workflows/${id}`);
+          }}
+        >
+          <option value="">Go to campaign…</option>
+          {WORKFLOW_CAMPAIGNS.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
         <button type="button" className="btn pri" onClick={() => setPicking(true)}>
           New workflow
         </button>

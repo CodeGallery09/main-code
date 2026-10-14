@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Glass from "./Glass";
 import {
   AnalyticsIcon,
   BellIcon,
@@ -54,8 +53,6 @@ export function AppShell({ user, children }: { user: { name: string; org: string
 
   return (
     <div className={"app-shell app" + (collapsed ? " collapsed" : "")}>
-      <Glass />
-
       <aside className="side" aria-label="Main navigation">
         <div className="side-top">
           <span className="logo">
