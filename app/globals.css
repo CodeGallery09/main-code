@@ -312,61 +312,14 @@ body::before {
 /* =====================================================================
    HERO: cards scattered around the headline assemble into one overview
    card as you scroll (desktop). Elsewhere it is a simple static stack.
+   Sits in the normal light scope, on the same colour wash as the rest of
+   the page — the dark photograph trial that used to live here (and the
+   light-on-dark token flip it required) was removed at the user's request.
    ===================================================================== */
-/* Trial: a photograph behind the hero only (a park lake at dusk). The hero
-   runs to the top of the page so the picture is full bleed and the floating
-   navbar has something real to refract — without the pull-up the header takes
-   its own strip of page wallpaper above the photo. Inside the hero the theme
-   flips to its dark scope, so every token below it is the light-on-dark one. */
 .hero {
   position: relative;
-  margin-top: calc(-1 * var(--nav-h));
-  /* Dark scope: utilities and the glass skin both read these. */
-  --ink: #ffffff;
-  --ink-2: rgb(255 255 255 / 0.88);
-  --muted: rgb(255 255 255 / 0.74);
-  --surface: rgb(255 255 255 / 0.9);
-  --surface-2: rgb(255 255 255 / 0.18);
-  --sky: rgb(255 255 255 / 0.5);
-  --line: rgb(255 255 255 / 0.18);
-  --line-strong: rgb(255 255 255 / 0.34);
-  --accent: #ffffff;
-  --accent-ink: #ffffff;
-  --success: #8ff0ab;
-  --success-soft: rgb(143 240 171 / 0.18);
-  --shadow: rgb(0 0 0 / 0.55);
-  /* Dark glass: a thin smoked tint with a bright rim, as the material reads
-     over a dark scene. */
-  --g-tint: rgb(10 18 16 / 0.26);
-  --g-blur: 16px;
-  --g-sat: 150%;
-  --g-rim: inset 0 0 0 0.5px rgb(255 255 255 / 0.34), inset 0 1px 0 rgb(255 255 255 / 0.5);
-  color: var(--ink);
 }
-.hero-wrap { padding-top: calc(var(--nav-h) + 1rem); }
 
-.hero-sky {
-  position: absolute; inset: 0; pointer-events: none;
-  background-image:
-    /* a soft dark veil, deepest behind the headline, so white type holds */
-    radial-gradient(1100px 620px at 50% 44%, rgb(6 12 10 / 0.52), rgb(6 12 10 / 0.3) 60%, rgb(6 12 10 / 0.12) 82%),
-    linear-gradient(180deg, rgb(6 12 10 / 0.42) 0%, rgb(6 12 10 / 0.1) 26%, rgb(6 12 10 / 0.18) 72%, rgb(238 240 246 / 0.72) 93%, rgb(238 240 246 / 0.9) 100%),
-    url("/hero-forest.jpg");
-  background-size: cover, cover, cover;
-  background-position: center, center, center 42%;
-  background-repeat: no-repeat;
-  /* The pinned frame ends on a hard edge where the section does; dissolve the
-     last few pixels so the picture melts into the page instead of cutting. */
-  -webkit-mask-image: linear-gradient(180deg, #000 93%, transparent 100%);
-  mask-image: linear-gradient(180deg, #000 93%, transparent 100%);
-}
-@media (max-width: 760px) {
-  .hero-sky { background-image:
-    radial-gradient(760px 560px at 50% 42%, rgb(6 12 10 / 0.56), rgb(6 12 10 / 0.34) 60%, rgb(6 12 10 / 0.14) 84%),
-    linear-gradient(180deg, rgb(6 12 10 / 0.46) 0%, rgb(6 12 10 / 0.12) 24%, rgb(6 12 10 / 0.2) 72%, rgb(238 240 246 / 0.74) 93%, rgb(238 240 246 / 0.9) 100%),
-    url("/hero-forest-sm.jpg");
-    background-position: center, center, 42% 46%; }
-}
 .hero-sticky { position: relative; }
 .hero-frame { position: relative; margin-top: 56px; }
 .hero-frame-bg {
@@ -870,37 +823,6 @@ body::before {
   inherits: false;
   initial-value: 1;
 }
-/* =====================================================================
-   HERO, DARK: the same material read over a photograph.
-   The tokens are set on `.hero` above; these are the pieces that carry their
-   own colours and so have to be told again.
-   ===================================================================== */
-.hero .hcard { --g-tint: rgb(10 18 16 / 0.3); --g-blur: 14px; }
-.hero .hcard:hover { --g-tint: rgb(10 18 16 / 0.244); }
-.hero .hero-frame-bg { --g-tint: rgb(10 18 16 / 0.2); --g-blur: 26px; }
-.hero .live-dot { background: var(--success); }
-
-/* The two calls to action are glass too: one frosted bright, one clear. */
-.hero .btn-primary {
-  --hl: 0;
-  color: #0a0a0a;
-  background-color: rgb(255 255 255 / 0.76);
-  background-image:
-    radial-gradient(170px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.63 * var(--hl))), transparent 66%),
-    linear-gradient(180deg, rgb(255 255 255 / 0.3), transparent);
-  -webkit-backdrop-filter: var(--lens, opacity(1)) blur(14px) saturate(160%);
-  backdrop-filter: var(--lens, opacity(1)) blur(14px) saturate(160%);
-  box-shadow:
-    inset 0 0 0 0.5px rgb(255 255 255 / 0.8),
-    inset 0 1px 0 rgb(255 255 255 / 0.95),
-    0 16px 34px -18px rgb(0 0 0 / 0.7);
-}
-.hero .btn-primary:hover { --hl: 1; background-color: rgb(255 255 255 / 0.83); }
-.hero .btn-secondary { --g-tint: rgb(10 18 16 / 0.3); --g-blur: 14px; }
-.hero .btn-secondary:hover { --g-tint: rgb(255 255 255 / 0.14); }
-.hero .hero-cta-bar { --g-tint: rgb(10 18 16 / 0.22); --g-blur: 22px; }
-.hero .cue-mouse { border-color: rgb(255 255 255 / 0.5); }
-
 /* The navbar floats over the photo at the top of the landing page, so it
    flips to the dark material there and back to light once the page scrolls
    past the hero. Overriding the tokens turns the wordmark and links with it. */
