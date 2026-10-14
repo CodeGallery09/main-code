@@ -272,14 +272,17 @@ namespaces, no parameter properties).
   pills, so change it there only if the ask is to drop the border everywhere, not just the navbar.
 - `toAppLead` (`lib/app/adapt.ts`) must not append a `Title: …` tag the stored tags already
   carry — `LeadsScreen` keys tag chips by text, so a repeat is a duplicate-key React warning.
-- **Marketing typography (akkari.io-inspired pass).** `app/globals.css`'s `@theme inline` now
-  wires `--font-serif` to `var(--font-display)` (Instrument Serif) and `--font-mono` to
-  `var(--font-code)` (JetBrains Mono) — both already loaded in `app/layout.tsx` but previously
-  unused by the marketing site (unlike `app/app.css`, which wired them correctly from the start).
-  `.eyebrow` and `.btn-primary` use the mono face, uppercase; `.display`/`.font-serif` loosened
-  their letter-spacing since a mono-adjacent serif reads cramped at the old system-sans value.
-  `body::before`'s wallpaper is toned down and warmed (lower gradient alpha, cream base) to match;
-  it is still colour, so glass still has something to bend — don't flatten it further.
+- **Marketing typography (akkari.io-inspired pass).** `app/globals.css`'s `@theme inline` wires
+  **both** `--font-serif` and `--font-mono` to `var(--font-code)` (JetBrains Mono, already loaded
+  in `app/layout.tsx`) — akkari's own headlines render in a monospace face (confirmed via its
+  rendered font: weight 500, `ui-monospace` stack), not a serif, so `.display`/`.font-serif` (the
+  shared headline utility used by `Hero`, `Journey`, `WhyFlightpath`, `WorkflowLibrary`,
+  `FounderBooker`, `DemoForm`, `AuthPage`, `SectionHeading`) now render mono at weight 500 with
+  near-zero letter-spacing, not bold serif. `--font-display` (Instrument Serif) stays loaded but
+  unused on the marketing site. `.eyebrow` and `.btn-primary` also use the mono face, uppercase.
+  `body::before`'s wallpaper is toned down further toward a near-flat cream (akkari's own
+  background is close to flat) — it still carries a little colour, so glass still has something
+  to bend; don't flatten it to pure white or every panel reads as a plain card.
 - **`.hero-cta-bar`** (`Hero.tsx`, wraps the two hero CTA buttons) is the one deliberately
   concentrated glass moment on the landing page, added alongside the existing per-surface glass.
   It is in the glass-skin selector list and `SiteGlass.tsx`'s `LENS_TARGETS`/`SPECULAR_TARGETS`
