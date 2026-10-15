@@ -133,6 +133,8 @@ export function AppShell({ user, children }: { user: { name: string; org: string
             <SettingsIcon />
             <span className="lbl">Settings</span>
           </Link>
+
+          <SignOutItem />
         </nav>
 
         <div className="me">
@@ -255,17 +257,19 @@ export function TopBar({ title }: { title: string }) {
 }
 
 /**
- * Ends the session. In the top bar rather than the rail because the rail is hidden on phones,
- * and the people testing this on a shared machine are the ones who most need to sign out.
+ * Ends the session by calling POST /api/logout (via `api.logout()`), which deletes the session
+ * row on the server, then sends the user to the sign-in page.
  *
  * It navigates only once the server confirms: if the request fails the session is still live, so
  * pretending to have signed out would leave them logged in on a screen that looks logged out.
+ * Shared by the sidebar item and the top-bar icon so the two can never behave differently.
  */
-function SignOutButton() {
+function useSignOut() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
   async function signOut() {
+    if (busy) return;
     setBusy(true);
     try {
       await api.logout();
@@ -277,6 +281,31 @@ function SignOutButton() {
     router.push(LOGIN_HREF);
     router.refresh();
   }
+
+  return { busy, signOut };
+}
+
+/**
+ * The labelled "Sign out" row at the foot of the sidebar, styled like the other rail items. In a
+ * collapsed rail the label hides and the icon remains, which is what `.navi` already does.
+ */
+function SignOutItem() {
+  const { busy, signOut } = useSignOut();
+
+  return (
+    <button type="button" className="navi" disabled={busy} onClick={() => void signOut()}>
+      <SignOutIcon />
+      <span className="lbl">{busy ? "Signing out…" : "Sign out"}</span>
+    </button>
+  );
+}
+
+/**
+ * The icon in the top bar. It exists as well as the sidebar item because the sidebar is hidden on
+ * phones, and the people testing on a shared machine are the ones who most need to sign out.
+ */
+function SignOutButton() {
+  const { busy, signOut } = useSignOut();
 
   return (
     <button className="ib" aria-label="Sign out" title="Sign out" disabled={busy} onClick={() => void signOut()}>

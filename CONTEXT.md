@@ -138,7 +138,7 @@ signup gets **its own workspace** — there is no way to join an existing one (�
 | `app/api/signup/route.ts` | 201 + cookie · 422 invalid · 403 `not_invited` · 409 `exists` · 503 `unavailable`. Requires `application/json`. |
 | `components/auth/SignupForm.tsx` | Validates, then posts. Moves on **only** when the server answers `{ ok: true }`. |
 | `scripts/set-password.ts` | `npm run db:set-password -- <email>`, password from `NEW_PASSWORD`. Updates an existing user only, and revokes their sessions. The only recovery path (no email sending). |
-| `TopBar` in `AppShell.tsx` | The sign-out icon; calls `api.logout()` and navigates only after the server confirms. |
+| `SignOutItem` + `SignOutButton` in `AppShell.tsx` | The labelled rail item and the top-bar icon (the rail is hidden on phones). Both use `useSignOut()`: `api.logout()` → `POST /api/logout` deletes the session row, and it navigates only after the server confirms. |
 
 ### Lead uploads and segments — `lib/leads/` + `components/app/leads/`
 `parseFile.ts` (csv/xlsx via exceljs) · `validation.ts` (the `ATTRIBUTES` catalogue and column
@@ -489,6 +489,20 @@ npm run dev
 Without `DATABASE_URL` the app falls back to `MemoryRepository` and the single demo account, so a
 bare clone still runs — but nothing persists, sign-up is unavailable, and the live screens show
 the in-memory seed.
+
+**Environments (a decision, not an accident).** Vercel deploys only `main` and `dev`
+(`vercel.json`).
+
+| | `main` (production) | `dev` |
+|---|---|---|
+| `DATABASE_URL` | set (pooled Neon Postgres, schema from `drizzle/`) | **unset, on purpose** |
+| Mode | database: real accounts, persisted data | demo: hardcoded demo account, in-memory data that resets on restart |
+| Sign-up | invite-only via `SIGNUP_ALLOWED_EMAILS` | says it is unavailable (nowhere to put an account) |
+
+**Do not create a database or a Neon branch for `dev`.** Develop and verify against a local
+Postgres or the in-memory demo mode instead. Promoting is merging `dev` into `main`; run
+`npm run db:migrate` against the production database first **only if the change adds a file under
+`drizzle/`** (the 2026-10-15 signup work did not).
 
 **Giving access to a few testers** (deployed, no seed needed): set `DATABASE_URL` (pooled) and
 `SIGNUP_ALLOWED_EMAILS` on the host, run `npm run db:migrate` once, and tell each person to open
