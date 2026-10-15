@@ -1,42 +1,85 @@
 "use client";
 
-import { useId, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { Info } from "lucide-react";
-import { LOGIN_HREF } from "@/lib/site";
+import { useRouter } from "next/navigation";
+import { AlertCircle, ArrowRight, Loader2 } from "lucide-react";
+import { DASHBOARD_HREF, LOGIN_HREF } from "@/lib/site";
+import { validateSignup, type SignupErrors, type SignupResponse } from "@/lib/signup";
 import { AuthField } from "./AuthField";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-type Errors = { name?: string; email?: string; password?: string };
-
-/** Dummy form: validates input but never creates an account, and says so rather than faking success. */
+/**
+ * Creates a real account through POST /api/signup.
+ *
+ * It validates first with the same `validateSignup()` the server runs, so obvious mistakes never
+ * cost a round trip — but the server is the authority, and the form moves on **only** when it
+ * answers `{ ok: true }`. Everything else (not invited, already registered, no database, a
+ * network failure) is shown as an error; nothing is ever presented as success on its own say-so.
+ */
 export function SignupForm() {
+  const router = useRouter();
   const uid = useId();
-  const [errors, setErrors] = useState<Errors>({});
-  const [notice, setNotice] = useState(false);
+  const inFlight = useRef(false);
+  const [errors, setErrors] = useState<SignupErrors>({});
+  const [formError, setFormError] = useState("");
+  const [exists, setExists] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const data = new FormData(e.currentTarget);
-    const name = String(data.get("name") ?? "").trim();
-    const email = String(data.get("email") ?? "").trim();
-    const password = String(data.get("password") ?? "");
-
-    const next: Errors = {};
-    if (!name) next.name = "Enter your name.";
-    if (!email) next.email = "Enter your work email.";
-    else if (!EMAIL_RE.test(email)) next.email = "Enter a valid email address.";
-    if (password.length < 8) next.password = "Use at least 8 characters.";
-    setErrors(next);
-    setNotice(Object.keys(next).length === 0);
-    if (Object.keys(next).length) {
-      const first = (["name", "email", "password"] as const).find((k) => next[k]);
-      e.currentTarget.querySelector<HTMLElement>(`[name="${first}"]`)?.focus();
-    }
+  const focusFirst = (form: HTMLFormElement, next: SignupErrors) => {
+    const first = (["name", "email", "password"] as const).find((k) => next[k]);
+    if (first) form.querySelector<HTMLElement>(`[name="${first}"]`)?.focus();
   };
 
-  const f = (name: keyof Errors) => ({
+  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (inFlight.current) return;
+    const form = e.currentTarget;
+    const data = new FormData(form);
+
+    const checked = validateSignup({
+      name: data.get("name"),
+      email: data.get("email"),
+      password: data.get("password"),
+    });
+    setFormError("");
+    setExists(false);
+    if (!checked.ok) {
+      setErrors(checked.errors);
+      focusFirst(form, checked.errors);
+      return;
+    }
+    setErrors({});
+
+    inFlight.current = true;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(checked.data),
+      });
+      const json = (await res.json()) as SignupResponse;
+
+      if (json.ok) {
+        router.push(DASHBOARD_HREF);
+        router.refresh();
+        return;
+      }
+      if (json.code === "invalid") {
+        setErrors(json.errors);
+        focusFirst(form, json.errors);
+      } else {
+        setExists(json.code === "exists");
+        setFormError(json.message);
+      }
+    } catch {
+      setFormError("We couldn't reach the server. Check your connection and try again.");
+    }
+    inFlight.current = false;
+    setSubmitting(false);
+  };
+
+  const f = (name: keyof SignupErrors) => ({
     id: `${uid}-${name}`,
     name,
     "aria-invalid": errors[name] ? true : undefined,
@@ -56,15 +99,40 @@ export function SignupForm() {
         <input {...f("password")} type="password" autoComplete="new-password" />
       </AuthField>
 
-      {notice && (
-        <div role="status" className="flex items-start gap-2.5 rounded-[10px] border border-line-strong bg-bg px-4 py-3 text-[14px] text-ink">
-          <Info size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
-          <span>Account creation isn&rsquo;t available yet, so nothing was saved. Sign-in is limited to the demo account for now.</span>
+      {formError && (
+        <div role="alert" className="flex items-start gap-2.5 rounded-[10px] border border-alert/30 bg-alert-soft/60 px-4 py-3 text-[14px] text-ink">
+          <AlertCircle size={16} className="mt-0.5 shrink-0 text-alert" aria-hidden="true" />
+          <span>
+            {formError}
+            {exists && (
+              <>
+                {" "}
+                <Link href={LOGIN_HREF} className="font-medium text-accent hover:underline">
+                  Go to sign in
+                </Link>
+              </>
+            )}
+          </span>
         </div>
       )}
 
-      <button type="submit" className="btn btn-primary w-full">
-        Create account
+      <button
+        type="submit"
+        aria-disabled={submitting || undefined}
+        aria-busy={submitting || undefined}
+        className="btn btn-primary w-full aria-disabled:cursor-wait aria-disabled:opacity-80 aria-disabled:hover:bg-ink"
+      >
+        {submitting ? (
+          <>
+            <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+            Creating account…
+          </>
+        ) : (
+          <>
+            Create account
+            <ArrowRight size={16} className="btn-arrow" aria-hidden="true" />
+          </>
+        )}
       </button>
 
       <p className="text-center text-[14px] text-muted">

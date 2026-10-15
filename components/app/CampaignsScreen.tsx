@@ -358,7 +358,18 @@ export function CampaignsScreen() {
             </tbody>
           </table>
         </div>
-        {rows.length === 0 && !loading && <p className="empty">No campaigns match those filters.</p>}
+        {/* Three different "nothing to show" states, and conflating them lies to the user: a
+            failed load is not an empty list, and an empty workspace is not a filter that matched
+            nothing. The error banner above already covers the first, so say nothing here. */}
+        {rows.length === 0 && !loading && !error &&
+          (status !== "all" || type !== "all" || channel !== "all" || debouncedQuery ? (
+            <p className="empty">No campaigns match those filters.</p>
+          ) : (
+            <p className="empty">
+              <b>No campaigns yet</b>
+              <span>Create your first campaign to get started.</span>
+            </p>
+          ))}
         {loading && rows.length === 0 && <p className="empty">Loading campaigns…</p>}
       </div>
 

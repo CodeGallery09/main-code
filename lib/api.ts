@@ -80,6 +80,9 @@ function qs(params: Record<string, string | number | undefined | null>): string 
 }
 
 export const api = {
+  /** Deletes the server-side session, then the caller navigates away. */
+  logout: () => request<{ ok: true }>("/api/logout", { method: "POST" }),
+
   me: () => request<{ user: User; workspace: Workspace }>("/api/me"),
 
   workspace: () => request<{ workspace: Workspace }>("/api/workspace"),

@@ -111,9 +111,13 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - Sections talk to Pip through `lib/pip.ts`: `pipSay(text)` makes him speak, and `setPipBusy(true)` pauses his idle skits while a section narrates itself.
 - On form fields he reads `data-explain` hints; forms marked `data-pip-host` are where he perches to cheer.
 
-**Auth (prototype)**
-- `lib/auth.ts` (server-only) holds one hardcoded account and signs an `httpOnly` session cookie with HMAC. `/api/login` and `/api/logout` set and clear it; `/dashboard` is a placeholder that redirects to `/login` without a valid session.
-- `/signup` is a dummy form: it validates, creates nothing, and says so. Do not make it show a fake success.
+**Auth (MVP: invite-only accounts)**
+- `lib/auth.ts` (server-only) runs in two modes, chosen by `DATABASE_URL`. **Database mode:** users are rows with a scrypt hash (`lib/password.ts`), and a session is a row in `sessions` with a server-checked `expires_at`; the `httpOnly` cookie holds only an opaque random id, so logout genuinely revokes it and a copied cookie dies with it. **Demo mode** (no database): the single hardcoded account and an HMAC cookie, so a bare clone still runs. `AUTH_SESSION_SECRET` only signs that demo cookie.
+- `/api/signup` creates a workspace, its owner (`memberships.role = owner`) and a session in **one transaction**, then signs the user in. **It is invite-only**: the address must be in `SIGNUP_ALLOWED_EMAILS` (exact, case-insensitive, no wildcards); unset means nobody can sign up. Duplicate emails are caught by the unique index (Postgres `23505`, found on `error.cause` because Drizzle wraps it), so two simultaneous signups cannot both win.
+- `lib/signup.ts` is the shared contract (validation, allowlist, `SignupResponse`). Import-free like `lib/demoRequest.ts`, so the form, the route and `node --test` all use it. `SignupForm` validates first but moves on **only** when the server answers `{ ok: true }` — never present success on its own say-so.
+- Sign-out is the icon in `TopBar` (`components/app/AppShell.tsx`) and calls `api.logout()`. It navigates only after the server confirms.
+- There is no email sending, so **no password reset or verification**. The recovery path is `npm run db:set-password` (password from `NEW_PASSWORD`, never argv), which also revokes that user's sessions. No login rate limiting yet.
+- `/dashboard` redirects to `/login` without a valid session; a signed-in visitor to `/login` or `/signup` is sent to the dashboard.
 - `LOGIN_HREF`, `SIGNUP_HREF`, `DASHBOARD_HREF` live in `lib/site.ts`. Never import `lib/auth.ts` from a client component.
 
 **Signed-in app (`/dashboard`)**
@@ -135,11 +139,11 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - **In the builder**, the first step picks a segment: `AudienceList` in `lib/app/workflow.ts` carries `reach` and `columns` per attribute, `stepStats()` counts the segment's **reachable** leads rather than its rows, and a channel step is capped by the column it reads (`STEP_ATTRIBUTE`). Channel cards and the inspector show which column they read; nothing is configured per step.
 - Tests: `tests/leadsValidation.test.mjs` (rules, phone digit counts, the error log), `tests/leadsMerge.test.mjs` (merging) and `tests/workflowSegment.test.mjs` (segment-driven canvas figures).
 
-- **The storage seam is `lib/data/repository.ts`.** Pages and route handlers only ever talk to that interface, obtained from `getRepository()` in `lib/data/index.ts`. Today it returns `MemoryRepository` (`lib/data/memory.ts`) over the demo seed in `lib/data/seed.ts`. To add a database, implement `Repository` against your client and return it from the factory — nothing else changes.
+- **The storage seam is `lib/data/repository.ts`.** Pages and route handlers only ever talk to that interface, obtained from `getRepository()` in `lib/data/index.ts`. It returns `PgRepository` (`lib/data/pg.ts`, Drizzle over Postgres) when `DATABASE_URL` is set and `MemoryRepository` (`lib/data/memory.ts`, over the demo seed in `lib/data/seed.ts`) otherwise. Every method takes `Ctx` (`workspaceId` + `userId`) first, built from the session in `lib/http.ts` and never from a request body; implementations must filter on `workspace_id` for reads *and* by-id writes. Only Leads and Campaigns are wired to it so far — see `CONTEXT.md` for which screens still read `lib/app/`.
 - `lib/data/query.ts` holds the pure filter/sort/paginate helpers both implementations share; it is import-free and covered by `tests/dataQuery.test.mjs`.
 - REST endpoints live under `app/api/*`: `me`, `workspace`, `overview`, `tasks`, `tasks/[id]/complete`, `campaigns`, `campaigns/[id]`, `leads`, `leads/[id]`, `threads`, `threads/[id]`, `threads/[id]/messages`, `analytics`. They share `lib/http.ts` (`withUser`, `json`, `fail`, param parsers) so auth, caching and error shapes are identical: 401 unauthenticated, 404 missing, 422 invalid, `{ error: { code, message } }`.
 - Server components read the repository directly; client components call the typed browser client in `lib/api.ts`. Don't `fetch("/api/...")` by hand.
-- Writes in the memory store last until the server restarts. That is deliberate for the prototype.
+- Writes in the memory store (no `DATABASE_URL`) last until the server restarts. Uploaded segments and lead profiles are in-memory even with a database — `PgRepository` delegates them there — so they do not persist yet.
 
 **Workflows and the builder**
 - A multichannel campaign *is* a workflow: campaign ids and workflow ids are the same number. `lib/app/workflow.ts` owns the graph model and the `WORKFLOWS` seed; `lib/app/workflowLibrary.ts` derives the handful of numbers the library cards show (it reuses `hasRun` from `lib/app/campaigns.ts`, so a never-published workflow reads "—" on both screens).

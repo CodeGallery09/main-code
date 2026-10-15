@@ -437,7 +437,17 @@ export function LeadsScreen() {
           </table>
         </div>
 
-        {sorted.length === 0 && !loading && <p className="empty">No leads match those filters.</p>}
+        {/* A failed load is not an empty list, and an empty workspace is not a filter that matched
+            nothing. The error banner above covers the first, so say nothing here. */}
+        {sorted.length === 0 && !loading && !error &&
+          (stage !== "any" || owner !== "any" || campaign !== "any" || debouncedQuery ? (
+            <p className="empty">No leads match those filters.</p>
+          ) : (
+            <p className="empty">
+              <b>No leads yet</b>
+              <span>Add a lead with New lead, or upload a .csv or .xlsx file.</span>
+            </p>
+          ))}
         {loading && sorted.length === 0 && <p className="empty">Loading leads…</p>}
 
         {pages > 1 && (

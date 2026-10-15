@@ -4,7 +4,7 @@ Orientation file for agents. Read this first; it replaces grepping the tree.
 **Keep it current:** any change that adds a file, a route, a table or an architectural
 rule must update this file in the same commit. See "Maintaining this file" at the end.
 
-Last updated: 2026-10-13 · ~29k lines of source across 128 files.
+Last updated: 2026-10-15 · ~30k lines of source across 133 files.
 
 ---
 
@@ -112,17 +112,30 @@ directly.
 | `/api/campaigns`, `/api/campaigns/[id]` | GET POST PATCH DELETE | full CRUD |
 | `/api/threads`, `/api/threads/[id]`, `/api/threads/[id]/messages` | GET, POST | |
 | `/api/analytics` | GET | `?range=`, `?channels=` |
-| `/api/login`, `/api/logout` | POST | |
+| `/api/login`, `/api/logout`, `/api/signup` | POST | signup is invite-only; see Auth below |
 | `/api/demo-request` | POST | marketing; branches on `kind` (demo vs founder_call) |
 
 Error shape is always `{ error: { code, message } }`. 401 unauth · 404 missing · 422 invalid.
 
-### Auth — `lib/auth.ts` (220L, server-only, never import from a client component)
+### Auth — `lib/auth.ts` (310L, server-only, never import from a client component)
 Two modes. **DB mode** (`DATABASE_URL` set): users with scrypt hashes, sessions as rows with a
 server-checked `expires_at`, cookie carries an opaque random id only. **Demo mode**: one
-hardcoded account + HMAC cookie, so a bare clone works.
+hardcoded account + HMAC cookie, so a bare clone works (sign-up says it is unavailable there).
 The session carries the workspace — that is what makes tenancy resolvable from the session
 instead of a forgeable request parameter.
+
+**Sign-up is invite-only.** `signUp()` runs only for an address in `SIGNUP_ALLOWED_EMAILS` (exact,
+case-insensitive, no wildcards; unset = nobody). It creates workspace + user + owner membership +
+default quota rows + session in **one transaction**, so a failure leaves no half-account. Each
+signup gets **its own workspace** — there is no way to join an existing one (§7).
+
+| File | Purpose |
+|---|---|
+| `lib/signup.ts` (95L) | Shared contract: `validateSignup()`, `parseAllowlist()`, `isInvited()`, `SignupResponse`. Import-free + erasable; used by the form, the route and tests. |
+| `app/api/signup/route.ts` | 201 + cookie · 422 invalid · 403 `not_invited` · 409 `exists` · 503 `unavailable`. Requires `application/json`. |
+| `components/auth/SignupForm.tsx` | Validates, then posts. Moves on **only** when the server answers `{ ok: true }`. |
+| `scripts/set-password.ts` | `npm run db:set-password -- <email>`, password from `NEW_PASSWORD`. Updates an existing user only, and revokes their sessions. The only recovery path (no email sending). |
+| `TopBar` in `AppShell.tsx` | The sign-out icon; calls `api.logout()` and navigates only after the server confirms. |
 
 ### Lead uploads and segments — `lib/leads/` + `components/app/leads/`
 `parseFile.ts` (csv/xlsx via exceljs) · `validation.ts` (the `ATTRIBUTES` catalogue and column
@@ -173,7 +186,7 @@ import-free at runtime, so `tests/adapt.test.mjs` pins every channel and stage r
 
 ### Tests — `tests/` (Node's built-in runner, not Jest/Vitest)
 `dataQuery.test.mjs` · `demoRequest.test.mjs` · `workflow.test.mjs` · `validate.test.mjs` ·
-`adapt.test.mjs` — **70 tests**
+`adapt.test.mjs` · `signup.test.mjs` — **102 tests**
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).
@@ -220,6 +233,13 @@ namespaces, no parameter properties).
   rows with equal scores swap between pages and one gets shown twice or skipped.
 - Analytics reads `daily_rollups`, so **today has no row until the rollup job runs** — a 30-day
   range legitimately returns 29 points the day after a seed. Not a bug.
+- **Drizzle wraps driver errors.** A Postgres unique violation arrives as a `DrizzleQueryError`
+  whose original is on `.cause`; `error.code` alone is `undefined`, so a duplicate-email signup
+  would surface as a 500. `pgErrorCode()` in `lib/auth.ts` checks both.
+- Browser tests: Next injects its own empty `role="alert"` route announcer, so
+  `locator('[role="alert"]').first()` matches that, not your message. Scope it
+  (`form div[role="alert"]`). And wait for `html.js` plus a beat before clicking a form, or the
+  click lands before React attaches.
 - `scripts/` has its own tsconfig: it runs under `node --experimental-strip-types`, which needs
   explicit `.ts` extensions that the app's tsconfig rejects. `npm run typecheck` runs both.
 
@@ -266,9 +286,11 @@ namespaces, no parameter properties).
 
 Roughly in the order they should be closed.
 
-1. **Seven screens still read `lib/app/` constants** (Home, Inbox, Analytics, Settings,
-   Workflows, Integrations, AppShell counts) — they render demo data regardless of the database.
-   Leads and Campaigns show the pattern to follow.
+1. **Six screens still read `lib/app/` constants** (Home, Inbox, Analytics, Settings,
+   Workflows, Integrations) — they render demo data regardless of the database, so a real tester
+   sees invented tasks and conversations next to their own empty workspace. Home, Inbox,
+   Analytics, Workflows and Integrations carry an "Illustrative demo data" chip; Settings does
+   not. Leads and Campaigns show the pattern to follow.
 2. **Two data models** bridged by `lib/app/adapt.ts`; converging them removes the adapter and the
    need to add every new field in three places.
 3. **Uploads, segments and lead profiles have no tables.** The upload feature works against the
@@ -285,24 +307,40 @@ Roughly in the order they should be closed.
    backs the screens not yet rewired.
 7. **Campaign counters are denormalised and nothing maintains them.** `campaigns.sent/delivered/
    openRate/...` come from the seed; the engine should own them.
-8. **Auth has no OAuth, email verification, password reset or rate limiting**, and roles exist as
-   a column (`memberships.role`) that nothing enforces. Better Auth drops in on the same Postgres.
-   Sessions are not refreshed on use, so an 8-hour session ends mid-work.
-9. **No `getUser` for team members** — the owner is the only account with a password hash, so
-   only one person can sign in.
-10. `gtm_mock.html` at the root is a standalone design reference, not part of the app.
+8. **Auth has no email verification, password reset link, OAuth or login rate limiting.** Fine for
+   an invited handful; none of it is optional before a public launch. Login is brute-forceable
+   (scrypt's cost slows it but does not stop it), and an address on the allowlist is trusted
+   without proving the user owns it. Roles exist as a column (`memberships.role`) that nothing
+   enforces. Sessions are not refreshed on use, so an 8-hour session ends mid-work.
+9. **No way to join an existing workspace.** Every signup creates its own, so invited testers
+   cannot share leads or campaigns with each other, which a team product needs. Needs an
+   invite-to-workspace flow (a `memberships` row for an existing `workspace_id`) and a `members`
+   UI; the schema already supports many users per workspace.
+10. **The rail badges (Home 6, Inbox 4) are hardcoded** from `lib/app/inbox`, so a brand-new real
+    account shows them. The screens they point to now say "Illustrative demo data"; the badges
+    themselves do not.
+11. `gtm_mock.html` at the root is a standalone design reference, not part of the app.
 
 ## 8. Running it locally
 
 ```bash
-cp .env.example .env.local      # fill DATABASE_URL (pooled) + AUTH_SESSION_SECRET
+cp .env.example .env.local      # fill DATABASE_URL (pooled) + SIGNUP_ALLOWED_EMAILS
 npm run db:migrate              # applies drizzle/*.sql
-npm run db:seed                 # demo workspace; idempotent, scoped to w_demo
+npm run db:seed                 # OPTIONAL demo workspace; local/demo only (see below)
 npm run dev
 ```
 
 Without `DATABASE_URL` the app falls back to `MemoryRepository` and the single demo account, so a
-bare clone still runs — but nothing persists, and the live screens show the in-memory seed.
+bare clone still runs — but nothing persists, sign-up is unavailable, and the live screens show
+the in-memory seed.
+
+**Giving access to a few testers** (deployed, no seed needed): set `DATABASE_URL` (pooled) and
+`SIGNUP_ALLOWED_EMAILS` on the host, run `npm run db:migrate` once, and tell each person to open
+`/signup` with the address you listed. A tester who forgets their password:
+`read -rs NEW_PASSWORD && export NEW_PASSWORD && npm run db:set-password -- their@email.com`.
+
+**Do not run `db:seed` against a database real people use** without setting `SEED_OWNER_EMAIL` and
+`SEED_OWNER_PASSWORD`: the fallback password is committed in `scripts/seed-db.ts`.
 
 ---
 

@@ -17,8 +17,11 @@ import {
   PanelIcon,
   SearchIcon,
   SettingsIcon,
+  SignOutIcon,
   WorkflowsIcon,
 } from "./icons";
+import { api } from "@/lib/api";
+import { LOGIN_HREF } from "@/lib/site";
 import { DASHBOARD_NAV, INTEGRATIONS_HREF, SETTINGS_HREF } from "@/lib/nav";
 import { TASKS } from "@/lib/app/inbox";
 import { avatarTint, initials } from "@/lib/app/leads";
@@ -239,8 +242,40 @@ export function TopBar({ title }: { title: string }) {
           <BellIcon />
           <span className="dotp" />
         </button>
+        <SignOutButton />
       </div>
     </header>
+  );
+}
+
+/**
+ * Ends the session. In the top bar rather than the rail because the rail is hidden on phones,
+ * and the people testing this on a shared machine are the ones who most need to sign out.
+ *
+ * It navigates only once the server confirms: if the request fails the session is still live, so
+ * pretending to have signed out would leave them logged in on a screen that looks logged out.
+ */
+function SignOutButton() {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  async function signOut() {
+    setBusy(true);
+    try {
+      await api.logout();
+    } catch {
+      setBusy(false);
+      window.alert("Couldn't sign you out. Check your connection and try again.");
+      return;
+    }
+    router.push(LOGIN_HREF);
+    router.refresh();
+  }
+
+  return (
+    <button className="ib" aria-label="Sign out" title="Sign out" disabled={busy} onClick={() => void signOut()}>
+      <SignOutIcon />
+    </button>
   );
 }
 

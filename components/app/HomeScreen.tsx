@@ -71,6 +71,9 @@ export function HomeScreen({ user }: { user: { name: string } }) {
           <Link className="btn line" href="/dashboard/leads">
             Add leads
           </Link>
+          {/* This screen still reads the demo constants in lib/app/, not the workspace's own
+              data, so say so: a real account would otherwise take these for its own numbers. */}
+          <span className="samp">Illustrative demo data</span>
         </div>
       </div>
 

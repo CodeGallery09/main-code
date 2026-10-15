@@ -4,9 +4,11 @@
  * Two modes, chosen by whether `DATABASE_URL` is set:
  *
  * - **Database mode.** Users live in the `users` table with a scrypt password hash; sessions are
- *   rows in `sessions` and the cookie carries nothing but an opaque random id.
+ *   rows in `sessions` and the cookie carries nothing but an opaque random id. `signUp()` creates
+ *   a workspace + owner + session in one transaction, and is invite-only (`SIGNUP_ALLOWED_EMAILS`).
  * - **Demo mode.** No database configured, so the single hardcoded account and an HMAC cookie
  *   stand in, exactly as the prototype did. The marketing site and a bare `git clone` still work.
+ *   Sign-up is unavailable here (there is nowhere to put an account), and says so.
  *
  * Why the session is a database row rather than a signed claim: the prototype's cookie was an
  * HMAC over the email address with no expiry inside the signature, so a cookie that leaked stayed
@@ -19,8 +21,9 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, eq, lt } from "drizzle-orm";
 import { getDb, hasDatabase } from "@/lib/db/client";
-import { memberships, sessions, users, workspaces } from "@/lib/db/schema";
-import { verifyPassword } from "@/lib/password";
+import { channelQuotas, memberships, sessions, users, workspaces } from "@/lib/db/schema";
+import { hashPassword, verifyPassword } from "@/lib/password";
+import { isInvited, parseAllowlist, type SignupInput } from "@/lib/signup";
 
 export { hashPassword, verifyPassword } from "@/lib/password";
 
@@ -98,14 +101,103 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     .limit(1);
   if (!membership) return { ok: false };
 
-  const id = randomBytes(32).toString("hex");
+  // Clear this user's expired sessions while we are here. Nothing else prunes them, and each
+  // sign-in adds a row, so without this the table only ever grows.
+  await db.delete(sessions).where(and(eq(sessions.userId, found.id), lt(sessions.expiresAt, new Date())));
+
+  const id = newSessionId();
   await db.insert(sessions).values({
     id,
     userId: found.id,
     workspaceId: membership.workspaceId,
-    expiresAt: new Date(Date.now() + SESSION_MAX_AGE * 1000),
+    expiresAt: sessionExpiry(),
   });
   return { ok: true, cookie: id };
+}
+
+const newSessionId = () => randomBytes(32).toString("hex");
+const sessionExpiry = () => new Date(Date.now() + SESSION_MAX_AGE * 1000);
+
+/* --------------------------------------------------------------- sign up -- */
+
+export type SignUpResult =
+  | { ok: true; cookie: string }
+  /** `unavailable`: no database is configured, so there is nowhere to put an account. */
+  | { ok: false; code: "not_invited" | "exists" | "unavailable" };
+
+/**
+ * Placeholder plan limits for a new workspace, until a plan/billing model exists. Only the two
+ * channels the product actually runs get a row: WhatsApp, calls and SMS are "Planned" (see the
+ * content rules in CLAUDE.md), and a zero-cap row would invite a divide-by-zero in a meter.
+ */
+const DEFAULT_QUOTAS = [
+  { channel: "linkedin", cap: 100 },
+  { channel: "email", cap: 200 },
+] as const;
+
+/**
+ * Pulls a Postgres error code out of whatever the driver threw. Drizzle wraps the driver's error
+ * and keeps the original on `.cause`, so checking `error.code` alone silently misses it — which
+ * would turn a harmless "that email is taken" into a 500.
+ */
+function pgErrorCode(error: unknown): string | undefined {
+  const own = (error as { code?: unknown } | null)?.code;
+  if (typeof own === "string") return own;
+  const cause = (error as { cause?: { code?: unknown } } | null)?.cause?.code;
+  return typeof cause === "string" ? cause : undefined;
+}
+
+/**
+ * Creates a workspace, its owner and a live session in one transaction, so a failure part-way
+ * can never leave an account with no workspace or a workspace nobody owns.
+ *
+ * **Invite-only.** The address must be in `SIGNUP_ALLOWED_EMAILS`; unset means nobody can sign
+ * up. The check runs before any hashing or writing, so a stranger costs nothing.
+ *
+ * What this leaks, knowingly: an invited address learns whether it already has an account
+ * (`exists`), and response time differs slightly between invited and not-invited. Both are only
+ * visible to people who already know the address, and an allowlist of a few testers is not a
+ * secret worth defending with timing padding.
+ */
+export async function signUp(input: SignupInput): Promise<SignUpResult> {
+  if (!hasDatabase()) return { ok: false, code: "unavailable" };
+  if (!isInvited(input.email, parseAllowlist(process.env.SIGNUP_ALLOWED_EMAILS))) {
+    return { ok: false, code: "not_invited" };
+  }
+
+  // Hash first. scrypt is deliberately slow, and doing it inside the transaction would hold a
+  // pooled connection open for the whole computation.
+  const passwordHash = await hashPassword(input.password);
+
+  const userId = `u_${randomBytes(9).toString("base64url")}`;
+  const workspaceId = `w_${randomBytes(9).toString("base64url")}`;
+  const sessionId = newSessionId();
+  const firstName = input.name.split(/\s+/)[0] || input.name;
+
+  try {
+    await getDb().transaction(async (tx) => {
+      await tx.insert(workspaces).values({ id: workspaceId, name: `${firstName}'s workspace` });
+      await tx.insert(users).values({
+        id: userId,
+        email: input.email,
+        name: input.name,
+        passwordHash,
+      });
+      await tx.insert(memberships).values({ workspaceId, userId, role: "owner" });
+      await tx
+        .insert(channelQuotas)
+        .values(DEFAULT_QUOTAS.map((q) => ({ workspaceId, channel: q.channel, used: 0, cap: q.cap })));
+      await tx.insert(sessions).values({ id: sessionId, userId, workspaceId, expiresAt: sessionExpiry() });
+    });
+  } catch (error) {
+    // 23505 = unique_violation. The only unique key a caller can collide on is the email: ids
+    // are random. Two simultaneous signups for one address land here, and the transaction has
+    // already rolled back, so the loser leaves nothing behind.
+    if (pgErrorCode(error) === "23505") return { ok: false, code: "exists" };
+    throw error;
+  }
+
+  return { ok: true, cookie: sessionId };
 }
 
 /* ---------------------------------------------------------- read / clear -- */
