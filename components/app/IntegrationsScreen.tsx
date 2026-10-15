@@ -6,32 +6,42 @@ import { Screen } from "./AppShell";
 import { SampleBanner } from "./SampleBanner";
 import { CheckIcon, Glyph, SearchIcon } from "./icons";
 import { api } from "@/lib/api";
-import { CHANNEL } from "@/lib/app/channels";
 import {
   GROUPS,
   PROVIDERS,
   providerView,
   STATE_TAG,
+  type ProviderKey,
   type ProviderView,
 } from "@/lib/app/integrations";
-import { CONFIGURATION_HREF } from "@/lib/nav";
+import { CONFIGURATION_HREF, INTEGRATIONS_HREF, SETTINGS_HREF } from "@/lib/nav";
 import type { AccountsSnapshot } from "@/lib/data/types";
 
 const EMPTY: AccountsSnapshot = { accounts: [], domains: [] };
 
-/** Logo tile: the channel's own colour and glyph where it has one, else a neutral tile with initials. */
+/** Brand colour and mark for each provider's logo tile. Presentation only, so it lives here, not in the catalogue. */
+const TILE: Record<ProviderKey, { bg: string; glyph?: string; text?: string }> = {
+  linkedin: { bg: "#0A66C2", glyph: "li" },
+  email: { bg: "#EA4335", glyph: "mail" },
+  waba: { bg: "#25D366", glyph: "wa" },
+  twilio: { bg: "#F22F46", glyph: "sms" },
+  calendar: { bg: "#4285F4", text: "CA" },
+  hubspot: { bg: "#FF7A59", text: "HS" },
+  salesforce: { bg: "#00A1E0", text: "SF" },
+  webhooks: { bg: "#111418", text: "WH" },
+};
+
+const TABS: [string, string][] = [
+  [CONFIGURATION_HREF, "Configuration"],
+  [INTEGRATIONS_HREF, "Integrations"],
+  [SETTINGS_HREF, "Settings"],
+];
+
 function Tile({ view }: { view: ProviderView }) {
-  const { provider } = view;
-  const ch = provider.ch ? CHANNEL[provider.ch] : null;
-  const glyph = provider.k === "linkedin" ? "li" : provider.k === "email" ? "mail" : provider.k === "waba" ? "wa" : provider.k === "twilio" ? "sms" : null;
-  const off = view.state === "planned";
+  const t = TILE[view.provider.k];
   return (
-    <span
-      className={"intg-tile" + (ch ? "" : " plain")}
-      style={ch ? { background: ch.hex, opacity: off ? 0.55 : 1 } : undefined}
-      aria-hidden="true"
-    >
-      {glyph ? <Glyph n={glyph} /> : provider.name.slice(0, 2)}
+    <span className="intg-tile" style={{ background: t.bg }} aria-hidden="true">
+      {t.glyph ? <Glyph n={t.glyph} /> : t.text}
     </span>
   );
 }
@@ -50,16 +60,11 @@ function Row({ view, onOpen }: { view: ProviderView; onOpen: (v: ProviderView) =
         <small>{live ? view.detail : view.provider.blurb}</small>
       </span>
       {live ? (
-        <Link className="intg-act manage" href={CONFIGURATION_HREF}>
+        <Link className="intg-manage" href={CONFIGURATION_HREF}>
           Manage
         </Link>
       ) : (
-        <button
-          type="button"
-          className="intg-act"
-          onClick={() => onOpen(view)}
-          aria-label={`${view.provider.name}: details`}
-        >
+        <button type="button" className="intg-plus" onClick={() => onOpen(view)} aria-label={`${view.provider.name}: details`}>
           <Glyph n="plus" />
         </button>
       )}
@@ -84,7 +89,6 @@ function Section({
     <section className="intg-sec">
       <button type="button" className="intg-h" onClick={onToggle} aria-expanded={!collapsed}>
         <span>{title}</span>
-        <small>{rows.length}</small>
         <span className={"intg-chev" + (collapsed ? "" : " open")}>
           <Glyph n="chev" />
         </span>
@@ -101,22 +105,27 @@ function Section({
 }
 
 /**
- * Where a workspace sees what Flightpath can connect to. Everything already wired up sits on top in
- * "Connected"; the rest is grouped by category below. LinkedIn and email are the two that can
- * connect (connecting itself is not built yet, and says so); the rest are marked Planned rather
- * than offered as if they worked today. State is read from the workspace's own accounts and domains.
+ * Where a workspace sees what Flightpath can connect to: one card, a workspace-id row on top, then
+ * collapsible sections of two-column rows. Everything already wired up sits in "Connected" first;
+ * the rest is grouped by category below. LinkedIn and email are the two that can connect
+ * (connecting itself is not built yet, and says so); the rest are marked Planned rather than
+ * offered as if they worked today. State is read from the workspace's own accounts and domains.
  */
 export function IntegrationsScreen() {
   const [open, setOpen] = useState<ProviderView | null>(null);
   const [snapshot, setSnapshot] = useState<AccountsSnapshot>(EMPTY);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [copied, setCopied] = useState(false);
 
   async function load() {
     try {
-      setSnapshot(await api.accounts());
+      const [accounts, ws] = await Promise.all([api.accounts(), api.workspace()]);
+      setSnapshot(accounts);
+      setWorkspaceId(ws.workspace.id);
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load your integrations.");
@@ -143,19 +152,36 @@ export function IntegrationsScreen() {
 
   const toggle = (title: string) => setCollapsed((c) => ({ ...c, [title]: !c[title] }));
 
+  async function copyId() {
+    if (!workspaceId) return;
+    try {
+      await navigator.clipboard.writeText(workspaceId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked: nothing to do, the id is selectable on screen */
+    }
+  }
+
   return (
     <Screen title="Integrations">
       <SampleBanner onRemoved={() => void load()} />
 
-      <div className="intg-bar">
-        <p className="muted">Connect the channels your campaigns send from. Anything connected sits at the top.</p>
+      <div className="intg-top">
+        <nav className="intg-tabs" aria-label="Workspace">
+          {TABS.map(([href, label]) => (
+            <Link key={href} href={href} className={href === INTEGRATIONS_HREF ? "on" : ""} aria-current={href === INTEGRATIONS_HREF ? "page" : undefined}>
+              {label}
+            </Link>
+          ))}
+        </nav>
         <label className="intg-search">
           <SearchIcon />
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search integrations"
+            placeholder="Search integrations…"
             aria-label="Search integrations"
           />
         </label>
@@ -174,9 +200,16 @@ export function IntegrationsScreen() {
 
       {loaded && (
         <div className="card intg">
-          {!error && !sections.some((s) => s.title === "Connected") && !query && (
-            <p className="intg-none">Nothing is connected yet. Connecting LinkedIn and email isn&apos;t available yet.</p>
-          )}
+          <div className="intg-id">
+            <span>
+              <b>Workspace ID</b>
+              <code>{workspaceId ?? "—"}</code>
+            </span>
+            <button type="button" className="intg-copy" onClick={() => void copyId()} aria-label="Copy workspace ID" disabled={!workspaceId}>
+              {copied ? <CheckIcon /> : <Glyph n="copy" />}
+            </button>
+          </div>
+
           {sections.map((s) => (
             <Section
               key={s.title}

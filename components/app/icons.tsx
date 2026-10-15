@@ -220,6 +220,7 @@ const GLYPHS: Record<string, string | string[]> = {
   lock: ["M6 10h12v10H6z", "M9 10V7a3 3 0 016 0v3"],
   plus: "M12 5v14M5 12h14",
   chev: "M6 9l6 6 6-6",
+  copy: ["M9 9h10.5v10.5H9z", "M5 15V5h10"],
   minus: "M5 12h14",
   x: "M6 6l12 12M18 6L6 18",
   undo: ["M9 14L4 9l5-5", "M4 9h11a5 5 0 010 10h-3"],

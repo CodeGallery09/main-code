@@ -192,7 +192,7 @@ leads the upload *creates*. It never changes an existing lead's consent.
 | `AnalyticsScreen.tsx` | 526 | `/api/analytics`, `/api/campaigns` | Overview / Channels / Campaigns. No per-person or per-campaign daily data exists, so none is shown |
 | `WorkflowsScreen.tsx` | 240 | server props from the repository | library + template picker |
 | `ConfigurationScreen.tsx` + `configuration/` | 96 + ~1340 | `/api/accounts`, `/api/campaigns` | see below |
-| `IntegrationsScreen.tsx` | 264 | `/api/accounts` | one card of collapsible sections (`.intg*` CSS at the end of `app.css`); provider state is *derived* (`providerView`) |
+| `IntegrationsScreen.tsx` | 296 | `/api/accounts` | one card of collapsible sections (`.intg*` CSS at the end of `app.css`); provider state is *derived* (`providerView`) |
 | `SettingsScreen.tsx` | 227 | `/api/workspace`, `/api/accounts` | channels, domains, members, plan |
 | `SampleBanner.tsx` | 60 | `/api/workspace` | "this workspace includes sample data" + Remove button; renders on every data screen |
 | `ui.tsx` `charts.tsx` `icons.tsx` | 628 | — | shared controls, SVG charts, 24px icons |
@@ -231,9 +231,11 @@ template **creates a draft multichannel campaign + its workflow, then opens the 
 workflow needs a campaign; creating on a GET would let link prefetch create rows). Library
 "in flight"/"meetings" are dashes: nothing has been sent, so there is nothing to report.
 `/dashboard/integrations` (`IntegrationsScreen`, `lib/app/integrations.ts`): only LinkedIn and
-email can connect; every other provider is `state: "planned"`. Layout: a search box, then ONE card of
-collapsible sections, each a two-column grid of rows (logo tile, name + pill, description, "+" or
-"Manage"). Providers that are connected or need attention are pulled out of their category into a
+email can connect; every other provider is `state: "planned"`. Layout (a replica of a reference screenshot the user supplied — do not restyle it without asking):
+an underline tab row (Configuration / Integrations / Settings, real links) with the search box at its
+right, then ONE card: a Workspace ID row (real `org_…` id + copy icon), then collapsible sections
+(bold heading, thin chevron, no counts), each a two-column grid of rows (brand-coloured logo tile from
+the `TILE` map in the screen, name + pill, description, bare "+" or "Manage"). Providers that are connected or need attention are pulled out of their category into a
 **Connected** section on top (rows show the live detail and a Manage link to Configuration); the
 rest stay under Channels / Calendar / CRM / Developer. "+" opens the explainer drawer. The old
 per-account LinkedIn/DNS panels were removed: Configuration → Mailboxes & domains owns that detail.
