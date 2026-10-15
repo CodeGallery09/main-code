@@ -8,7 +8,10 @@ export const NAV_LINKS = [
   { label: "Talk to founders", href: "/#founders" },
 ] as const;
 
-// Auth is a prototype: only the hardcoded account in lib/auth.ts can sign in; sign-up is a dummy form.
+// Auth: invite-only accounts backed by the database (lib/auth.ts); with no DATABASE_URL only the
+// hardcoded demo account can sign in and sign-up reports that it is unavailable.
 export const LOGIN_HREF = "/login";
 export const SIGNUP_HREF = "/signup";
 export const DASHBOARD_HREF = "/dashboard";
+/** Where a brand-new account lands: its sample campaign is here, and "Create campaign" is the next step. */
+export const FIRST_RUN_HREF = "/dashboard/campaigns";

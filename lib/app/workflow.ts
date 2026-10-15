@@ -187,7 +187,8 @@ export type FlowEdge = {
 };
 
 export type Workflow = {
-  id: number;
+  /** The campaign id (a string) for a stored workflow; a small number for the demo library. */
+  id: number | string;
   name: string;
   status: WorkflowStatus;
   nodes: StepNode[];
@@ -223,18 +224,18 @@ export function defaults(kind: StepKind): StepData {
     case "email":
       return {
         subject: "Quick question, {first_name}",
-        body: "Hi {first_name},\n\nWhen teams grow, LinkedIn and email end up on different clocks and leads fall through.\n\nWorth a 20-minute look?\n\nAarav",
+        body: "Hi {first_name},\n\nWhen teams grow, LinkedIn and email end up on different clocks and leads fall through.\n\nWorth a 20-minute look?\n\n[Your name]",
         thread: true,
       };
     case "wa":
       return {
         template: "intro",
-        body: "Hi {first_name}, Aarav from Flightpath. Open to a quick look at how teams like {company} run outreach on one clock?",
+        body: "Hi {first_name}, [Your name] here. Open to a quick look at how teams like {company} run outreach on one clock?",
       };
     case "call":
       return { assign: "owner", notes: "Reference what they engaged with. Aim for a 20-minute demo." };
     case "sms":
-      return { body: "Hi {first_name}, Aarav here. Sent you an email about {company}’s outreach. Worth a quick chat?" };
+      return { body: "Hi {first_name}, [Your name] here. Sent you an email about {company}’s outreach. Worth a quick chat?" };
     case "wait":
       return { days: 3, biz: true };
     case "cond":
@@ -738,3 +739,208 @@ const CHANNEL_ORDER: StepChannel[] = ["li", "mail", "wa", "call", "sms"];
 /** Channels a workflow actually sends on, for the campaign list. */
 export const workflowChannels = (w: Workflow): StepChannel[] =>
   CHANNEL_ORDER.filter((ch) => w.nodes.some((n) => STEPS[n.kind].ch === ch));
+
+/* ---------- persistence ---------------------------------------------------- */
+
+/** The sending window and pace, stored with the steps. */
+export type WorkflowSettings = Pick<Workflow, "days" | "from" | "to" | "daily" | "skipOther">;
+
+/** What is stored per campaign: the steps, how they connect, and the sending window. */
+export type WorkflowGraph = { nodes: StepNode[]; edges: FlowEdge[]; settings: WorkflowSettings };
+
+export const DEFAULT_SETTINGS: WorkflowSettings = { ...WINDOW, daily: 40 };
+
+/**
+ * Audience keys that mean "the workspace's own leads" rather than a stored list. The builder turns
+ * them into live counts, so a workflow that starts from one always reflects the leads that exist.
+ */
+export const AUDIENCE_CAMPAIGN = "campaign";
+export const AUDIENCE_WORKSPACE = "workspace";
+
+/** A fresh graph from one of the templates, starting from the campaign's own leads by default. */
+export function graphFromTemplate(template = "blank", audience: string = AUDIENCE_CAMPAIGN): WorkflowGraph {
+  const spec = TEMPLATES.find((t) => t.k === template) || TEMPLATES[0];
+  const { nodes, edges } = fromSpec(spec.spec);
+  return {
+    nodes: nodes.map((n) => (n.kind === "audience" ? { ...n, data: { ...n.data, list: audience } } : n)),
+    edges,
+    settings: { ...DEFAULT_SETTINGS, days: [...DEFAULT_SETTINGS.days] },
+  };
+}
+
+export const toGraph = (
+  w: Pick<Workflow, "nodes" | "edges" | "days" | "from" | "to" | "daily" | "skipOther">,
+): WorkflowGraph => ({
+  nodes: w.nodes,
+  edges: w.edges,
+  settings: { days: w.days, from: w.from, to: w.to, daily: w.daily, skipOther: w.skipOther },
+});
+
+/** The builder's `Workflow` from a stored graph plus what only the campaign knows. */
+export function fromGraph(
+  graph: WorkflowGraph,
+  meta: { id: number | string; name: string; status: WorkflowStatus; started: string | null },
+): Workflow {
+  return { ...meta, nodes: graph.nodes, edges: graph.edges, ...graph.settings };
+}
+
+/* ---------- validating a graph that arrived over the network ---------------- *
+ * The builder sends the whole graph back on every save. It is untrusted input that ends up in a
+ * jsonb column and is later walked recursively by the canvas, so it is rebuilt field by field
+ * from a whitelist rather than stored as received, and bounded in size and shape. */
+
+export const GRAPH_LIMITS = { nodes: 120, edges: 240, text: 5000, shortText: 64, coord: 100_000 } as const;
+
+export type GraphValidation = { ok: true; data: WorkflowGraph } | { ok: false; error: string };
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+const TEXT_KEYS = ["titles", "geo", "size", "note", "subject", "body", "template", "notes"] as const;
+const SHORT_KEYS = ["list"] as const;
+const BOOL_KEYS = ["thread", "biz"] as const;
+const NUM_KEYS: Record<string, [min: number, max: number]> = {
+  days: [0, 365],
+  within: [0, 365],
+  score: [0, 100],
+  a: [0, 100],
+};
+const KNOWN_DATA_KEYS = new Set<string>([
+  ...TEXT_KEYS,
+  ...SHORT_KEYS,
+  ...BOOL_KEYS,
+  ...Object.keys(NUM_KEYS),
+  "assign",
+  "check",
+  "goal",
+]);
+
+/** Returns the cleaned data, or the reason it was refused. */
+function cleanStepData(raw: unknown, where: string): StepData | string {
+  if (!isObject(raw)) return `${where}: expected an object.`;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!KNOWN_DATA_KEYS.has(key)) return `${where}.${key}: not a field a step can have.`;
+    if ((SHORT_KEYS as readonly string[]).includes(key)) {
+      if (typeof value !== "string" || value.length > GRAPH_LIMITS.shortText) return `${where}.${key}: expected short text.`;
+    } else if ((TEXT_KEYS as readonly string[]).includes(key)) {
+      if (typeof value !== "string" || value.length > GRAPH_LIMITS.text) {
+        return `${where}.${key}: expected text of ${GRAPH_LIMITS.text} characters or fewer.`;
+      }
+    } else if ((BOOL_KEYS as readonly string[]).includes(key)) {
+      if (typeof value !== "boolean") return `${where}.${key}: expected true or false.`;
+    } else if (key in NUM_KEYS) {
+      const [min, max] = NUM_KEYS[key];
+      if (!finite(value) || value < min || value > max) return `${where}.${key}: expected a number from ${min} to ${max}.`;
+    } else if (key === "assign") {
+      if (value !== "owner" && value !== "rr") return `${where}.assign: expected "owner" or "rr".`;
+    } else if (key === "check") {
+      if (typeof value !== "string" || !(value in CHECKS)) return `${where}.check: not a known check.`;
+    } else if (key === "goal") {
+      if (typeof value !== "string" || !(value in GOALS)) return `${where}.goal: not a known goal.`;
+    }
+    out[key] = value;
+  }
+  return out as StepData;
+}
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export function validateWorkflowGraph(input: unknown): GraphValidation {
+  if (!isObject(input)) return { ok: false, error: "The workflow must be an object." };
+  const { nodes: rawNodes, edges: rawEdges, settings: rawSettings } = input;
+
+  if (!Array.isArray(rawNodes)) return { ok: false, error: "nodes: expected a list." };
+  if (!Array.isArray(rawEdges)) return { ok: false, error: "edges: expected a list." };
+  if (rawNodes.length > GRAPH_LIMITS.nodes) return { ok: false, error: `A workflow can have at most ${GRAPH_LIMITS.nodes} steps.` };
+  if (rawEdges.length > GRAPH_LIMITS.edges) return { ok: false, error: `A workflow can have at most ${GRAPH_LIMITS.edges} connections.` };
+
+  const nodes: StepNode[] = [];
+  const kindOf = new Map<string, StepKind>();
+  for (const [i, raw] of rawNodes.entries()) {
+    const where = `nodes[${i}]`;
+    if (!isObject(raw)) return { ok: false, error: `${where}: expected an object.` };
+    const { id, kind, x, y, data } = raw;
+    if (typeof id !== "string" || !id || id.length > GRAPH_LIMITS.shortText) return { ok: false, error: `${where}.id: expected a short id.` };
+    if (kindOf.has(id)) return { ok: false, error: `${where}.id: "${id}" is used twice.` };
+    if (typeof kind !== "string" || !(kind in STEPS)) return { ok: false, error: `${where}.kind: not a known step.` };
+    if (!finite(x) || !finite(y) || Math.abs(x) > GRAPH_LIMITS.coord || Math.abs(y) > GRAPH_LIMITS.coord) {
+      return { ok: false, error: `${where}: x and y must be numbers.` };
+    }
+    const cleaned = cleanStepData(data, `${where}.data`);
+    if (typeof cleaned === "string") return { ok: false, error: cleaned };
+    kindOf.set(id, kind as StepKind);
+    nodes.push({ id, kind: kind as StepKind, x, y, data: cleaned });
+  }
+
+  const audiences = nodes.filter((n) => n.kind === "audience").length;
+  if (audiences !== 1) return { ok: false, error: "A workflow needs exactly one Audience step." };
+
+  const edges: FlowEdge[] = [];
+  const seenEdge = new Set<string>();
+  const seenSocket = new Set<string>();
+  for (const [i, raw] of rawEdges.entries()) {
+    const where = `edges[${i}]`;
+    if (!isObject(raw)) return { ok: false, error: `${where}: expected an object.` };
+    const { id, source, target, port } = raw;
+    if (typeof id !== "string" || !id || id.length > GRAPH_LIMITS.shortText * 3) return { ok: false, error: `${where}.id: expected an id.` };
+    if (seenEdge.has(id)) return { ok: false, error: `${where}.id: "${id}" is used twice.` };
+    if (typeof source !== "string" || !kindOf.has(source)) return { ok: false, error: `${where}.source: no such step.` };
+    if (typeof target !== "string" || !kindOf.has(target)) return { ok: false, error: `${where}.target: no such step.` };
+    if (source === target) return { ok: false, error: `${where}: a step cannot lead to itself.` };
+    if (kindOf.get(target) === "audience") return { ok: false, error: `${where}: nothing can lead into the Audience.` };
+    if (typeof port !== "string" || !(port in PORT_LABEL)) return { ok: false, error: `${where}.port: not a known socket.` };
+    if (!STEPS[kindOf.get(source) as StepKind].ports.includes(port as Port)) {
+      return { ok: false, error: `${where}.port: a ${STEPS[kindOf.get(source) as StepKind].label} step has no "${port}" socket.` };
+    }
+    // One socket leads to one step; the builder replaces the old connection when a new one is made.
+    const socket = `${source}:${port}`;
+    if (seenSocket.has(socket)) return { ok: false, error: `${where}: that socket already leads somewhere.` };
+    seenEdge.add(id);
+    seenSocket.add(socket);
+    edges.push({ id, source, target, port: port as Port });
+  }
+
+  // The canvas and stepStats() walk the graph recursively; a cycle would hang every render.
+  const next = new Map<string, string[]>();
+  for (const e of edges) next.set(e.source, [...(next.get(e.source) || []), e.target]);
+  const state = new Map<string, 1 | 2>();
+  const cyclic = (id: string): boolean => {
+    if (state.get(id) === 2) return false;
+    if (state.get(id) === 1) return true;
+    state.set(id, 1);
+    for (const to of next.get(id) || []) if (cyclic(to)) return true;
+    state.set(id, 2);
+    return false;
+  };
+  if (nodes.some((n) => cyclic(n.id))) return { ok: false, error: "Steps cannot loop back on themselves." };
+
+  if (!isObject(rawSettings)) return { ok: false, error: "settings: expected an object." };
+  const { days, from, to, daily, skipOther } = rawSettings;
+  if (!Array.isArray(days) || !days.length || days.length > 7 || new Set(days).size !== days.length || !days.every((d) => typeof d === "string" && WEEKDAYS.includes(d))) {
+    return { ok: false, error: "settings.days: pick at least one weekday, each once." };
+  }
+  if (typeof from !== "string" || !HHMM.test(from) || typeof to !== "string" || !HHMM.test(to)) {
+    return { ok: false, error: "settings: the sending window needs times like 09:00." };
+  }
+  if (from >= to) return { ok: false, error: "settings: the sending window must end after it starts." };
+  if (!finite(daily) || !Number.isInteger(daily) || daily < 1 || daily > 10_000) {
+    return { ok: false, error: "settings.daily: expected a whole number from 1 to 10000." };
+  }
+  if (typeof skipOther !== "boolean") return { ok: false, error: "settings.skipOther: expected true or false." };
+
+  return {
+    ok: true,
+    data: { nodes, edges, settings: { days: [...(days as string[])], from, to, daily, skipOther } },
+  };
+}
+
+/** A workflow's own name: shown in the builder header and the library. */
+export function validateWorkflowName(input: unknown): { ok: true; data: string } | { ok: false; error: string } {
+  const name = typeof input === "string" ? input.trim() : "";
+  if (!name) return { ok: false, error: "Name the workflow." };
+  if (name.length > 120) return { ok: false, error: "Keep the name to 120 characters." };
+  return { ok: true, data: name };
+}

@@ -12,6 +12,8 @@
  */
 
 export const NAME_MAX = 80;
+/** The company name becomes the workspace name, which the rail and headers display. */
+export const COMPANY_MAX = 80;
 export const EMAIL_MAX = 254;
 export const PASSWORD_MIN = 8;
 /**
@@ -20,7 +22,7 @@ export const PASSWORD_MIN = 8;
  */
 export const PASSWORD_MAX = 128;
 
-export type SignupInput = { name: string; email: string; password: string };
+export type SignupInput = { name: string; company: string; email: string; password: string };
 export type SignupField = keyof SignupInput;
 export type SignupErrors = Partial<Record<SignupField, string>>;
 export type SignupValidation =
@@ -31,10 +33,14 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const str = (value: unknown) => (typeof value === "string" ? value : "");
 
-/** Trims the name, lowercases the email; the password is taken exactly as typed. */
+/**
+ * Trims the name and company (collapsing runs of whitespace in the company, which is displayed),
+ * lowercases the email; the password is taken exactly as typed.
+ */
 export function validateSignup(input: unknown): SignupValidation {
   const body = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
   const name = str(body.name).trim();
+  const company = str(body.company).trim().replace(/\s+/g, " ");
   const email = str(body.email).trim().toLowerCase();
   const password = str(body.password);
 
@@ -42,13 +48,18 @@ export function validateSignup(input: unknown): SignupValidation {
   if (!name) errors.name = "Enter your name.";
   else if (name.length > NAME_MAX) errors.name = `Keep your name to ${NAME_MAX} characters.`;
 
+  if (!company) errors.company = "Enter your company name.";
+  else if (company.length > COMPANY_MAX) errors.company = `Keep the company name to ${COMPANY_MAX} characters.`;
+
   if (!email) errors.email = "Enter your work email.";
   else if (email.length > EMAIL_MAX || !EMAIL_RE.test(email)) errors.email = "Enter a valid email address.";
 
   if (password.length < PASSWORD_MIN) errors.password = `Use at least ${PASSWORD_MIN} characters.`;
   else if (password.length > PASSWORD_MAX) errors.password = `Use ${PASSWORD_MAX} characters or fewer.`;
 
-  return Object.keys(errors).length ? { ok: false, errors } : { ok: true, data: { name, email, password } };
+  return Object.keys(errors).length
+    ? { ok: false, errors }
+    : { ok: true, data: { name, company, email, password } };
 }
 
 /**

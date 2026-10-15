@@ -41,6 +41,9 @@ export const QUOTAS: ChannelQuota[] = [
 ];
 
 export const WORKSPACE: Workspace = {
+  id: "w_demo",
+  // The whole demo store is illustrative, so there is nothing separately flagged to remove.
+  sample: { campaigns: 0, leads: 0 },
   name: "Acme Growth",
   plan: "Scale (trial)",
   seats: 5,

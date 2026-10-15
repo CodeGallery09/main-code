@@ -37,6 +37,7 @@ import type {
   ThreadQuery,
   WriteError,
 } from "@/lib/data/repository";
+import { WORKFLOWS, toGraph, type WorkflowGraph } from "@/lib/app/workflow";
 import type { CampaignPatch, LeadPatch } from "@/lib/data/validate";
 import { mergeLeads, type LeadProfile } from "@/lib/leads/merge";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
@@ -61,6 +62,7 @@ import type {
   TrendPoint,
   User,
   Workspace,
+  WorkflowRecord,
 } from "@/lib/data/types";
 
 /**
@@ -91,6 +93,9 @@ const leadRows: Lead[] = LEADS.map((l) => ({ ...l }));
 const trend: TrendPoint[] = buildTrend(90);
 
 /** Monotonic ids for prototype creates, so two leads made in the same millisecond differ. */
+/** Workflows saved in this process, by campaign id. Seed campaigns fall back to the demo graphs. */
+const workflowRows = new Map<string, WorkflowRecord>();
+
 const counters: Record<string, number> = {};
 const nextId = (kind: string) => `${Date.now().toString(36)}${(counters[kind] = (counters[kind] ?? 0) + 1)}`;
 
@@ -352,6 +357,7 @@ export class MemoryRepository implements Repository {
     const at = campaigns.findIndex((c) => c.id === id);
     if (at < 0) return false;
     campaigns.splice(at, 1);
+    workflowRows.delete(id);
     // Mirror the database's ON DELETE SET NULL so a lead never points at a campaign that is gone.
     for (const lead of leadRows) if (lead.campaignId === id) lead.campaignId = null;
     return true;
@@ -362,6 +368,72 @@ export class MemoryRepository implements Repository {
     if (!found) return null;
     found.status = status;
     return { ...found };
+  }
+
+  /* ----------------------------------------------------------- workflows -- */
+
+  async getWorkflow(_ctx: Ctx, campaignId: string): Promise<WorkflowRecord | null> {
+    const saved = workflowRows.get(campaignId);
+    if (saved) return structuredClone(saved);
+    // The seed's multichannel campaigns each have a demo workflow with the same name.
+    const campaign = campaigns.find((c) => c.id === campaignId);
+    const demo = campaign && WORKFLOWS.find((w) => w.name === campaign.name);
+    if (!campaign || !demo) return null;
+    return structuredClone({
+      campaignId,
+      name: demo.name,
+      graph: toGraph(demo),
+      updatedAt: campaign.startedAt,
+    });
+  }
+
+  async listWorkflows(ctx: Ctx): Promise<WorkflowRecord[]> {
+    const out: WorkflowRecord[] = [];
+    for (const c of campaigns) {
+      if (c.type !== "multichannel") continue;
+      const found = await this.getWorkflow(ctx, c.id);
+      if (found) out.push(found);
+    }
+    return out;
+  }
+
+  async saveWorkflow(
+    _ctx: Ctx,
+    campaignId: string,
+    input: { name: string; graph: WorkflowGraph },
+  ): Promise<WorkflowRecord | WriteError | null> {
+    const campaign = campaigns.find((c) => c.id === campaignId);
+    if (!campaign) return null;
+    if (campaign.type !== "multichannel") {
+      return { error: { field: "campaign", message: "Only multichannel campaigns have a workflow." } };
+    }
+    const record: WorkflowRecord = {
+      campaignId,
+      name: input.name,
+      graph: structuredClone(input.graph),
+      updatedAt: new Date().toISOString(),
+    };
+    workflowRows.set(campaignId, record);
+    return structuredClone(record);
+  }
+
+  async removeSampleData(_ctx: Ctx): Promise<{ campaigns: number; leads: number }> {
+    let removedLeads = 0;
+    for (let i = leadRows.length - 1; i >= 0; i--) {
+      if (leadRows[i].isSample) {
+        leadRows.splice(i, 1);
+        removedLeads++;
+      }
+    }
+    let removedCampaigns = 0;
+    for (let i = campaigns.length - 1; i >= 0; i--) {
+      if (campaigns[i].isSample) {
+        workflowRows.delete(campaigns[i].id);
+        campaigns.splice(i, 1);
+        removedCampaigns++;
+      }
+    }
+    return { campaigns: removedCampaigns, leads: removedLeads };
   }
 
   async listLeads(_ctx: Ctx, query: LeadQuery): Promise<Paged<Lead>> {

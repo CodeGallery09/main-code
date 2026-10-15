@@ -5,6 +5,7 @@ import { Screen } from "./AppShell";
 import { CheckIcon, SearchIcon } from "./icons";
 import { Avatar } from "./ui";
 import { LeadEditor, type LeadDraft } from "./LeadEditor";
+import { SampleBanner } from "./SampleBanner";
 import { UploadLeads } from "./leads/UploadLeads";
 import { api, fieldErrorsOf } from "@/lib/api";
 import { onSegmentSaved, segmentSaved } from "@/lib/app/segments";
@@ -214,6 +215,7 @@ export function LeadsScreen() {
 
   return (
     <Screen title="Leads">
+      <SampleBanner onRemoved={() => void load()} />
       <div className="lfilters">
         <label className="q wide">
           <SearchIcon />
@@ -352,6 +354,7 @@ export function LeadsScreen() {
                         <div className="nm">
                           <span className="row1">
                             <b title={lead.t ? `${lead.n} · ${lead.t}` : lead.n}>{lead.n}</b>
+                            {lead.isSample && <span className="tag" style={{ marginLeft: 6 }}>Sample</span>}
                             <button
                               className="star"
                               aria-label={lead.fav ? `Unstar ${lead.n}` : `Star ${lead.n}`}

@@ -33,6 +33,7 @@ import {
   tasks as tasksTable,
   threads as threadsTable,
   users,
+  workflows as workflowsTable,
   workspaces,
 } from "@/lib/db/schema";
 import { deltaPercent, rangeDays, trendOf } from "@/lib/data/query";
@@ -46,6 +47,7 @@ import type {
   ThreadQuery,
   WriteError,
 } from "@/lib/data/repository";
+import type { WorkflowGraph } from "@/lib/app/workflow";
 import type { CampaignPatch, LeadPatch } from "@/lib/data/validate";
 import type {
   Analytics,
@@ -67,6 +69,7 @@ import type {
   TrendPoint,
   User,
   Workspace,
+  WorkflowRecord,
 } from "@/lib/data/types";
 
 /* ------------------------------------------------------------- utilities -- */
@@ -209,7 +212,7 @@ export class PgRepository implements Repository {
       .limit(1);
     if (!row) return null;
 
-    const [members, quotas] = await Promise.all([
+    const [members, quotas, sample] = await Promise.all([
       this.db
         .select({
           id: users.id,
@@ -222,9 +225,12 @@ export class PgRepository implements Repository {
         .where(eq(memberships.workspaceId, ctx.workspaceId))
         .orderBy(asc(users.name)),
       this.channelQuotas(ctx),
+      this.sampleCounts(ctx),
     ]);
 
     return {
+      id: row.id,
+      sample,
       name: row.name,
       plan: row.plan,
       seats: row.seats,
@@ -240,6 +246,21 @@ export class PgRepository implements Repository {
       liveChannels: row.liveChannels as Channel[],
       plannedChannels: row.plannedChannels as Channel[],
     };
+  }
+
+  /** How many sample rows the workspace still holds, so the UI knows whether to offer removal. */
+  private async sampleCounts(ctx: Ctx): Promise<{ campaigns: number; leads: number }> {
+    const [[c], [l]] = await Promise.all([
+      this.db
+        .select({ value: count() })
+        .from(campaignsTable)
+        .where(and(this.ws(campaignsTable.workspaceId, ctx), eq(campaignsTable.isSample, true))),
+      this.db
+        .select({ value: count() })
+        .from(leadsTable)
+        .where(and(this.ws(leadsTable.workspaceId, ctx), eq(leadsTable.isSample, true))),
+    ]);
+    return { campaigns: Number(c?.value ?? 0), leads: Number(l?.value ?? 0) };
   }
 
   private async channelQuotas(ctx: Ctx): Promise<ChannelQuota[]> {
@@ -428,6 +449,7 @@ export class PgRepository implements Repository {
       openRate: num(row.openRate),
       replyRate: num(row.replyRate),
       clicks: row.clicks,
+      isSample: row.isSample,
     };
   }
 
@@ -528,6 +550,86 @@ export class PgRepository implements Repository {
     return this.updateCampaign(ctx, id, { status });
   }
 
+  /* ----------------------------------------------------------- workflows -- */
+
+  private toWorkflow(row: typeof workflowsTable.$inferSelect): WorkflowRecord {
+    return {
+      campaignId: row.campaignId,
+      name: row.name,
+      // Written only through validateWorkflowGraph, which rebuilds it from a whitelist.
+      graph: row.graph as WorkflowGraph,
+      updatedAt: iso(row.updatedAt),
+    };
+  }
+
+  async getWorkflow(ctx: Ctx, campaignId: string): Promise<WorkflowRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(workflowsTable)
+      .where(and(eq(workflowsTable.campaignId, campaignId), this.ws(workflowsTable.workspaceId, ctx)))
+      .limit(1);
+    return row ? this.toWorkflow(row) : null;
+  }
+
+  async listWorkflows(ctx: Ctx): Promise<WorkflowRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(workflowsTable)
+      .where(this.ws(workflowsTable.workspaceId, ctx))
+      .orderBy(desc(workflowsTable.updatedAt));
+    return rows.map((row) => this.toWorkflow(row));
+  }
+
+  async saveWorkflow(
+    ctx: Ctx,
+    campaignId: string,
+    input: { name: string; graph: WorkflowGraph },
+  ): Promise<WorkflowRecord | WriteError | null> {
+    // The campaign must be this workspace's own: the workflow row carries workspace_id from the
+    // session, and the campaign id comes from the URL, so check them against each other.
+    const campaign = await this.getCampaign(ctx, campaignId);
+    if (!campaign) return null;
+    if (campaign.type !== "multichannel") {
+      return { error: { field: "campaign", message: "Only multichannel campaigns have a workflow." } };
+    }
+    const now = new Date();
+    const [row] = await this.db
+      .insert(workflowsTable)
+      .values({
+        id: newId("wf"),
+        workspaceId: ctx.workspaceId,
+        campaignId,
+        name: input.name,
+        graph: input.graph,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: workflowsTable.campaignId,
+        set: { name: input.name, graph: input.graph, updatedAt: now },
+        // Never let a conflicting row from another workspace be rewritten.
+        setWhere: eq(workflowsTable.workspaceId, ctx.workspaceId),
+      })
+      .returning();
+    return row ? this.toWorkflow(row) : null;
+  }
+
+  async removeSampleData(ctx: Ctx): Promise<{ campaigns: number; leads: number }> {
+    return this.db.transaction(async (tx) => {
+      // Leads first: their threads and messages cascade, and the campaign FK is SET NULL anyway.
+      const leadsGone = await tx
+        .delete(leadsTable)
+        .where(and(this.ws(leadsTable.workspaceId, ctx), eq(leadsTable.isSample, true)))
+        .returning({ id: leadsTable.id });
+      // Deleting the campaign cascades to its workflow row.
+      const campaignsGone = await tx
+        .delete(campaignsTable)
+        .where(and(this.ws(campaignsTable.workspaceId, ctx), eq(campaignsTable.isSample, true)))
+        .returning({ id: campaignsTable.id });
+      return { campaigns: campaignsGone.length, leads: leadsGone.length };
+    });
+  }
+
   /* --------------------------------------------------------------- leads -- */
 
   async listLeads(ctx: Ctx, query: LeadQuery): Promise<Paged<Lead>> {
@@ -610,6 +712,7 @@ export class PgRepository implements Repository {
       campaignId: row.campaignId,
       starred: row.starred,
       updatedAt: iso(row.updatedAt),
+      isSample: row.isSample,
     };
   }
 

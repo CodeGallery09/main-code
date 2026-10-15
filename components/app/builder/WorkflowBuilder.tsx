@@ -8,7 +8,6 @@ import { Canvas, type CanvasApi } from "./Canvas";
 import { Inspector, WorkflowSettings } from "./Inspector";
 import { StepChip } from "./StepCard";
 import { CHANNEL } from "@/lib/app/channels";
-import { CAMPAIGNS } from "@/lib/app/campaigns";
 import {
   LISTS,
   type AudienceList,
@@ -22,6 +21,9 @@ import {
   nextId,
   reserveIds,
   stepStats,
+  toGraph,
+  AUDIENCE_CAMPAIGN,
+  AUDIENCE_WORKSPACE,
   type FlowEdge,
   type Port,
   type StepChannel,
@@ -30,14 +32,17 @@ import {
   type StepNode,
   type Workflow,
 } from "@/lib/app/workflow";
-import { api } from "@/lib/api";
+import { api, fieldErrorsOf } from "@/lib/api";
+import { SENDING_ENABLED, SENDING_OFF_NOTE } from "@/lib/capabilities";
 import { onSegmentSaved } from "@/lib/app/segments";
 import type { Segment } from "@/lib/leads/segments";
 
 const CAMPAIGNS_HREF = "/dashboard/campaigns";
 
-/** Only a multichannel campaign has a workflow — see `lib/app/campaigns`. */
-const WORKFLOW_CAMPAIGNS = CAMPAIGNS.filter((c) => c.type === "multi");
+/** How long the editor waits after the last change before saving. */
+const AUTOSAVE_MS = 800;
+
+type SaveState = "saved" | "dirty" | "saving" | "error";
 
 /**
  * A saved segment as an audience: its size is the reachable count the upload
@@ -67,10 +72,25 @@ type Snapshot = { nodes: StepNode[]; edges: FlowEdge[] };
  * The campaign builder: a workflow on a pannable canvas, with the step palette
  * on the left and the settings for the selected step on the right.
  *
- * Edits live in this component for the length of the visit — the prototype has
- * no workflow store behind it yet.
+ * Edits save themselves to the campaign's stored workflow a moment after you stop typing, and once
+ * more when you leave. Nothing sends: see lib/capabilities.ts.
  */
-export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Workflow; channelsOff?: StepChannel[] }) {
+export function WorkflowBuilder({
+  workflow,
+  stored,
+  isSample = false,
+  campaigns,
+  channelsOff = [],
+}: {
+  workflow: Workflow;
+  /** False when the campaign has no workflow row yet, so the starting graph is saved on mount. */
+  stored: boolean;
+  isSample?: boolean;
+  /** The workspace's multichannel campaigns, for the switcher. */
+  campaigns: { id: string; name: string }[];
+  channelsOff?: StepChannel[];
+}) {
+  const campaignId = String(workflow.id);
   const router = useRouter();
   const [meta, setMeta] = useState<Workflow>(workflow);
   const [nodes, setNodes] = useState<StepNode[]>(workflow.nodes);
@@ -81,7 +101,8 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [menu, setMenu] = useState<{ id: string; port: Port; x: number; y: number } | null>(null);
   const [launching, setLaunching] = useState(false);
-  const [saved, setSaved] = useState(true);
+  const [save, setSave] = useState<SaveState>(stored ? "saved" : "dirty");
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [fitKey, setFitKey] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -114,7 +135,29 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
     loadSegments();
     return onSegmentSaved(() => loadSegments());
   }, [loadSegments]);
-  const lists = useMemo(() => [...uploaded, ...LISTS], [uploaded]);
+
+  // The workspace's own leads, counted live: the campaign's, and all of them.
+  const [counts, setCounts] = useState<{ campaign: number; workspace: number } | null>(null);
+  useEffect(() => {
+    let live = true;
+    Promise.all([api.leads({ campaignId, pageSize: 1 }), api.leads({ pageSize: 1 })])
+      .then(([inCampaign, all]) => live && setCounts({ campaign: inCampaign.total, workspace: all.total }))
+      .catch(() => live && setCounts(null));
+    return () => {
+      live = false;
+    };
+  }, [campaignId]);
+
+  const lists = useMemo<AudienceList[]>(
+    () => [
+      { k: AUDIENCE_CAMPAIGN, name: "Leads in this campaign", n: counts?.campaign ?? 0, src: "This campaign" },
+      { k: AUDIENCE_WORKSPACE, name: "All leads", n: counts?.workspace ?? 0, src: "Workspace" },
+      ...uploaded,
+      // The demo lists are invented, so say so wherever one is picked.
+      ...LISTS.map((l) => ({ ...l, name: `${l.name} (demo)` })),
+    ],
+    [uploaded, counts],
+  );
 
   const toast = useCallback((text: string, undo?: () => void) => {
     const id = Date.now() + Math.random();
@@ -183,11 +226,78 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
 
   /* ---- the save indicator -------------------------------------------------- */
 
+  // The newest content, read by the save so a slow request never sends stale steps.
+  const latest = useRef({ name: meta.name, graph: toGraph({ ...meta, nodes, edges }) });
+  latest.current = {
+    name: meta.name.trim() || "Untitled workflow",
+    graph: toGraph({ ...meta, nodes, edges }),
+  };
+  const inflight = useRef(false);
+  const again = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dirty = useRef(false);
+
+  const flush = useCallback(async () => {
+    if (inflight.current) {
+      again.current = true;
+      return;
+    }
+    inflight.current = true;
+    dirty.current = false;
+    setSave("saving");
+    const sent = latest.current;
+    try {
+      await api.saveWorkflow(campaignId, sent);
+      savedFp.current = JSON.stringify(sent);
+      setSaveError(null);
+    } catch (caught) {
+      dirty.current = true;
+      const fields = fieldErrorsOf(caught);
+      setSaveError(fields ? Object.values(fields)[0] : caught instanceof Error ? caught.message : "Could not save.");
+      inflight.current = false;
+      setSave("error");
+      return;
+    }
+    inflight.current = false;
+    if (again.current) {
+      again.current = false;
+      void flush();
+    } else setSave(dirty.current ? "dirty" : "saved");
+  }, [campaignId]);
+
+  // What the server last accepted, so an unchanged graph (the first render, or Strict Mode's second
+  // one) never triggers a save. Null means the campaign has no workflow row yet.
+  const savedFp = useRef<string | null>(stored ? JSON.stringify(latest.current) : null);
+
   useEffect(() => {
-    setSaved(false);
-    const t = setTimeout(() => setSaved(true), 500);
-    return () => clearTimeout(t);
-  }, [nodes, edges, meta]);
+    if (JSON.stringify(latest.current) === savedFp.current) return;
+    dirty.current = true;
+    setSave((s) => (s === "saving" ? s : "dirty"));
+    timer.current = setTimeout(() => void flush(), AUTOSAVE_MS);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [nodes, edges, meta.name, meta.days, meta.from, meta.to, meta.daily, meta.skipOther, flush]);
+
+  // Leaving the page (a link, a reload, closing the tab) must not drop the last few edits.
+  useEffect(() => {
+    const send = () => {
+      if (!dirty.current || inflight.current) return;
+      dirty.current = false;
+      savedFp.current = JSON.stringify(latest.current);
+      void fetch(`/api/campaigns/${encodeURIComponent(campaignId)}/workflow`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(latest.current),
+        keepalive: true,
+      });
+    };
+    window.addEventListener("pagehide", send);
+    return () => {
+      window.removeEventListener("pagehide", send);
+      send();
+    };
+  }, [campaignId]);
 
   /* ---- derived ------------------------------------------------------------ */
 
@@ -364,13 +474,11 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
         <select
           className="sel pill hide-s"
           aria-label="Switch campaign"
-          value={workflow.id}
+          value={campaignId}
           onChange={(e) => router.push(`/dashboard/workflows/${e.target.value}`)}
         >
-          {!WORKFLOW_CAMPAIGNS.some((c) => c.id === workflow.id) && (
-            <option value={workflow.id}>{meta.name}</option>
-          )}
-          {WORKFLOW_CAMPAIGNS.map((c) => (
+          {!campaigns.some((c) => c.id === campaignId) && <option value={campaignId}>{meta.name}</option>}
+          {campaigns.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
@@ -381,12 +489,24 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
           value={meta.name}
           onChange={(e) => setMeta((w) => ({ ...w, name: e.target.value }))}
           aria-label="Workflow name"
-          size={Math.max(8, meta.name.length)}
+          size={Math.min(26, Math.max(8, meta.name.length))}
         />
         <span className={"tag " + tone}>{label}</span>
-        <span className="saved hide-s" title="Prototype: edits last until you reload">
-          {saved ? "Saved" : "Saving…"}
-        </span>
+        {isSample && <span className="tag">Sample</span>}
+        {save === "error" ? (
+          <button
+            type="button"
+            className="saved sortb"
+            title={saveError ?? "Could not save"}
+            onClick={() => void flush()}
+          >
+            Couldn&apos;t save · Retry
+          </button>
+        ) : (
+          <span className="saved hide-s" role="status">
+            {save === "saved" ? "Saved" : save === "saving" ? "Saving…" : "Unsaved changes"}
+          </span>
+        )}
         <span className="sp" />
 
         <button className="ib sm" onClick={undo} disabled={!depth.past} title="Undo" aria-label="Undo">
@@ -408,7 +528,7 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
         </button>
 
         <span className="vsep hide-s" />
-        <button className="btn sm line hide-s" onClick={() => toast("Test sent to you")}>
+        <button className="btn sm line hide-s" disabled title={SENDING_OFF_NOTE}>
           Test
         </button>
 
@@ -421,13 +541,24 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
             className="btn sm line"
             onClick={() => {
               setMeta((w) => ({ ...w, status: "paused" }));
-              toast("Paused");
+              api
+                .setCampaignStatus(campaignId, "paused")
+                .then(() => toast("Paused"))
+                .catch(() => {
+                  setMeta((w) => ({ ...w, status: "live" }));
+                  toast("Couldn't pause — try again");
+                });
             }}
           >
             Pause
           </button>
         ) : (
-          <button className="btn sm acc" onClick={() => setLaunching(true)}>
+          <button
+            className="btn sm acc"
+            disabled={!SENDING_ENABLED}
+            title={SENDING_ENABLED ? undefined : SENDING_OFF_NOTE}
+            onClick={() => setLaunching(true)}
+          >
             {meta.status === "paused" ? "Resume" : "Launch"}
           </button>
         )}
@@ -575,9 +706,14 @@ export function WorkflowBuilder({ workflow, channelsOff = [] }: { workflow: Work
               <button
                 className="btn acc"
                 onClick={() => {
-                  setMeta((w) => ({ ...w, status: "live" }));
                   setLaunching(false);
-                  toast(`${meta.name} is live`);
+                  api
+                    .setCampaignStatus(campaignId, "live")
+                    .then(() => {
+                      setMeta((w) => ({ ...w, status: "live" }));
+                      toast(`${meta.name} is live`);
+                    })
+                    .catch(() => toast("Couldn't launch — try again"));
                 }}
               >
                 {meta.status === "paused" ? "Resume" : "Launch"}

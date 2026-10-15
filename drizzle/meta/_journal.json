@@ -15,6 +15,13 @@
       "when": 1791874362535,
       "tag": "0001_lead_title",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792054177199,
+      "tag": "0002_sample_flag",
+      "breakpoints": true
     }
   ]
 }

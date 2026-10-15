@@ -39,9 +39,11 @@ import type {
   TaskKind,
   Thread,
   User,
+  WorkflowRecord,
   Workspace,
 } from "@/lib/data/types";
 import type { CampaignPatch, LeadPatch } from "@/lib/data/validate";
+import type { WorkflowGraph } from "@/lib/app/workflow";
 
 /**
  * Who is asking, and on whose behalf. Resolved from the session by lib/http.ts, never from a
@@ -118,6 +120,30 @@ export interface Repository {
   setCampaignStatus(ctx: Ctx, id: string, status: CampaignStatus): Promise<Campaign | null>;
 
   sendMessage(ctx: Ctx, input: SendMessageInput): Promise<Message | null>;
+
+  /* ----------------------------------------------------------- workflows -- */
+
+  /** The campaign's workflow, or null when it has none yet (or the campaign is not yours). */
+  getWorkflow(ctx: Ctx, campaignId: string): Promise<WorkflowRecord | null>;
+  /** Every workflow in the workspace, for the library. */
+  listWorkflows(ctx: Ctx): Promise<WorkflowRecord[]>;
+  /**
+   * Creates or replaces a campaign's workflow (one per campaign). `null` means the campaign does
+   * not exist in this workspace; a `WriteError` means it exists but cannot have one — only a
+   * multichannel campaign has a workflow. The graph must already have passed
+   * `validateWorkflowGraph`.
+   */
+  saveWorkflow(
+    ctx: Ctx,
+    campaignId: string,
+    input: { name: string; graph: WorkflowGraph },
+  ): Promise<WorkflowRecord | WriteError | null>;
+
+  /**
+   * Deletes the sample campaign(s) and leads seeded at signup. Workflows go with their campaign.
+   * Returns how many of each were removed; never touches anything the user created.
+   */
+  removeSampleData(ctx: Ctx): Promise<{ campaigns: number; leads: number }>;
 
   /* ------------------------------------------------ lead uploads and segments -- */
 

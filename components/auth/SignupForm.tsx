@@ -4,7 +4,7 @@ import { useId, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertCircle, ArrowRight, Loader2 } from "lucide-react";
-import { DASHBOARD_HREF, LOGIN_HREF } from "@/lib/site";
+import { FIRST_RUN_HREF, LOGIN_HREF } from "@/lib/site";
 import { validateSignup, type SignupErrors, type SignupResponse } from "@/lib/signup";
 import { AuthField } from "./AuthField";
 
@@ -26,7 +26,7 @@ export function SignupForm() {
   const [submitting, setSubmitting] = useState(false);
 
   const focusFirst = (form: HTMLFormElement, next: SignupErrors) => {
-    const first = (["name", "email", "password"] as const).find((k) => next[k]);
+    const first = (["name", "company", "email", "password"] as const).find((k) => next[k]);
     if (first) form.querySelector<HTMLElement>(`[name="${first}"]`)?.focus();
   };
 
@@ -38,6 +38,7 @@ export function SignupForm() {
 
     const checked = validateSignup({
       name: data.get("name"),
+      company: data.get("company"),
       email: data.get("email"),
       password: data.get("password"),
     });
@@ -61,7 +62,9 @@ export function SignupForm() {
       const json = (await res.json()) as SignupResponse;
 
       if (json.ok) {
-        router.push(DASHBOARD_HREF);
+        // A new account's first stop is Campaigns: its sample campaign is there to explore, and
+        // "Create campaign" is the next step. The dashboard home still shows demo figures.
+        router.push(FIRST_RUN_HREF);
         router.refresh();
         return;
       }
@@ -91,6 +94,9 @@ export function SignupForm() {
     <form method="post" noValidate onSubmit={onSubmit} className="space-y-5">
       <AuthField label="Full name" htmlFor={`${uid}-name`} error={errors.name} errorId={`${uid}-name-error`}>
         <input {...f("name")} type="text" autoComplete="name" />
+      </AuthField>
+      <AuthField label="Company name" htmlFor={`${uid}-company`} error={errors.company} errorId={`${uid}-company-error`}>
+        <input {...f("company")} type="text" autoComplete="organization" />
       </AuthField>
       <AuthField label="Work email" htmlFor={`${uid}-email`} error={errors.email} errorId={`${uid}-email-error`}>
         <input {...f("email")} type="email" inputMode="email" autoComplete="email" spellCheck={false} />

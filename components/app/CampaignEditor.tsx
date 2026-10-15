@@ -1,5 +1,6 @@
 "use client";
 
+import { SENDING_ENABLED, SENDING_OFF_NOTE } from "@/lib/capabilities";
 import { useEffect, useRef, useState } from "react";
 import { Dot } from "./ui";
 import { CHANNELS, type ChannelKey } from "@/lib/app/channels";
@@ -131,12 +132,15 @@ export function CampaignEditor({ draft, onCancel, onSave }: Props) {
               value={form.status}
               onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as CampaignStatus }))}
             >
-              {STATUSES.map(([value, label]) => (
+              {STATUSES.filter(
+                ([value]) => SENDING_ENABLED || (value !== "live" && value !== "scheduled") || value === form.status,
+              ).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
             </select>
+            {!SENDING_ENABLED && <small className="muted">{SENDING_OFF_NOTE}</small>}
             {problem("status")}
           </label>
 

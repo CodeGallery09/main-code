@@ -1,18 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Screen } from "./AppShell";
 import { SearchIcon } from "./icons";
 import { Dot, fmt, Tabs } from "./ui";
 import { channelNames, STATUS_TAG, type WorkflowSummary } from "@/lib/app/workflowLibrary";
-import { TEMPLATES } from "@/lib/app/workflow";
+import { SampleBanner } from "./SampleBanner";
+import { api, fieldErrorsOf } from "@/lib/api";
+import { toChannel } from "@/lib/app/adapt";
+import { graphFromTemplate, TEMPLATES } from "@/lib/app/workflow";
 import type { WorkflowStatus } from "@/lib/app/workflow";
-import { CAMPAIGNS } from "@/lib/app/campaigns";
-
-/** Only a multichannel campaign has a workflow — see `lib/app/campaigns`. */
-const WORKFLOW_CAMPAIGNS = CAMPAIGNS.filter((c) => c.type === "multi");
 
 type Filter = "all" | WorkflowStatus;
 
@@ -58,9 +56,9 @@ export function WorkflowsScreen({ workflows }: { workflows: WorkflowSummary[] })
           }}
         >
           <option value="">Go to campaign…</option>
-          {WORKFLOW_CAMPAIGNS.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
+          {workflows.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name}
             </option>
           ))}
         </select>
@@ -80,8 +78,9 @@ export function WorkflowsScreen({ workflows }: { workflows: WorkflowSummary[] })
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
-        <span className="samp">Illustrative demo data</span>
       </div>
+
+      <SampleBanner onRemoved={() => router.refresh()} />
 
       <div className="wfgrid">
         {rows.map((w) => (
@@ -100,7 +99,10 @@ export function WorkflowsScreen({ workflows }: { workflows: WorkflowSummary[] })
           >
             <header className="between">
               <h3>{w.name}</h3>
-              <span className={"tag " + STATUS_TAG[w.status].tone}>{STATUS_TAG[w.status].label}</span>
+              <span>
+                {w.isSample && <span className="tag" style={{ marginRight: 6 }}>Sample</span>}
+                <span className={"tag " + STATUS_TAG[w.status].tone}>{STATUS_TAG[w.status].label}</span>
+              </span>
             </header>
 
             <p className="muted" style={{ fontSize: 12.5, display: "flex", alignItems: "center", gap: 7 }}>
@@ -146,7 +148,7 @@ export function WorkflowsScreen({ workflows }: { workflows: WorkflowSummary[] })
 
       {!rows.length && (
         <p className="empty" style={{ marginTop: 18 }}>
-          No workflows match that filter.
+          {workflows.length ? "No workflows match that filter." : "No workflows yet. Start one from a template."}
         </p>
       )}
 
@@ -155,13 +157,42 @@ export function WorkflowsScreen({ workflows }: { workflows: WorkflowSummary[] })
   );
 }
 
-/** Start from a template, the same set the builder's blank state offers. */
+/**
+ * Start from a template. A workflow belongs to a campaign, so picking one creates a draft
+ * multichannel campaign and its workflow together, then opens the builder on it.
+ */
 function TemplatePicker({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  async function start(key: string, label: string, templateChannels: readonly string[]) {
+    if (busy) return;
+    setBusy(key);
+    setError(null);
+    try {
+      const name = key === "blank" ? "Untitled workflow" : label;
+      // A multichannel campaign needs two or more channels. A blank workflow has none yet, so it
+      // starts with the two the product can connect; the steps decide what it really uses.
+      const channels =
+        templateChannels.length >= 2
+          ? templateChannels.map((k) => toChannel(k as Parameters<typeof toChannel>[0]))
+          : (["linkedin", "email"] as const);
+      const { campaign } = await api.createCampaign({ name, type: "multichannel", status: "draft", channels: [...channels] });
+      await api.saveWorkflow(campaign.id, { name, graph: graphFromTemplate(key) });
+      router.push(`/dashboard/workflows/${campaign.id}`);
+    } catch (caught) {
+      const fields = fieldErrorsOf(caught);
+      setError(fields ? Object.values(fields)[0] : caught instanceof Error ? caught.message : "Could not start that workflow.");
+      setBusy(null);
+    }
+  }
 
   return (
     <>
@@ -175,19 +206,31 @@ function TemplatePicker({ onClose }: { onClose: () => void }) {
         </header>
         <div className="m-b">
           <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
-            Pick a proven shape, then edit every step in the builder.
+            Pick a proven shape, then edit every step in the builder. It is saved as a draft campaign.
           </p>
+          {error && (
+            <p className="empty" role="alert">
+              {error}
+            </p>
+          )}
           <div className="tplgrid">
             {TEMPLATES.map((t) => (
-              <Link key={t.k} className="tpl" href={`/dashboard/workflows/new?template=${t.k}`}>
+              <button
+                key={t.k}
+                type="button"
+                className="tpl"
+                disabled={busy !== null}
+                aria-busy={busy === t.k}
+                onClick={() => void start(t.k, t.name, t.ch)}
+              >
                 <b>{t.name}</b>
                 <span className="dots">
                   {t.ch.map((k) => (
                     <Dot key={k} k={k} />
                   ))}
                 </span>
-                <small>{t.k === "blank" ? "Start from scratch" : `${t.steps} steps`}</small>
-              </Link>
+                <small>{busy === t.k ? "Creating…" : t.k === "blank" ? "Start from scratch" : `${t.steps} steps`}</small>
+              </button>
             ))}
           </div>
         </div>

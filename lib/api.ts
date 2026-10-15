@@ -17,8 +17,10 @@ import type {
   Thread,
   User,
   Workspace,
+  WorkflowRecord,
 } from "@/lib/data/types";
 import type { CampaignTotals } from "@/lib/data/repository";
+import type { WorkflowGraph } from "@/lib/app/workflow";
 import type { CampaignPatch, LeadPatch } from "@/lib/data/validate";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
 import type { Mapping } from "@/lib/leads/validation";
@@ -117,6 +119,24 @@ export const api = {
 
   deleteCampaign: (id: string) =>
     request<{ deleted: string }>(`/api/campaigns/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  workflow: (campaignId: string) =>
+    request<{ workflow: WorkflowRecord }>(`/api/campaigns/${encodeURIComponent(campaignId)}/workflow`),
+
+  /** Replaces the workflow. The server validates the graph and answers 422 with the reason. */
+  saveWorkflow: (campaignId: string, input: { name: string; graph: WorkflowGraph }) =>
+    request<{ workflow: WorkflowRecord }>(`/api/campaigns/${encodeURIComponent(campaignId)}/workflow`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+
+  workflows: () => request<{ items: WorkflowRecord[] }>("/api/workflows"),
+
+  /** Deletes the sample campaign, workflow and leads the workspace started with. */
+  removeSampleData: () =>
+    request<{ removed: { campaigns: number; leads: number } }>("/api/workspace/sample", {
+      method: "DELETE",
+    }),
 
   leads: (
     params: {

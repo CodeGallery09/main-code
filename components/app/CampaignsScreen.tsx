@@ -7,10 +7,13 @@ import { Screen } from "./AppShell";
 import { SearchIcon } from "./icons";
 import { Dot, fmt, Kpi, Segmented, Switch, Tabs } from "./ui";
 import { CampaignEditor, type CampaignDraft } from "./CampaignEditor";
+import { SampleBanner } from "./SampleBanner";
 import { api, fieldErrorsOf } from "@/lib/api";
 import { toAppCampaign, toChannel, type AppCampaign } from "@/lib/app/adapt";
 import { CHANNEL, CHANNELS, type ChannelKey } from "@/lib/app/channels";
 import { STATUS_TAG } from "@/lib/app/campaigns";
+import { graphFromTemplate } from "@/lib/app/workflow";
+import { SENDING_ENABLED, SENDING_OFF_NOTE } from "@/lib/capabilities";
 import type { CampaignStatus } from "@/lib/data/types";
 import type { CampaignTotals } from "@/lib/data/repository";
 
@@ -125,6 +128,11 @@ export function CampaignsScreen() {
   /** The on/off switch writes a real status change, rather than tracking paused ids locally. */
   async function toggleOn(c: AppCampaign) {
     const next: CampaignStatus = c.status === "paused" ? "live" : "paused";
+    // Nothing sends yet, so switching a campaign on would be a false claim. Switching off is fine.
+    if (next === "live" && !SENDING_ENABLED) {
+      setError(SENDING_OFF_NOTE);
+      return;
+    }
     setBusyId(c.id);
     setRows((current) => current.map((r) => (r.id === c.id ? { ...r, status: next } : r)));
     try {
@@ -160,8 +168,17 @@ export function CampaignsScreen() {
       startedAt: draft.startedAt || null,
     };
     try {
-      if (draft.id) await api.updateCampaign(draft.id, payload);
-      else await api.createCampaign(payload);
+      if (draft.id) {
+        await api.updateCampaign(draft.id, payload);
+      } else {
+        const { campaign } = await api.createCampaign(payload);
+        if (payload.type === "multichannel") {
+          // A multichannel campaign is its workflow: give it an empty one and open the builder.
+          await api.saveWorkflow(campaign.id, { name: campaign.name, graph: graphFromTemplate("blank") });
+          router.push(`/dashboard/workflows/${campaign.id}`);
+          return null;
+        }
+      }
       setEditing(null);
       await load();
       return null;
@@ -239,6 +256,8 @@ export function CampaignsScreen() {
         </p>
       )}
 
+      <SampleBanner onRemoved={() => void load()} />
+
       <div className="kpis">
         <Kpi label="Leads" value={fmt(totals.leads)} />
         <Kpi label="Delivered" value={fmt(totals.delivered)} />
@@ -296,6 +315,7 @@ export function CampaignsScreen() {
                           ) : (
                             c.name
                           )}
+                          {c.isSample && <span className="tag" style={{ marginLeft: 8 }}>Sample</span>}
                         </span>
                         <small>
                           {c.type === "single" ? (

@@ -166,6 +166,11 @@ export const campaigns = pgTable(
     openRate: numeric("open_rate", { precision: 5, scale: 1 }),
     replyRate: numeric("reply_rate", { precision: 5, scale: 1 }),
     clicks: integer("clicks"),
+    /**
+     * Seeded at signup so a new workspace has something to explore. The figures on a sample row are
+     * illustrative, not measured, so the UI labels it and "Remove sample data" deletes it.
+     */
+    isSample: boolean("is_sample").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -201,6 +206,8 @@ export const leads = pgTable(
     ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
     campaignId: text("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
     starred: boolean("starred").notNull().default(false),
+    /** A dummy lead seeded at signup; see `campaigns.isSample`. */
+    isSample: boolean("is_sample").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

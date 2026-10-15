@@ -103,6 +103,8 @@ export type AppLead = {
   campaignId: string | null;
   ownerId: string;
   source: Lead["source"];
+  /** Invented at signup; the table labels it so it is never mistaken for a real contact. */
+  isSample: boolean;
 };
 
 const SOURCE_LABEL: Record<Lead["source"], string> = {
@@ -182,6 +184,7 @@ export function toAppLead(lead: Lead): AppLead {
     campaignId: lead.campaignId,
     ownerId: lead.ownerId,
     source: lead.source,
+    isSample: lead.isSample ?? false,
   };
 }
 
@@ -204,6 +207,7 @@ export type AppCampaign = {
   openRate: number | null;
   replyRate: number | null;
   clicks: number | null;
+  isSample: boolean;
 };
 
 const DATE_LABEL = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
@@ -230,6 +234,7 @@ export function toAppCampaign(campaign: Campaign): AppCampaign {
     openRate: campaign.openRate,
     replyRate: campaign.replyRate,
     clicks: campaign.clicks,
+    isSample: campaign.isSample ?? false,
   };
 }
 

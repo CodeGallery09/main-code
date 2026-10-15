@@ -8,6 +8,8 @@
  * Import-free and erasable so it can also be loaded by `node --test`.
  */
 
+import type { WorkflowGraph } from "@/lib/app/workflow";
+
 export type Channel = "linkedin" | "email" | "whatsapp" | "call" | "sms";
 export type CampaignStatus = "live" | "scheduled" | "paused" | "draft" | "completed";
 export type CampaignType = "standalone" | "multichannel";
@@ -81,6 +83,8 @@ export type Campaign = {
   openRate: number | null;
   replyRate: number | null;
   clicks: number | null;
+  /** Seeded at signup as an example; its figures are illustrative. Absent means false. */
+  isSample?: boolean;
 };
 
 export type Lead = {
@@ -107,6 +111,8 @@ export type Lead = {
   campaignId: string | null;
   starred: boolean;
   updatedAt: string;
+  /** A dummy lead seeded at signup. Absent means false. */
+  isSample?: boolean;
 };
 
 export type Message = {
@@ -186,6 +192,9 @@ export type Overview = {
 };
 
 export type Workspace = {
+  /** The org id (`org_…`): the tenant key every row in the workspace carries. */
+  id: string;
+  /** The company name given at signup. */
   name: string;
   plan: string;
   seats: number;
@@ -195,6 +204,8 @@ export type Workspace = {
   /** Channels the product actually runs today; everything else is roadmap. */
   liveChannels: Channel[];
   plannedChannels: Channel[];
+  /** Sample rows still in the workspace; both zero once "Remove sample data" has been used. */
+  sample: { campaigns: number; leads: number };
 };
 
 /** Range keys accepted by the metrics and analytics endpoints. */
@@ -216,4 +227,15 @@ export type Paged<T> = {
   total: number;
   page: number;
   pageSize: number;
+};
+
+/**
+ * A campaign's workflow as stored. The graph is validated by `validateWorkflowGraph` before it is
+ * written, so a repository can hand it back without re-checking it.
+ */
+export type WorkflowRecord = {
+  campaignId: string;
+  name: string;
+  graph: WorkflowGraph;
+  updatedAt: string;
 };

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   EMAIL_MAX,
+  COMPANY_MAX,
   NAME_MAX,
   PASSWORD_MAX,
   PASSWORD_MIN,
@@ -13,22 +14,32 @@ import {
 /* ------------------------------------------------------------- validation -- */
 
 test("a complete signup validates and is normalised", () => {
-  const result = validateSignup({ name: "  Aarav Kapoor ", email: "  Aarav@Example.COM ", password: "correct horse" });
+  const result = validateSignup({
+    name: "  Aarav Kapoor ",
+    company: "  Acme   Growth  ",
+    email: "  Aarav@Example.COM ",
+    password: "correct horse",
+  });
   assert.equal(result.ok, true);
-  assert.deepEqual(result.data, { name: "Aarav Kapoor", email: "aarav@example.com", password: "correct horse" });
+  assert.deepEqual(result.data, {
+    name: "Aarav Kapoor",
+    company: "Acme Growth",
+    email: "aarav@example.com",
+    password: "correct horse",
+  });
 });
 
 test("the password is taken exactly as typed — never trimmed", () => {
   // Trimming would silently change the secret: a user who typed a trailing space could never
   // sign in again with what they remember.
-  const result = validateSignup({ name: "A", email: "a@b.co", password: "  spaced out  " });
+  const result = validateSignup({ company: "Acme", name: "A", email: "a@b.co", password: "  spaced out  " });
   assert.equal(result.data.password, "  spaced out  ");
 });
 
 test("every missing field is reported at once, not one per submit", () => {
   const result = validateSignup({});
   assert.equal(result.ok, false);
-  assert.deepEqual(Object.keys(result.errors).sort(), ["email", "name", "password"]);
+  assert.deepEqual(Object.keys(result.errors).sort(), ["company", "email", "name", "password"]);
 });
 
 test("non-object input is treated as empty rather than crashing", () => {
@@ -39,7 +50,7 @@ test("non-object input is treated as empty rather than crashing", () => {
 });
 
 test("non-string fields are rejected, not coerced", () => {
-  const result = validateSignup({ name: 123, email: ["a@b.co"], password: { x: 1 } });
+  const result = validateSignup({ company: "Acme", name: 123, email: ["a@b.co"], password: { x: 1 } });
   assert.equal(result.ok, false);
   assert.equal(result.errors.name, "Enter your name.");
   assert.equal(result.errors.email, "Enter your work email.");
@@ -47,24 +58,46 @@ test("non-string fields are rejected, not coerced", () => {
 
 test("email needs an @ and a dotted domain", () => {
   for (const email of ["nope", "a@b", "a b@c.co", "@c.co", "a@"]) {
-    assert.equal(validateSignup({ name: "A", email, password: "longenough" }).ok, false, email);
+    assert.equal(validateSignup({ company: "Acme", name: "A", email, password: "longenough" }).ok, false, email);
   }
-  assert.equal(validateSignup({ name: "A", email: "first.last+tag@sub.example.com", password: "longenough" }).ok, true);
+  assert.equal(validateSignup({ company: "Acme", name: "A", email: "first.last+tag@sub.example.com", password: "longenough" }).ok, true);
 });
 
 test("password length is bounded on both sides", () => {
-  assert.equal(validateSignup({ name: "A", email: "a@b.co", password: "x".repeat(PASSWORD_MIN - 1) }).ok, false);
-  assert.equal(validateSignup({ name: "A", email: "a@b.co", password: "x".repeat(PASSWORD_MIN) }).ok, true);
-  assert.equal(validateSignup({ name: "A", email: "a@b.co", password: "x".repeat(PASSWORD_MAX) }).ok, true);
-  const tooLong = validateSignup({ name: "A", email: "a@b.co", password: "x".repeat(PASSWORD_MAX + 1) });
+  assert.equal(validateSignup({ company: "Acme", name: "A", email: "a@b.co", password: "x".repeat(PASSWORD_MIN - 1) }).ok, false);
+  assert.equal(validateSignup({ company: "Acme", name: "A", email: "a@b.co", password: "x".repeat(PASSWORD_MIN) }).ok, true);
+  assert.equal(validateSignup({ company: "Acme", name: "A", email: "a@b.co", password: "x".repeat(PASSWORD_MAX) }).ok, true);
+  const tooLong = validateSignup({ company: "Acme", name: "A", email: "a@b.co", password: "x".repeat(PASSWORD_MAX + 1) });
   assert.equal(tooLong.ok, false, "an unbounded password is a cheap way to burn scrypt CPU");
   assert.match(tooLong.errors.password, /128/);
 });
 
 test("name and email lengths are capped", () => {
-  assert.equal(validateSignup({ name: "x".repeat(NAME_MAX + 1), email: "a@b.co", password: "longenough" }).ok, false);
+  assert.equal(validateSignup({ company: "Acme", name: "x".repeat(NAME_MAX + 1), email: "a@b.co", password: "longenough" }).ok, false);
   const longEmail = `${"x".repeat(EMAIL_MAX)}@b.co`;
-  assert.equal(validateSignup({ name: "A", email: longEmail, password: "longenough" }).ok, false);
+  assert.equal(validateSignup({ company: "Acme", name: "A", email: longEmail, password: "longenough" }).ok, false);
+});
+
+test("the company name is required — it becomes the workspace name", () => {
+  const missing = validateSignup({ name: "A", email: "a@b.co", password: "longenough" });
+  assert.equal(missing.ok, false);
+  assert.equal(missing.errors.company, "Enter your company name.");
+  assert.equal(validateSignup({ name: "A", company: "   ", email: "a@b.co", password: "longenough" }).ok, false);
+});
+
+test("the company name is trimmed, collapsed and length-capped", () => {
+  const spaced = validateSignup({ name: "A", company: "  Brightline \t Logistics ", email: "a@b.co", password: "longenough" });
+  assert.equal(spaced.data.company, "Brightline Logistics", "it is displayed, so stray whitespace would show");
+  const tooLong = validateSignup({ name: "A", company: "x".repeat(COMPANY_MAX + 1), email: "a@b.co", password: "longenough" });
+  assert.equal(tooLong.ok, false);
+  assert.match(tooLong.errors.company, /80/);
+  assert.equal(validateSignup({ name: "A", company: "x".repeat(COMPANY_MAX), email: "a@b.co", password: "longenough" }).ok, true);
+});
+
+test("a company that is not a string is rejected, not coerced", () => {
+  for (const company of [123, ["Acme"], { x: 1 }, null]) {
+    assert.equal(validateSignup({ name: "A", company, email: "a@b.co", password: "longenough" }).ok, false);
+  }
 });
 
 /* -------------------------------------------------------------- allowlist -- */

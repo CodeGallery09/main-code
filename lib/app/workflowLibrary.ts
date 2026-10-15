@@ -13,13 +13,17 @@ import { campaignMetrics, DAYS } from "@/lib/app/metrics";
 import {
   STEPS,
   WORKFLOWS,
+  fromGraph,
+  graphFromTemplate,
+  validateWorkflowGraph,
   workflowChannels,
   type Workflow,
   type WorkflowStatus,
 } from "@/lib/app/workflow";
 
 export type WorkflowSummary = {
-  id: number;
+  /** The campaign id for a stored workflow; a small number for the demo library. */
+  id: number | string;
   name: string;
   status: WorkflowStatus;
   channels: ChannelKey[];
@@ -35,6 +39,8 @@ export type WorkflowSummary = {
   meetings: number;
   /** Set when the graph is incomplete, so the card can warn before it is run. */
   needsWork: boolean;
+  /** Invented at signup; the card labels it. */
+  isSample?: boolean;
 };
 
 export const STATUS_TAG: Record<WorkflowStatus, { label: string; tone: string }> = {
@@ -57,9 +63,11 @@ export function summarise(w: Workflow): WorkflowSummary {
   const channels = workflowChannels(w) as ChannelKey[];
   // Anything that has never been published shows dashes rather than invented numbers.
   // `hasRun` is the same rule the campaigns table uses, so the two screens agree.
-  const campaign = CAMPAIGNS.find((c) => c.id === w.id);
+  // The demo metrics are keyed by the demo campaign's number; a stored workflow has none.
+  const demoId = typeof w.id === "number" ? w.id : null;
+  const campaign = demoId === null ? undefined : CAMPAIGNS.find((c) => c.id === demoId);
   const ran = campaign ? hasRun(campaign) : false;
-  const m = ran && channels.length ? campaignMetrics(w.id, channels, DAYS - 30, DAYS - 1) : null;
+  const m = ran && demoId !== null && channels.length ? campaignMetrics(demoId, channels, DAYS - 30, DAYS - 1) : null;
 
   return {
     id: w.id,
@@ -81,3 +89,36 @@ export const workflowSummaries = (): WorkflowSummary[] => WORKFLOWS.map(summaris
 
 export const channelNames = (keys: ChannelKey[]) =>
   keys.length ? keys.map((k) => CHANNEL[k].name).join(" · ") : "No channels yet";
+
+/** Campaign status -> the three states a workflow card shows. */
+const CARD_STATUS: Record<string, WorkflowStatus> = {
+  live: "live",
+  paused: "paused",
+  completed: "paused",
+  draft: "draft",
+  scheduled: "draft",
+};
+
+const START = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
+
+/**
+ * A library card for a workflow that is actually stored. There are no sent-message results to
+ * report yet, so "in flight" and "meetings" stay dashes (`ran: false`) rather than invented
+ * numbers; the card shows what is real — its steps, channels, pace and status.
+ */
+export function summariseStored(
+  campaign: { id: string; name: string; status: string; startedAt: string; isSample?: boolean },
+  graph: unknown,
+  name?: string,
+): WorkflowSummary {
+  const checked = graph ? validateWorkflowGraph(graph) : null;
+  const valid = checked && checked.ok ? checked.data : graphFromTemplate("blank");
+  const status = CARD_STATUS[campaign.status] ?? "draft";
+  const w = fromGraph(valid, {
+    id: campaign.id,
+    name: name ?? campaign.name,
+    status,
+    started: status === "draft" ? null : START.format(new Date(campaign.startedAt)),
+  });
+  return { ...summarise(w), isSample: Boolean(campaign.isSample) };
+}

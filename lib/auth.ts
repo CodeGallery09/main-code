@@ -22,6 +22,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, eq, lt } from "drizzle-orm";
 import { getDb, hasDatabase } from "@/lib/db/client";
 import { channelQuotas, memberships, sessions, users, workspaces } from "@/lib/db/schema";
+import { seedSampleWorkspace } from "@/lib/data/sampleSeed";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { isInvited, parseAllowlist, type SignupInput } from "@/lib/signup";
 
@@ -116,6 +117,8 @@ export async function signIn(email: string, password: string): Promise<SignInRes
 }
 
 const newSessionId = () => randomBytes(32).toString("hex");
+/** `org_` + 12 url-safe characters. See `signUp` for why this is the tenant key. */
+export const newOrgId = () => `org_${randomBytes(9).toString("base64url")}`;
 const sessionExpiry = () => new Date(Date.now() + SESSION_MAX_AGE * 1000);
 
 /* --------------------------------------------------------------- sign up -- */
@@ -170,13 +173,15 @@ export async function signUp(input: SignupInput): Promise<SignUpResult> {
   const passwordHash = await hashPassword(input.password);
 
   const userId = `u_${randomBytes(9).toString("base64url")}`;
-  const workspaceId = `w_${randomBytes(9).toString("base64url")}`;
+  // The org id: the tenant key every table carries as `workspace_id`. Opaque and unguessable
+  // (72 random bits), so it is safe to put in URLs and logs; the `org_` prefix makes it
+  // recognisable in either. One org has one workspace today, so the two are the same id.
+  const workspaceId = newOrgId();
   const sessionId = newSessionId();
-  const firstName = input.name.split(/\s+/)[0] || input.name;
 
   try {
     await getDb().transaction(async (tx) => {
-      await tx.insert(workspaces).values({ id: workspaceId, name: `${firstName}'s workspace` });
+      await tx.insert(workspaces).values({ id: workspaceId, name: input.company });
       await tx.insert(users).values({
         id: userId,
         email: input.email,
@@ -187,6 +192,8 @@ export async function signUp(input: SignupInput): Promise<SignUpResult> {
       await tx
         .insert(channelQuotas)
         .values(DEFAULT_QUOTAS.map((q) => ({ workspaceId, channel: q.channel, used: 0, cap: q.cap })));
+      // Sample content goes in the same transaction, so a workspace is never half-seeded.
+      await seedSampleWorkspace(tx, workspaceId, userId);
       await tx.insert(sessions).values({ id: sessionId, userId, workspaceId, expiresAt: sessionExpiry() });
     });
   } catch (error) {

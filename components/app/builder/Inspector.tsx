@@ -127,8 +127,9 @@ export function Inspector({
 }) {
   const d = node.data;
   const kind = node.kind;
+  const own = lists.filter((l) => l.src === "This campaign" || l.src === "Workspace");
   const uploaded = lists.filter((l) => l.src === "Uploaded file");
-  const demo = lists.filter((l) => l.src !== "Uploaded file");
+  const demo = lists.filter((l) => l.src !== "Uploaded file" && !own.includes(l));
   const attribute = STEP_ATTRIBUTE[kind];
   const audience = lists.find((l) => l.k === (kind === "audience" ? d.list : audienceKey));
   const column = attribute && audience && audience.columns ? audience.columns[attribute] : undefined;
@@ -182,6 +183,15 @@ export function Inspector({
                 value={d.list}
                 onChange={(e) => onChange({ list: e.target.value })}
               >
+                {own.length > 0 && (
+                  <optgroup label="Your leads">
+                    {own.map((l) => (
+                      <option value={l.k} key={l.k}>
+                        {l.name} · {l.n}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
                 {uploaded.length > 0 && (
                   <optgroup label="File segments">
                     {uploaded.map((l) => (
@@ -202,7 +212,9 @@ export function Inspector({
               <span className="hint">
                 {audience && audience.src === "Uploaded file"
                   ? "Counted from the leads that file can actually reach, not its row count."
-                  : "Demo lists are illustrative. Upload a file from Leads to use your own leads."}
+                  : audience && own.includes(audience)
+                    ? "Counted live from the leads in your workspace."
+                    : "Demo lists are illustrative. Pick your own leads, or upload a file from Leads."}
               </span>
             </div>
 
@@ -564,7 +576,7 @@ export function WorkflowSettings({
         </div>
 
         <p className="muted" style={{ fontSize: 12.5 }}>
-          Figures on this canvas are illustrative demo data, and edits last until you reload.
+          Changes save automatically. Figures on this canvas are illustrative estimates from the audience size, not results. Sending isn&apos;t connected yet, so nothing is sent.
         </p>
       </div>
     </aside>

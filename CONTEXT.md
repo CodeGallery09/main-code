@@ -61,8 +61,9 @@ This is the big one.
 rows through the adapter. **Converging the two models is open follow-up work** — until then, a
 new field needs adding in both places plus the adapter.
 
-### 2c. Most screens still read `lib/app/`, not the repository
-Leads and Campaigns are live on Postgres. **The other seven screens still import `lib/app/`
+### 2c. Some screens still read `lib/app/`, not the repository
+Leads, Campaigns and the Workflows library + builder are live on Postgres. **The other six
+screens (Home, Inbox, Analytics, Settings, Integrations, Configuration) still import `lib/app/`
 constants**, so they render demo data no matter what the database holds. Swapping the database
 alone does not make those screens live — each needs rewiring the way Leads and Campaigns were.
 Status per screen in §3.
@@ -74,19 +75,21 @@ Status per screen in §3.
 ### Storage seam — `lib/data/` (start here for anything data-related)
 | File | L | Purpose |
 |---|---|---|
-| `types.ts` | 207 | Domain types. Import-free + erasable (loadable by `node --test`). |
-| `repository.ts` | 133 | **The interface every page and route talks to.** `Ctx` is the first arg of every method — tenancy cannot be forgotten. `WriteError` ≠ `null` ≠ throw → 422/404/500. |
+| `types.ts` | 241 | Domain types. Import-free + erasable (loadable by `node --test`). |
+| `repository.ts` | 193 | **The interface every page and route talks to.** `Ctx` is the first arg of every method — tenancy cannot be forgotten. `WriteError` ≠ `null` ≠ throw → 422/404/500. |
 | `index.ts` | 22 | `getRepository()` factory. Returns Postgres when `DATABASE_URL` is set, memory otherwise. |
-| `memory.ts` | 544 | In-memory impl over the seed. No-config fallback; writes last until restart. |
-| `pg.ts` | 745 | Postgres impl via Drizzle. Filters `workspace_id` on every read *and* write (the `ws()` helper). Leads page in SQL; campaigns aggregate in JS. **Uploads/segments/profiles delegate to the in-memory store — see §7.** |
-| `seed.ts` | 814 | Demo dataset. The only file that goes away once real data exists. |
+| `memory.ts` | 735 | In-memory impl over the seed. No-config fallback; writes last until restart. Workflows: a `Map` by campaign id, falling back to the demo `WORKFLOWS` matched on campaign name, so the seed's four multichannel campaigns open a real graph. |
+| `pg.ts` | 1077 | Postgres impl via Drizzle. Filters `workspace_id` on every read *and* write (the `ws()` helper). Leads page in SQL; campaigns aggregate in JS. **Uploads/segments/profiles delegate to the in-memory store — see §7.** |
+| `seed.ts` | 831 | Demo dataset. The only file that goes away once real data exists. |
+| `sample.ts` | 66 | The sample content every new workspace starts with: one paused multichannel campaign + 8 leads. Import-free; `tests/sample.test.mjs` pins that every email is on the reserved `.example` domain and every phone in the fictional 555-01xx range, so a sample lead can never be a real person. |
+| `sampleSeed.ts` | 79 | Server-only. Inserts the sample campaign, leads (all `is_sample = true`) and its workflow **inside the `signUp` transaction**. |
 | `query.ts` | 68 | Pure filter/sort/paginate helpers shared by both impls. Import-free, tested. |
 | `validate.ts` | 305 | Write-path validation, `{ok,data}|{ok,errors}`. Import-free, erasable, tested. |
 
 ### Database — `lib/db/`
 | File | L | Purpose |
 |---|---|---|
-| `schema.ts` | 430 | 15 tables. Drizzle definitions + Postgres enums. |
+| `schema.ts` | 440 | 15 tables. `campaigns.is_sample` / `leads.is_sample` mark invented rows (migration `0002_sample_flag`). Drizzle definitions + Postgres enums. |
 | `client.ts` | 60 | The one `pg` Pool, cached on `globalThis`. **Needs a pooled connection string.** |
 | `../lib/password.ts` | 48 | scrypt hash/verify. Imports only `node:crypto`, so the seed and tests can load it. |
 | `../drizzle/*.sql` | — | Generated migrations, committed. Never `db:push` at a deployed DB. |
@@ -112,7 +115,10 @@ directly.
 | `/api/me`, `/api/workspace`, `/api/overview` | GET | |
 | `/api/tasks`, `/api/tasks/[id]/complete` | GET, POST | |
 | `/api/leads`, `/api/leads/[id]` | GET POST PATCH DELETE | full CRUD |
-| `/api/campaigns`, `/api/campaigns/[id]` | GET POST PATCH DELETE | full CRUD |
+| `/api/campaigns`, `/api/campaigns/[id]` | GET POST PATCH DELETE | full CRUD. A multichannel campaign needs ≥ 2 channels (validate.ts). |
+| `/api/campaigns/[id]/workflow` | GET, PUT | the campaign's workflow. PUT takes `{ name, graph }` and **rebuilds the graph from a whitelist** (`validateWorkflowGraph`); 422 names the reason. 404 for another workspace's campaign. |
+| `/api/workflows` | GET | every workflow in the workspace, newest edit first |
+| `/api/workspace/sample` | DELETE | removes the sample campaign (its workflow cascades) + sample leads; idempotent |
 | `/api/threads`, `/api/threads/[id]`, `/api/threads/[id]/messages` | GET, POST | |
 | `/api/analytics` | GET | `?range=`, `?channels=` |
 | `/api/login`, `/api/logout`, `/api/signup` | POST | signup is invite-only; see Auth below |
@@ -129,12 +135,16 @@ instead of a forgeable request parameter.
 
 **Sign-up is invite-only.** `signUp()` runs only for an address in `SIGNUP_ALLOWED_EMAILS` (exact,
 case-insensitive, no wildcards; unset = nobody). It creates workspace + user + owner membership +
-default quota rows + session in **one transaction**, so a failure leaves no half-account. Each
-signup gets **its own workspace** — there is no way to join an existing one (§7).
+default quota rows + **the sample content** + session in **one transaction**, so a failure leaves
+no half-account. The form collects **name, company, email, password**. The workspace id is a fresh
+`org_<12 url-safe chars>` (`newOrgId()`, 72 random bits) — the tenant key stored as
+`workspaces.id` and `workspace_id` everywhere — and the workspace is named after the company.
+After signing up the user lands on `FIRST_RUN_HREF` (`/dashboard/campaigns`), where the sample
+campaign is. Each signup gets **its own workspace** — there is no way to join one (§7).
 
 | File | Purpose |
 |---|---|
-| `lib/signup.ts` (95L) | Shared contract: `validateSignup()`, `parseAllowlist()`, `isInvited()`, `SignupResponse`. Import-free + erasable; used by the form, the route and tests. |
+| `lib/signup.ts` | Shared contract: `validateSignup()` (name, company, email, password), `parseAllowlist()`, `isInvited()`, `SignupResponse`. Import-free + erasable; used by the form, the route and tests. |
 | `app/api/signup/route.ts` | 201 + cookie · 422 invalid · 403 `not_invited` · 409 `exists` · 503 `unavailable`. Requires `application/json`. |
 | `components/auth/SignupForm.tsx` | Validates, then posts. Moves on **only** when the server answers `{ ok: true }`. |
 | `scripts/set-password.ts` | `npm run db:set-password -- <email>`, password from `NEW_PASSWORD`. Updates an existing user only, and revokes their sessions. The only recovery path (no email sending). |
@@ -165,31 +175,50 @@ upload modal, and `LeadsScreen` renders the segment list above the table.
 | `ui.tsx` `charts.tsx` `icons.tsx` | 628 | — | shared controls, SVG charts, 24px icons |
 | `glass.ts` | ~230 | — | refraction + specular runtime, **marketing-only now** (see §5) |
 
-### Workflow builder — `components/app/builder/` (1719L)
+### Workflow builder — `components/app/builder/` (~2000L)
 `WorkflowBuilder.tsx` owns state (nodes, edges, undo/redo, toasts) · `Canvas.tsx` is the
 pannable/zoomable surface · `StepCard.tsx` the node · `Inspector.tsx` the right panel.
-Model is `lib/app/workflow.ts` (695L) — import-free and erasable, pinned by
+Model is `lib/app/workflow.ts` (946L) — import-free and erasable, pinned by
 `tests/workflow.test.mjs`. **@xyflow/react is deliberately NOT a dependency**; the canvas is
 ours but keeps `.react-flow__*` class names because `app.css` styles them.
-Edits are in-component only — **no persistence yet**; the `workflows` table exists for it.
+**Persistence.** One `workflows` row per multichannel campaign (unique `campaign_id`; the route id
+*is* the campaign id). `workflow.ts` also holds the storage side: `WorkflowGraph`
+(`{nodes, edges, settings}`), `graphFromTemplate()`, `toGraph`/`fromGraph`, and
+`validateWorkflowGraph()` / `validateWorkflowName()` — a whitelist rebuild that rejects unknown
+step-data keys (incl. `__proto__`), bad sockets, a second Audience, **cycles** (the canvas walks the
+graph recursively and would hang) and oversize graphs; pinned by `tests/workflowPersist.test.mjs`.
+`WorkflowBuilder` autosaves 800 ms after the last change (a fingerprint of the content, so an
+unchanged graph never saves), serialises saves, flushes on `pagehide`/unmount with a `keepalive`
+fetch, and shows a truthful Saved / Unsaved changes / Saving… / "Couldn't save · Retry". Status
+(live/paused) belongs to the *campaign*, not the graph.
+**Audience lists** in the builder: `campaign` ("Leads in this campaign") and `workspace` ("All
+leads"), both counted live from `api.leads`, then uploaded segments, then the demo `LISTS`
+relabelled "(demo)". The Audience step stores only the list key.
 
-**Routes.** The builder has exactly one: `/dashboard/workflows/[id]` (and `/new?template=<key>`
-for a blank one, via `blankWorkflow`). `/dashboard/campaigns/[id]` is a `permanentRedirect` to it,
-kept for old links — never render a second builder there. `/dashboard/workflows` is the library
-(`WorkflowsScreen`: `.wfgrid` cards, template picker); its numbers come from
-`lib/app/workflowLibrary.ts`, which reuses `hasRun` so a never-published workflow reads "—".
-A multichannel campaign *is* a workflow (same numeric id) **in the demo data layer only** — see
-the id-mismatch gap in §7. `/dashboard/integrations` (`IntegrationsScreen`,
-`lib/app/integrations.ts`): only LinkedIn and email can connect; every other provider is
-`state: "planned"` with a disabled primary button.
+**Routes.** The builder has exactly one: `/dashboard/workflows/[id]` where `id` is a multichannel
+campaign's id (string). The page resolves the session itself, loads campaign + workflow through
+the repository, and 404s for an unknown id, another workspace's id or a standalone campaign.
+`/dashboard/workflows/new` and numeric (old demo) ids **redirect to the library**. The header
+`<select>` in the builder and the library lists the workspace's multichannel campaigns (a server-fed
+prop, not the demo `CAMPAIGNS`).
+`/dashboard/campaigns/[id]` is a `permanentRedirect` to the builder, kept for old links — never
+render a second builder there. `/dashboard/workflows` is the library (`WorkflowsScreen`:
+`.wfgrid` cards from `summariseStored()` in `lib/app/workflowLibrary.ts`, template picker). Picking a
+template **creates a draft multichannel campaign + its workflow, then opens the builder** (a
+workflow needs a campaign; creating on a GET would let link prefetch create rows). Library
+"in flight"/"meetings" are dashes: nothing has been sent, so there is nothing to report.
+`/dashboard/integrations` (`IntegrationsScreen`, `lib/app/integrations.ts`): only LinkedIn and
+email can connect; every other provider is `state: "planned"` with a disabled primary button.
 
-**Workflows are campaign-scoped, with a jump dropdown everywhere a workflow is shown.**
-`WorkflowsScreen.tsx`'s header and `WorkflowBuilder.tsx`'s toolbar (`.bh`) both carry a
-`<select>` of `CAMPAIGNS.filter(c => c.type === "multi")` (same filter in both, kept local to
-each file rather than shared, since it's one line) that routes to `/dashboard/workflows/<id>` on
-change — the same pattern as Configuration's campaign picker (above). The builder's select is
-keyed by `workflow.id`; a draft not yet in `CAMPAIGNS` (new/unsaved) gets a synthetic option so
-the control never shows empty.
+**Nothing sends, and the UI says so (`lib/capabilities.ts`).** `SENDING_ENABLED = false` gates every
+path to "live": the builder's Launch/Resume and Test are disabled, the Campaigns switch refuses to
+turn a campaign on, and the campaign editor hides Live/Scheduled. Pausing is always allowed. Flip
+the flag only in the commit that lands a sender.
+
+**Sample data.** `SampleBanner` (`components/app/SampleBanner.tsx`) asks `api.workspace()` for
+`workspace.sample` and renders on Leads, Campaigns and Workflows until the user clicks "Remove
+sample data" (`DELETE /api/workspace/sample`). Sample rows carry a "Sample" tag (`isSample`
+through `adapt.ts`).
 
 **Campaign creation has one entry point.** `CampaignsScreen`'s "Create campaign" button (opening
 `CampaignEditor`) is now the only way in: the sidebar used to carry a second "New campaign" button
@@ -197,7 +226,7 @@ straight into a blank, unnamed workflow (`AppShell`, `href="/dashboard/workflows
 `CampaignsScreen` carried a third, "New workflow", doing the same — both bypassed the name/type/
 status/channel form and were removed. Starting a workflow from a template (`WorkflowsScreen`'s
 "New workflow" + picker) is unaffected; it is the builder's own entry point, not a competing
-campaign-creation path.
+campaign-creation path. Creating a **multichannel** campaign from `CampaignEditor` also saves an empty workflow and opens the builder on it.
 
 ### Configuration — `/dashboard/configuration`
 `ConfigurationScreen.tsx` + `components/app/configuration/` (`Overview`, `ChannelTabs`,
@@ -252,7 +281,7 @@ import-free at runtime, so `tests/adapt.test.mjs` pins every channel and stage r
 
 ### Tests — `tests/` (Node's built-in runner, not Jest/Vitest)
 `dataQuery.test.mjs` · `demoRequest.test.mjs` · `workflow.test.mjs` · `validate.test.mjs` ·
-`adapt.test.mjs` · `signup.test.mjs` — **102 tests**
+`adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `workflowPersist.test.mjs` (+ leads and segment suites) — **141 tests**
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).
@@ -273,6 +302,8 @@ namespaces, no parameter properties).
 | Re-theme workspace | `:root` tokens in `app/app.css`. It is vendored, multi-pass — change the **final** `:root`/flattening block at the true end of the file, since same-specificity CSS means last-in-source wins over every earlier redeclaration. |
 | Add a glass surface (marketing only) | selector list in `globals.css`'s glass-skin block **AND** `SiteGlass.tsx`'s lens/specular lists. Miss one → renders flat. The workspace has no glass surfaces any more — see §5. |
 | Add a nav item | `lib/nav.ts` (workspace) or `lib/site.ts` (marketing) |
+| Change what a new workspace starts with | `lib/data/sample.ts` (content, tested) and `sampleSeed.ts` (insert). Keep every email on `.example` and every phone in 555-01xx — the tests enforce it. |
+| Add a field to a stored workflow | `WorkflowGraph` + `validateWorkflowGraph` in `lib/app/workflow.ts` (the whitelist **drops/refuses** anything not listed) + a case in `tests/workflowPersist.test.mjs` |
 | Add a builder step kind | `STEPS` + `defaults()` + `stepLabel()` in `lib/app/workflow.ts`; tests pin the five seeded graphs |
 | Add a Configuration setting | the data in `lib/app/configuration.ts`, then the tab in `components/app/configuration/`. Rows are `<Row>`/`<ToggleRowView>` from `parts.tsx` — don't hand-roll one. |
 | Re-skin a single workspace screen | there is no scope mechanism for this any more (the old `.cfg` scope was removed once its palette became the dashboard-wide default — see §5). A screen that must differ needs its own new token scope, the same shape `.cfg` used to be. |
@@ -425,8 +456,8 @@ namespaces, no parameter properties).
 
 Roughly in the order they should be closed.
 
-1. **Seven screens still read `lib/app/` constants** (Home, Inbox, Analytics, Settings,
-   Workflows, Integrations, Configuration) — they render demo data regardless of the database, so
+1. **Six screens still read `lib/app/` constants** (Home, Inbox, Analytics, Settings,
+   Integrations, Configuration) — they render demo data regardless of the database, so
    a real tester sees invented tasks and conversations next to their own empty workspace. All but
    Settings carry an "Illustrative demo data" chip (Configuration has its own `DemoNote`). Leads and
    Campaigns show the pattern to follow.
@@ -437,18 +468,12 @@ Roughly in the order they should be closed.
    set those rows still live in process memory, vanish on restart, and are not tenant-isolated by
    the database the way every other table is. Parked uploads are meant to be scratch (the modal
    says so); segments and profiles are not. `lib/leads/merge.ts` defines what the schema needs.
-3b. **A live multichannel campaign's "open workflow" link 404s.** `CampaignsScreen` links a
-   `type: "multi"` campaign to `/dashboard/workflows/{c.id}`, but live campaigns come from
-   `lib/data/seed.ts` with string ids (`"c_netnew"`, ...), while the builder's `getWorkflow` reads
-   the demo `WORKFLOWS` array in `lib/app/workflow.ts`, keyed by small integers (`1`, `2`, ...) —
-   `getWorkflow(Number("c_netnew"))` is `getWorkflow(NaN)`, so the route 404s for every real
-   campaign today. It only "works" for the Configuration screen's own picker and the Workflows
-   library, because both of those stay on the demo `lib/app/campaigns.ts` ids throughout. Found
-   while wiring the Configuration screen's per-campaign "Open workflow" link (kept pointed at the
-   demo ids, so it works) rather than the live Campaigns table (left as-is, so as not to paper
-   over a 404 with a change that only hides it). Fixing this for real needs the builder rewired
-   onto `Repository` (ties into gap 4), not a cosmetic id translation.
-4. **Workflow builder does not persist.** The `workflows` table is ready and unused.
+3b. **A stored workflow can name a segment that no longer exists.** The Audience step keeps the
+   segment id, and segments are in-memory (gap 3), so after a restart the canvas shows 0 leads for
+   it. `campaign` / `workspace` audiences are unaffected (counted from the database).
+4. **A campaign's `channels` is not derived from its workflow's steps.** Both are stored; editing
+   the workflow does not update `campaigns.channels`, so the table's channel dots can drift from
+   what the graph actually sends on.
 4b. **Configuration does not persist either, and has no sequence editor.** Every control holds
    state for the visit. The design reference also opens a sequence/script into a step editor
    (step list, A/B variants, traffic split, token palette, live preview, send-test); the
@@ -472,6 +497,8 @@ Roughly in the order they should be closed.
    cannot share leads or campaigns with each other, which a team product needs. Needs an
    invite-to-workspace flow (a `memberships` row for an existing `workspace_id`) and a `members`
    UI; the schema already supports many users per workspace.
+10a. **LinkedIn and sending-domain connection are not built** (deprioritised on purpose). The
+    Integrations screen still reads `lib/app/integrations.ts`; no workspace has real connections.
 10. **The rail badges (Home 6, Inbox 4) are hardcoded** from `lib/app/inbox`, so a brand-new real
     account shows them. The screens they point to now say "Illustrative demo data"; the badges
     themselves do not.
@@ -502,7 +529,10 @@ the in-memory seed.
 **Do not create a database or a Neon branch for `dev`.** Develop and verify against a local
 Postgres or the in-memory demo mode instead. Promoting is merging `dev` into `main`; run
 `npm run db:migrate` against the production database first **only if the change adds a file under
-`drizzle/`** (the 2026-10-15 signup work did not).
+`drizzle/`**. **`0002_sample_flag` does:** `main` must not receive code that selects
+`campaigns.is_sample` / `leads.is_sample` before that migration has run on Neon (apply it with the
+Neon MCP `run_sql_transaction`, one statement per element, plus a `drizzle.__drizzle_migrations`
+row holding the file's real sha256).
 
 **Giving access to a few testers** (deployed, no seed needed): set `DATABASE_URL` (pooled) and
 `SIGNUP_ALLOWED_EMAILS` on the host, run `npm run db:migrate` once, and tell each person to open
