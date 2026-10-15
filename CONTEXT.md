@@ -465,6 +465,11 @@ namespaces, no parameter properties).
   document loads only the marketing styles. Same rule for any future jump from the app to a
   marketing route.
 
+- **Density lives in one block.** The "Minimal and compact" block near the end of `app/app.css`
+  (before the `.intg*` rules) is the workspace's type/control scale: 13px body, 11px sub-text, 30–32px
+  controls, 32px rail rows. It overrides the vendored rules above it, so it must stay after them. Do not
+  use CSS `zoom` to shrink the app: it breaks `glass.ts` lens sizing and the builder's pointer maths.
+
 ## 6. Content rules (from the product brief — these are commitments, not preferences)
 
 - No invented testimonials, customer logos, metrics, integrations or certification claims.

@@ -2055,47 +2055,125 @@ html, body { background:#FAFAF8 }
 button.navi { background:none;border:0;font:inherit;font-weight:500;font-size:14px;cursor:pointer }
 button.navi:disabled { cursor:progress;opacity:.7 }
 
+/* ---- Minimal and compact: one smaller type and spacing scale for the whole workspace. ----
+   Written as a final override block because the sheet above is vendored. Body copy 13px, sub-text
+   11-11.5px, 32px controls, 32px rail rows. Edit the numbers here to re-tune density. */
+:root { --side:200px;--side-c:60px;--hdr:44px;--g:10px;--pr:14px;--maxw:1240px }
+body { font-size:13px }
+.main small, .side small { font-size:11px }
+.eyebrow { font-size:9.5px }
+.logo { font-size:14.5px;gap:8px }
+.mark { width:22px;height:22px;border-radius:7px }
+.mark svg { width:13px;height:13px }
+.side { padding:12px 10px 10px }
+.side-top { height:30px;margin-bottom:8px }
+.navi { height:32px;gap:9px;padding:0 10px;font-size:13px;border-radius:9px }
+.navi .i, .side .i { width:16px;height:16px }
+button.navi { font-size:13px }
+.side .me { padding:10px 4px 6px }
+.side .me b { font-size:12px }
+.side .me small { font-size:10.5px }
+.top h1 { font-size:17px }
+.search { height:30px;width:210px;font-size:12.5px }
+.btn { height:30px;padding:0 12px;font-size:12.5px;gap:6px }
+.btn.sm { height:27px;padding:0 10px;font-size:12px }
+.btn.xs { height:23px;padding:0 8px;font-size:11.5px }
+.btn .i { width:14px;height:14px }
+.ib { width:30px;height:30px }
+.tag { height:19px;padding:0 8px;font-size:10.5px }
+.av { width:28px;height:28px;font-size:10.5px }
+.card-h h3 { font-size:13px }
+.card-h { min-height:32px }
+.stat, .kpi { padding:11px 13px }
+.stat .v, .kpi .v { font-size:24px }
+.kpi .spark { height:26px }
+.hello h2 { font-size:clamp(20px,2.2vw,26px) }
+.wfc h3 { font-size:13.5px }
+.wfc .nums b { font-size:19px }
+.cf-head h2 { font-size:22px }
+.cf-vname { font-size:19px }
+.bh .name { font-size:18px }
+.typecard b { font-size:15px }
+.empty b { font-size:13.5px }
+.tabs button { height:36px;font-size:13px }
+.tabs { gap:18px;margin-bottom:12px }
+.setnav button { height:30px;font-size:12.5px }
+.trow { padding:10px 0 }
+.trow b { font-size:12.5px }
+.tbl, .tbl.leads { font-size:12.5px }
+.tbl th, .tbl.leads thead th { font-size:9.5px }
+.tbl th { padding:8px 12px }
+.tbl td { padding:8px 12px }
+.tbl.leads thead th { height:34px }
+.tbl.leads td { height:52px }
+.tbl.camps td { height:46px }
+.th { padding:9px 11px;gap:9px }
+.th .r1 b { font-size:12.5px }
+.th p { font-size:11.5px }
+.th .r1 time { font-size:10.5px }
+.sortb { font-size:11px }
+.inp, .sel, .ta { height:32px;font-size:12.5px;padding:0 10px }
+.inp.big { height:38px;font-size:14px }
+.drf .inp { height:32px;font-size:12px }
+.q, .q.wide { height:30px;gap:7px;padding:0 11px }
+.q input { font-size:12.5px }
+.q .i { width:14px;height:14px }
+.sel.pill, .lfilters .sel.pill { height:30px;font-size:12px;padding:0 26px 0 12px }
+.ib.more { width:30px;height:30px;border-radius:9px }
+.lfilters .btn.pri { height:30px;padding:0 14px }
+.lfilters { margin-bottom:10px }
+.seg button { height:25px;padding:0 10px;font-size:12px }
+.seg .c { font-size:10.5px }
+.card-h { padding:11px 14px 0;min-height:34px }
+.cf-ttabs button { height:36px;font-size:12.5px }
+.side .new { height:32px }
+.lname .av { width:32px;height:32px;font-size:11px }
+.srcic { width:30px;height:30px;border-radius:9px }
+.av.lg { width:38px;height:38px;font-size:13px }
+.tbl.leads td { height:48px }
+
 /* ---- Integrations: tab row with search, then one card: workspace-id row, collapsible sections of two-column rows. ---- */
-.intg-top { display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);margin-bottom:18px }
-.intg-tabs { display:flex;gap:26px;overflow-x:auto;scrollbar-width:none }
-.intg-tabs a { position:relative;display:block;padding:14px 0;font-size:14.5px;font-weight:500;color:var(--muted);white-space:nowrap }
+.intg-top { display:flex;align-items:center;justify-content:space-between;gap:14px;border-bottom:1px solid var(--line);margin-bottom:12px }
+.intg-tabs { display:flex;gap:20px;overflow-x:auto;scrollbar-width:none }
+.intg-tabs a { position:relative;display:block;padding:9px 0;font-size:12.5px;font-weight:500;color:var(--muted);white-space:nowrap }
 .intg-tabs a:hover, .intg-tabs a.on { color:var(--ink) }
-.intg-tabs a.on:after { content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;border-radius:2px;background:var(--ink) }
-.intg-search { display:flex;align-items:center;gap:8px;height:36px;width:250px;flex:none;padding:0 12px;border:1px solid var(--line-strong);border-radius:999px;background:var(--surface-2);color:var(--muted) }
+.intg-tabs a.on:after { content:"";position:absolute;left:0;right:0;bottom:-1px;height:1.5px;border-radius:2px;background:var(--ink) }
+.intg-search { display:flex;align-items:center;gap:7px;height:28px;width:210px;flex:none;padding:0 10px;border:1px solid var(--line-strong);border-radius:999px;background:var(--surface-2);color:var(--muted) }
+.intg-search svg { width:14px;height:14px }
 .intg-search:focus-within { border-color:var(--muted) }
-.intg-search input { flex:1;min-width:0;border:0;outline:0;background:none;font:inherit;font-size:13.5px;color:var(--ink) }
+.intg-search input { flex:1;min-width:0;border:0;outline:0;background:none;font:inherit;font-size:12px;color:var(--ink) }
 .intg-search input::placeholder { color:var(--muted) }
-.intg { padding:4px 36px 10px }
-.intg-id { display:flex;align-items:center;justify-content:space-between;gap:16px;padding:26px 0 22px;border-bottom:1px solid var(--line) }
-.intg-id span { display:flex;flex-direction:column;gap:5px;min-width:0 }
-.intg-id b { font-size:17px;font-weight:600 }
-.intg-id code { font-family:var(--font-mono,ui-monospace,monospace);font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis }
-.intg-copy { flex:none;display:grid;place-items:center;width:32px;height:32px;color:var(--muted);cursor:pointer }
+.intg { padding:0 20px 4px }
+.intg-id { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0 12px;border-bottom:1px solid var(--line) }
+.intg-id span { display:flex;flex-direction:column;gap:2px;min-width:0 }
+.intg-id b { font-size:13px;font-weight:600 }
+.intg-id code { font-family:var(--font-mono,ui-monospace,monospace);font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis }
+.intg-copy { flex:none;display:grid;place-items:center;width:26px;height:26px;color:var(--muted);cursor:pointer }
 .intg-copy:hover { color:var(--ink) }
-.intg-copy svg { width:20px;height:20px;stroke-width:1.5 }
+.intg-copy svg { width:15px;height:15px;stroke-width:1.5 }
 .intg-sec + .intg-sec { border-top:1px solid var(--line) }
-.intg-h { display:flex;align-items:center;justify-content:space-between;width:100%;padding:26px 0 14px;font-size:19px;font-weight:600;color:var(--ink);text-align:left }
-.intg-chev { display:grid;place-items:center;color:var(--muted);transition:transform .2s;transform:rotate(0deg) }
+.intg-h { display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 0 6px;font-size:13.5px;font-weight:600;color:var(--ink);text-align:left }
+.intg-chev { display:grid;place-items:center;color:var(--muted);transition:transform .2s }
 .intg-chev.open { transform:rotate(180deg) }
-.intg-chev svg { width:20px;height:20px;stroke-width:1.5 }
-.intg-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 72px;padding-bottom:24px }
-.intg-row { display:flex;align-items:center;gap:16px;min-width:0;padding:12px 0 }
-.intg-tile { flex:none;display:grid;place-items:center;width:48px;height:48px;border-radius:13px;color:#fff;font-size:15px;font-weight:700;letter-spacing:.2px }
-.intg-tile svg { width:25px;height:25px }
-.intg-main { display:flex;flex-direction:column;gap:3px;min-width:0;flex:1 }
-.intg-main b { display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:16.5px;font-weight:600 }
-.intg-main small { font-size:14px;line-height:1.4;color:var(--muted) }
-.intg-pill { padding:2px 8px;border-radius:7px;background:var(--surface-2);box-shadow:inset 0 0 0 .5px var(--line);font-size:10.5px;font-weight:700;letter-spacing:.3px;color:var(--muted);text-transform:uppercase }
+.intg-chev svg { width:15px;height:15px;stroke-width:1.5 }
+.intg-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 40px;padding-bottom:10px }
+.intg-row { display:flex;align-items:center;gap:11px;min-width:0;padding:6px 0 }
+.intg-tile { flex:none;display:grid;place-items:center;width:32px;height:32px;border-radius:9px;color:#fff;font-size:11px;font-weight:700;letter-spacing:.2px }
+.intg-tile svg { width:17px;height:17px }
+.intg-main { display:flex;flex-direction:column;gap:1px;min-width:0;flex:1 }
+.intg-main b { display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:12.5px;font-weight:600;line-height:1.3 }
+.intg-main small { font-size:11px;line-height:1.35;color:var(--muted) }
+.intg-pill { padding:1px 6px;border-radius:5px;background:var(--surface-2);box-shadow:inset 0 0 0 .5px var(--line);font-size:8.5px;font-weight:700;letter-spacing:.3px;color:var(--muted);text-transform:uppercase }
 .intg-pill.warn { color:var(--alert) }
-.intg-plus { flex:none;display:grid;place-items:center;width:34px;height:34px;color:var(--muted);cursor:pointer;transition:color .2s }
+.intg-plus { flex:none;display:grid;place-items:center;width:26px;height:26px;color:var(--muted);cursor:pointer;transition:color .2s }
 .intg-plus:hover { color:var(--ink) }
-.intg-plus svg { width:22px;height:22px;stroke-width:1.4 }
-.intg-manage { flex:none;padding:7px 14px;border-radius:999px;box-shadow:inset 0 0 0 1px var(--line-strong);font-size:13px;font-weight:500;color:var(--ink) }
+.intg-plus svg { width:16px;height:16px;stroke-width:1.4 }
+.intg-manage { flex:none;padding:4px 11px;border-radius:999px;box-shadow:inset 0 0 0 1px var(--line-strong);font-size:11.5px;font-weight:500;color:var(--ink) }
 .intg-manage:hover { background:var(--surface-2) }
 @media (max-width:820px) {
   .intg-top { flex-direction:column;align-items:stretch;gap:0;border-bottom:0 }
   .intg-tabs { border-bottom:1px solid var(--line) }
-  .intg-search { width:auto;margin:12px 0 }
-  .intg { padding:0 18px 6px }
+  .intg-search { width:auto;margin:10px 0 }
+  .intg { padding:0 14px 4px }
   .intg-grid { grid-template-columns:minmax(0,1fr) }
 }
