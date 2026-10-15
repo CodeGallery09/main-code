@@ -10,7 +10,7 @@
 import { getRepository } from "@/lib/data";
 import { fail, json } from "@/lib/http";
 import { requestCtx } from "@/lib/leads/ctx";
-import { MAX_UPLOAD_BYTES } from "@/lib/leads/limits";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/leads/limits";
 import { parseLeadFile } from "@/lib/leads/parseFile";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
   const file = form.get("file");
   if (!(file instanceof File)) return fail("invalid_body", "No file was attached.", 422);
-  if (file.size > MAX_UPLOAD_BYTES) return fail("too_large", "That file is over the 64 MB limit.", 413);
+  if (file.size > MAX_UPLOAD_BYTES) return fail("too_large", `That file is over the ${MAX_UPLOAD_MB} MB limit.`, 413);
 
   const parsed = await parseLeadFile(file);
   if ("error" in parsed) return fail(parsed.error.code, parsed.error.message, 422);

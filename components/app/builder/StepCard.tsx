@@ -5,7 +5,6 @@ import { Glyph } from "../icons";
 import { CHANNEL } from "@/lib/app/channels";
 import {
   ATTRIBUTE_LABEL,
-  LISTS,
   PORT_LABEL,
   STEP_ATTRIBUTE,
   STEPS,
@@ -50,7 +49,7 @@ export function StepCard({
   lonely,
   taken,
   onQuickAdd,
-  lists = LISTS,
+  lists = [],
   audienceKey,
 }: {
   node: StepNode;

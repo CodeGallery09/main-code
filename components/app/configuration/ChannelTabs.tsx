@@ -3,46 +3,32 @@
 /**
  * Configuration · the five channel tabs.
  *
- * Each one is the same shape: the accounts or numbers that send, then the
- * reusable content (sequences, templates, scripts), then the rules that apply
- * across the channel. LinkedIn and email are the channels the product runs
- * today; WhatsApp, Calls and SMS carry the planned note Integrations uses,
- * because the UI never offers a connection the product cannot honour.
+ * LinkedIn and email are the channels the product runs. Their accounts and mailboxes belong to the
+ * **workspace** and are read from the database: the daily caps and which campaigns use each account
+ * are saved as you change them, and any number of campaigns can share one account. WhatsApp, Calls
+ * and SMS carry the planned note Integrations uses, because the UI never offers a connection the
+ * product cannot honour.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CHANNEL } from "@/lib/app/channels";
-import { CAMPAIGNS } from "@/lib/app/campaigns";
 import {
-  CALLER_IDS,
-  CALL_DIALER,
-  CALL_OUTCOMES,
-  CALL_RECORDING,
-  CALL_SCRIPTS,
   EMAIL_FOOTER,
-  EMAIL_SEQUENCES,
   EMAIL_TRACKING,
   LINKEDIN_ACCOUNT_RULES,
-  LINKEDIN_CAPS,
   LINKEDIN_NUMBER_RULES,
-  LINKEDIN_SEATS,
-  LINKEDIN_SEQUENCES,
-  MAILBOXES,
-  OUTCOME_ACTIONS,
-  SENDING_DOMAINS,
-  SMS_CONFIRMATION,
-  SMS_OPT_OUT_KEYWORDS,
-  SMS_QUIET_HOURS,
-  SMS_SENDER,
-  SMS_TEMPLATES,
-  VOICEMAILS,
-  WHATSAPP_NUMBER,
-  WHATSAPP_RULES,
-  WHATSAPP_TEMPLATES,
-  domainVerified,
-  type CallScript,
-  type Sequence,
 } from "@/lib/app/configuration";
+import { api, fieldErrorsOf } from "@/lib/api";
+import { missingRecords } from "@/lib/data/setup";
+import { EMAIL_CAP_MAX, LINKEDIN_LIMITS, type AccountSettingsPatch } from "@/lib/data/validate";
+import type {
+  AccountsSnapshot,
+  Campaign,
+  ChannelAccount,
+  EmailAccount,
+  LinkedInAccount,
+  SendingDomain,
+} from "@/lib/data/types";
 import { Avatar, Segmented, Switch } from "../ui";
 import { CheckIcon, Glyph } from "../icons";
 import {
@@ -59,241 +45,282 @@ import {
   useToggles,
 } from "./parts";
 
+type TabProps = {
+  snapshot: AccountsSnapshot;
+  campaigns: Campaign[];
+  /** Re-reads the workspace after a change that other tabs depend on. */
+  onChange: () => void;
+};
+
+/* ---------- saving ---------------------------------------------------------- */
+
+/**
+ * A value the user can nudge, saved a moment after the last nudge. The new value shows at once; if
+ * the save fails it says so rather than pretending, and the next nudge tries again.
+ */
+function useSavedSetting(initial: number, save: (value: number) => Promise<unknown>) {
+  const [value, setValue] = useState(initial);
+  const [failed, setFailed] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latest = useRef(save);
+  latest.current = save;
+
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  const set = (next: number) => {
+    setValue(next);
+    setFailed(null);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      latest.current(next).catch((caught) => {
+        const fields = fieldErrorsOf(caught);
+        setFailed(fields ? Object.values(fields)[0] : "Couldn't save that. Try again.");
+      });
+    }, 500);
+  };
+  return { value, set, failed };
+}
+
+/** The campaigns that send from one account: chips to remove, a menu to add. Saved on each change. */
+function UsedBy({
+  account,
+  campaigns,
+  onChange,
+}: {
+  account: ChannelAccount;
+  campaigns: Campaign[];
+  onChange: () => void;
+}) {
+  const [ids, setIds] = useState(account.campaignIds);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Only campaigns that run on this account's channel are offered, and a workflow is what makes a
+  // multichannel campaign send, so standalone ones are listed too if they use the channel.
+  const addable = campaigns.filter((c) => c.channels.includes(account.channel) && !ids.includes(c.id));
+  const byId = new Map(campaigns.map((c) => [c.id, c]));
+
+  async function commit(next: string[]) {
+    const before = ids;
+    setIds(next);
+    setBusy(true);
+    setError(null);
+    try {
+      await api.setAccountCampaigns(account.id, next);
+      onChange();
+    } catch {
+      setIds(before);
+      setError("Couldn't save that. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="cf-list cf-span2">
+      <TileLabel label="Used by campaigns" />
+      <div className="cf-chips" style={{ marginTop: 4 }}>
+        {ids.length === 0 && <small className="muted">Not used by any campaign</small>}
+        {ids.map((id) => {
+          const campaign = byId.get(id);
+          if (!campaign) return null;
+          return (
+            <button
+              type="button"
+              className="tag acc"
+              key={id}
+              disabled={busy}
+              onClick={() => void commit(ids.filter((x) => x !== id))}
+              aria-label={`Stop using ${account.name} for ${campaign.name}`}
+            >
+              {campaign.name}
+              <Glyph n="x" className="i" />
+            </button>
+          );
+        })}
+      </div>
+      {addable.length > 0 && (
+        <select
+          className="sel"
+          style={{ marginTop: 6 }}
+          value=""
+          disabled={busy}
+          aria-label={`Add a campaign to ${account.name}`}
+          onChange={(e) => {
+            if (e.target.value) void commit([...ids, e.target.value]);
+          }}
+        >
+          <option value="">Add to a campaign…</option>
+          {addable.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      )}
+      {error && <small className="cf-bad">{error}</small>}
+    </div>
+  );
+}
+
+const SampleTag = () => <span className="tag">Sample</span>;
+
+/** Shown when a workspace has no account on a channel. Connecting is not built yet, and says so. */
+function NothingConnected({ what }: { what: string }) {
+  return (
+    <Panel title={`No ${what} connected`}>
+      <p className="cf-nocontent">
+        Connect {what === "mailbox" ? "a" : "a"} {what} to send from it. Connecting isn&apos;t available yet, so
+        there is nothing to set up here until it is. Campaigns you build now will use any account you
+        connect later.
+      </p>
+      <button type="button" className="btn sm pri" disabled title="Connecting isn't available yet">
+        Connect {what}
+      </button>
+    </Panel>
+  );
+}
+
 /* ========== LinkedIn ====================================================== */
 
-export function LinkedInTab({ scopeCampaignId = null }: { scopeCampaignId?: number | null }) {
-  const [sub, setSub] = useState<"accounts" | "sequences">("accounts");
+export function LinkedInTab({ snapshot, campaigns, onChange }: TabProps) {
   const rules = useToggles(LINKEDIN_ACCOUNT_RULES);
   const [numbers, setNumbers] = useState(() =>
     Object.fromEntries(LINKEDIN_NUMBER_RULES.map((r) => [r.id, r.value])),
   );
+  const accounts = snapshot.accounts.filter((a): a is LinkedInAccount => a.channel === "linkedin");
 
   return (
     <div className="cf-stack">
-      <Segmented
-        value={sub}
-        onChange={setSub}
-        items={[
-          ["accounts", "Accounts & limits"],
-          ["sequences", "Sequences"],
-        ]}
-      />
-
-      {sub === "accounts" ? (
+      {accounts.length === 0 ? (
+        <NothingConnected what="LinkedIn account" />
+      ) : (
         <>
+          <p className="cf-nocontent">
+            These accounts belong to your workspace. Any campaign can send from any of them, and one
+            account can run several campaigns at once.
+          </p>
           <div className="cf-cardgrid">
-            {LINKEDIN_SEATS.map((seat) => (
-              <Seat key={seat.id} seat={seat} scopeCampaignId={scopeCampaignId} />
+            {accounts.map((account) => (
+              <Seat key={account.id} account={account} campaigns={campaigns} onChange={onChange} />
             ))}
           </div>
-
-          <Panel
-            title="All accounts"
-            sub="Account-level limits and sequence behaviour that apply across every LinkedIn seat"
-          >
-            {LINKEDIN_ACCOUNT_RULES.slice(0, 2).map((r) => (
-              <ToggleRowView key={r.id} {...r} on={rules.on[r.id]} onChange={rules.toggle} />
-            ))}
-            {LINKEDIN_NUMBER_RULES.map((r) => (
-              <Row key={r.id} label={r.label} hint={r.hint}>
-                <span className="row" style={{ gap: 8 }}>
-                  <Stepper
-                    value={numbers[r.id]}
-                    max={r.max}
-                    onChange={(v) => setNumbers((n) => ({ ...n, [r.id]: v }))}
-                  />
-                  {r.unit && <span className="muted">{r.unit}</span>}
-                </span>
-              </Row>
-            ))}
-            {LINKEDIN_ACCOUNT_RULES.slice(2).map((r) => (
-              <ToggleRowView key={r.id} {...r} on={rules.on[r.id]} onChange={rules.toggle} />
-            ))}
-          </Panel>
         </>
-      ) : (
-        <SequenceCards
-          channel="LinkedIn"
-          sequences={LINKEDIN_SEQUENCES}
-          metric="reply"
-        />
       )}
 
-      <DemoNote />
+      <Panel
+        title="All accounts"
+        sub="Account-level limits and sequence behaviour that apply across every LinkedIn account"
+      >
+        {LINKEDIN_ACCOUNT_RULES.slice(0, 2).map((r) => (
+          <ToggleRowView key={r.id} {...r} on={rules.on[r.id]} onChange={rules.toggle} />
+        ))}
+        {LINKEDIN_NUMBER_RULES.map((r) => (
+          <Row key={r.id} label={r.label} hint={r.hint}>
+            <span className="row" style={{ gap: 8 }}>
+              <Stepper
+                value={numbers[r.id]}
+                max={r.max}
+                onChange={(v) => setNumbers((n) => ({ ...n, [r.id]: v }))}
+              />
+              {r.unit && <span className="muted">{r.unit}</span>}
+            </span>
+          </Row>
+        ))}
+        {LINKEDIN_ACCOUNT_RULES.slice(2).map((r) => (
+          <ToggleRowView key={r.id} {...r} on={rules.on[r.id]} onChange={rules.toggle} />
+        ))}
+      </Panel>
+
+      <DemoNote what="rules above" />
     </div>
   );
 }
 
 function Seat({
-  seat,
-  scopeCampaignId,
+  account,
+  campaigns,
+  onChange,
 }: {
-  seat: (typeof LINKEDIN_SEATS)[number];
-  scopeCampaignId: number | null;
+  account: LinkedInAccount;
+  campaigns: Campaign[];
+  onChange: () => void;
 }) {
-  const out = seat.state === "signed_out";
-  const [limits, setLimits] = useState({
-    connections: seat.connections,
-    messages: seat.messages,
-    visits: seat.visits,
-  });
-  const set = (k: keyof typeof limits) => (v: number) => setLimits((l) => ({ ...l, [k]: v }));
-
-  // A LinkedIn seat is shared: the same person can run more than one campaign at once.
-  const [campaignIds, setCampaignIds] = useState(seat.campaignIds);
-  const addable = CAMPAIGNS.filter((c) => c.channels.includes("li") && !campaignIds.includes(c.id));
-  const inScope = scopeCampaignId != null && campaignIds.includes(scopeCampaignId);
+  const out = account.state === "signed_out";
+  const patch = (body: AccountSettingsPatch) => api.updateAccount(account.id, body);
+  const connections = useSavedSetting(account.settings.connections, (v) => patch({ connections: v }));
+  const messages = useSavedSetting(account.settings.messages, (v) => patch({ messages: v }));
+  const visits = useSavedSetting(account.settings.visits, (v) => patch({ visits: v }));
+  const failed = connections.failed || messages.failed || visits.failed;
 
   return (
     <section className="card cf-tile">
       <div className="cf-tileh">
-        <Avatar name={seat.name} size="sm" />
+        <Avatar name={account.name} size="sm" />
         <span className="cf-tilename">
-          <b>{seat.name}</b>
+          <b>{account.name}</b>
           <span className={"tag " + (out ? "alert" : "pos")}>{out ? "Log in again" : "Healthy"}</span>
-          {inScope && <span className="tag acc">Selected campaign</span>}
+          {account.isSample && <SampleTag />}
         </span>
-        <button type="button" className={"btn xs " + (out ? "pri" : "ghost")}>
-          {out ? "Reconnect" : "Pause"}
-        </button>
+        {out && (
+          <button type="button" className="btn xs pri" disabled title="Reconnecting isn't available yet">
+            Reconnect
+          </button>
+        )}
       </div>
 
-      <a className="cf-liprofile" href={`https://${seat.profile}`} target="_blank" rel="noreferrer">
+      <a className="cf-liprofile" href={`https://${account.handle}`} target="_blank" rel="noreferrer">
         <i className="cdot" style={{ background: CHANNEL.li.hex }} />
-        {seat.profile}
+        {account.handle}
       </a>
 
-      {out && <Issue>Signed out — steps paused until it reconnects</Issue>}
+      {out && <Issue>Signed out. Steps that use this account are paused until it reconnects.</Issue>}
+      {failed && <Issue>{failed}</Issue>}
 
       <div className="cf-tilegrid">
         <TileLimit
           label="Connections"
           unit="/day"
           hint="LinkedIn caps invites around 100 a week"
-          value={limits.connections}
-          onChange={set("connections")}
-          max={LINKEDIN_CAPS.connections}
+          value={connections.value}
+          onChange={connections.set}
+          max={LINKEDIN_LIMITS.connections}
           safe={25}
         />
         <TileLimit
           label="Messages"
           unit="/day"
           hint="To first-degree connections"
-          value={limits.messages}
-          onChange={set("messages")}
-          max={LINKEDIN_CAPS.messages}
+          value={messages.value}
+          onChange={messages.set}
+          max={LINKEDIN_LIMITS.messages}
           safe={80}
         />
         <TileLimit
           label="Visits"
           unit="/day"
-          value={limits.visits}
-          onChange={set("visits")}
-          max={LINKEDIN_CAPS.visits}
+          value={visits.value}
+          onChange={visits.set}
+          max={LINKEDIN_LIMITS.visits}
           safe={100}
         />
-        <TileFigure label="InMail" unit="left" value={seat.inmail ?? "—"} />
+        <TileFigure label="InMail" unit="left" value={account.settings.inmail ?? "—"} />
 
-        <div className="cf-list cf-span2">
-          <TileLabel label="Used by campaigns" />
-          <div className="cf-chips" style={{ marginTop: 4 }}>
-            {campaignIds.length === 0 && <small className="muted">Not used by any campaign</small>}
-            {campaignIds.map((id) => {
-              const campaign = CAMPAIGNS.find((c) => c.id === id);
-              if (!campaign) return null;
-              return (
-                <button
-                  type="button"
-                  className="tag acc"
-                  key={id}
-                  onClick={() => setCampaignIds((ids) => ids.filter((x) => x !== id))}
-                  aria-label={`Stop using ${seat.name} for ${campaign.name}`}
-                >
-                  {campaign.name}
-                  <Glyph n="x" className="i" />
-                </button>
-              );
-            })}
-          </div>
-          {addable.length > 0 && (
-            <select
-              className="sel"
-              style={{ marginTop: 6 }}
-              value=""
-              aria-label={`Add a campaign to ${seat.name}`}
-              onChange={(e) => {
-                const id = Number(e.target.value);
-                if (id) setCampaignIds((ids) => [...ids, id]);
-              }}
-            >
-              <option value="">Add to a campaign…</option>
-              {addable.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+        <UsedBy account={account} campaigns={campaigns} onChange={onChange} />
       </div>
     </section>
   );
 }
 
-/** The sequence cards LinkedIn shows, and the table email and calls show. */
-function SequenceCards({
-  channel,
-  sequences,
-  metric,
-}: {
-  channel: string;
-  sequences: Sequence[];
-  metric: string;
-}) {
-  return (
-    <Panel
-      title={`${channel} sequences`}
-      sub={`Reusable ${channel} sequences. Campaigns pick one; edits become a new version.`}
-      action={
-        <button type="button" className="btn sm pri">
-          New sequence
-        </button>
-      }
-    >
-      <div className="cf-cardgrid">
-        {sequences.map((s) => (
-          <article className="card cf-tile" key={s.id}>
-            <div className="cf-tileh">
-              <span className="cf-tilename">
-                <b>{s.name}</b>
-                <span className={"tag " + (s.status === "live" ? "pos" : "")}>
-                  {s.status === "live" ? "Live" : "Draft"}
-                </span>
-              </span>
-              {s.status === "live" && <span className="tag">v{s.version}</span>}
-            </div>
-            <span className="cf-tilesub">{s.steps.join(" → ")}</span>
-            <div className="cf-tilegrid">
-              <TileFigure label="Steps" value={s.steps.length} />
-              <TileFigure label={metric} unit="rate" value={s.rate == null ? "—" : `${s.rate}%`} />
-              <div className="cf-list cf-span2">
-                <TileLabel label="Used by" />
-                <span className="cf-tilesub" style={{ marginTop: 0 }}>
-                  {s.usedBy.length ? s.usedBy.join(", ") : "Unused"} · edited {s.edited}
-                </span>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
 /* ========== Email ========================================================= */
 
-export function EmailTab({ scopeCampaignId = null }: { scopeCampaignId?: number | null }) {
-  const [sub, setSub] = useState<"mailboxes" | "sequences" | "tracking">("mailboxes");
+export function EmailTab({ snapshot, campaigns, onChange }: TabProps) {
+  const [sub, setSub] = useState<"mailboxes" | "tracking">("mailboxes");
 
   return (
     <div className="cf-stack">
@@ -302,157 +329,146 @@ export function EmailTab({ scopeCampaignId = null }: { scopeCampaignId?: number 
         onChange={setSub}
         items={[
           ["mailboxes", "Mailboxes & domains"],
-          ["sequences", "Sequences"],
           ["tracking", "Tracking & footer"],
         ]}
       />
 
-      {sub === "mailboxes" && <Mailboxes scopeCampaignId={scopeCampaignId} />}
-      {sub === "sequences" && (
-        <SequenceCards channel="Email" sequences={EMAIL_SEQUENCES} metric="reply" />
+      {sub === "mailboxes" && <Mailboxes snapshot={snapshot} campaigns={campaigns} onChange={onChange} />}
+      {sub === "tracking" && (
+        <>
+          <Tracking />
+          <DemoNote what="rules above" />
+        </>
       )}
-      {sub === "tracking" && <Tracking />}
-
-      <DemoNote />
     </div>
   );
 }
 
-function Mailboxes({ scopeCampaignId }: { scopeCampaignId: number | null }) {
-  const [caps, setCaps] = useState(() =>
-    Object.fromEntries(MAILBOXES.map((m) => [m.address, m.cap])),
-  );
-  const [rotate, setRotate] = useState(() =>
-    Object.fromEntries(MAILBOXES.map((m) => [m.address, m.rotate])),
-  );
-  // Email is exclusive: a mailbox sends for one campaign at a time, so assigning it
-  // elsewhere always frees it from wherever it was.
-  const [assigned, setAssigned] = useState<Record<string, number | null>>(() =>
-    Object.fromEntries(MAILBOXES.map((m) => [m.address, m.campaignId])),
-  );
-  const mailCampaigns = CAMPAIGNS.filter((c) => c.channels.includes("mail"));
-  const assign = (address: string, campaignId: number | null) =>
-    setAssigned((current) => {
-      const next = { ...current };
-      if (campaignId != null) {
-        for (const key of Object.keys(next)) if (next[key] === campaignId) next[key] = null;
-      }
-      next[address] = campaignId;
-      return next;
-    });
+function Mailboxes({ snapshot, campaigns, onChange }: TabProps) {
+  const mailboxes = snapshot.accounts.filter((a): a is EmailAccount => a.channel === "email");
 
   return (
     <>
-      <Panel
-        title="Sending domains"
-        sub="Open and click tracking are on by default for every domain the moment it's connected."
-      >
-        <div className="cf-cardgrid">
-          {SENDING_DOMAINS.map((d) => {
-            const ok = domainVerified(d);
-            return (
-              <article className="card cf-tile" key={d.host}>
-                <div className="cf-tileh">
-                  <span className="cf-tilename">
-                    <b className="cf-domname mono">{d.host}</b>
-                  </span>
-                  {ok ? (
-                    <span className="tag pos">Verified</span>
-                  ) : (
-                    <button type="button" className="btn sm pri">
-                      Check DNS
-                    </button>
-                  )}
-                </div>
-                <div className="cf-chips">
-                  {(["spf", "dkim", "dmarc"] as const).map((rec) => (
-                    <span className={"tag " + (d[rec] ? "pos" : "alert")} key={rec}>
-                      {d[rec] && <CheckIcon />}
-                      {rec.toUpperCase()}
-                    </span>
-                  ))}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </Panel>
+      {snapshot.domains.length > 0 && (
+        <Panel
+          title="Sending domains"
+          sub="SPF, DKIM and DMARC must all pass, or mail from the domain lands in spam."
+        >
+          <div className="cf-cardgrid">
+            {snapshot.domains.map((d) => (
+              <DomainCard key={d.id} domain={d} />
+            ))}
+          </div>
+        </Panel>
+      )}
 
-      <Panel
-        title="Mailboxes"
-        sub="Sending is spread across them with rotation on; keep each under 60/day for cold email. Each mailbox sends for one campaign at a time — assigning it elsewhere frees it."
-        action={
-          <button type="button" className="btn sm line">
-            Add mailbox
-          </button>
-        }
-      >
-        <div className="cf-cardgrid">
-          {MAILBOXES.map((m) => (
-            <article className="card cf-tile" key={m.address}>
-              <div className="cf-tileh">
-                <span className="cf-mbico">
-                  <Glyph n="mail" />
-                </span>
-                <span className="cf-tilename">
-                  <b>{m.address}</b>
-                  <span className={"tag " + (m.state === "warm" ? "pos" : "hl")}>
-                    {m.state === "warm" ? "Warm" : "Warming"}
-                  </span>
-                  {scopeCampaignId != null && assigned[m.address] === scopeCampaignId && (
-                    <span className="tag acc">Selected campaign</span>
-                  )}
-                </span>
-              </div>
-              <span className="cf-tilesub">
-                {m.provider}
-                {m.warmDay ? ` · day ${m.warmDay}/14` : ""}
-              </span>
-
-              <div className="cf-tilegrid">
-                <div className="cf-list">
-                  <TileLabel label="Health" unit="/100" />
-                  <b className={"cf-tilenum num" + (m.health < 80 ? " cf-bad" : "")}>{m.health}</b>
-                </div>
-                <TileLimit
-                  label="Daily cap"
-                  value={caps[m.address]}
-                  onChange={(v) => setCaps((c) => ({ ...c, [m.address]: v }))}
-                  max={120}
-                  safe={60}
-                  hint="Keep each mailbox under 60/day for cold email"
-                />
-                <div className="cf-list cf-span2 row" style={{ justifyContent: "space-between" }}>
-                  <TileLabel label="Rotate into sending pool" />
-                  <Switch
-                    on={rotate[m.address]}
-                    label={`Rotate ${m.address}`}
-                    onChange={() => setRotate((r) => ({ ...r, [m.address]: !r[m.address] }))}
-                  />
-                </div>
-                <div className="cf-list cf-span2">
-                  <TileLabel label="Assigned campaign" />
-                  <select
-                    className="sel"
-                    style={{ marginTop: 4 }}
-                    value={assigned[m.address] ?? ""}
-                    aria-label={`Assign a campaign to ${m.address}`}
-                    onChange={(e) => assign(m.address, e.target.value ? Number(e.target.value) : null)}
-                  >
-                    <option value="">Unassigned</option>
-                    {mailCampaigns.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </Panel>
+      {mailboxes.length === 0 ? (
+        <NothingConnected what="mailbox" />
+      ) : (
+        <Panel
+          title="Mailboxes"
+          sub="These belong to your workspace. Any campaign can send from any mailbox, and one mailbox can serve several campaigns. Keep each under 60 a day for cold email."
+        >
+          <div className="cf-cardgrid">
+            {mailboxes.map((m) => (
+              <MailboxCard key={m.id} account={m} campaigns={campaigns} onChange={onChange} />
+            ))}
+          </div>
+        </Panel>
+      )}
     </>
+  );
+}
+
+function DomainCard({ domain }: { domain: SendingDomain }) {
+  const ok = missingRecords(domain).length === 0;
+  return (
+    <article className="card cf-tile">
+      <div className="cf-tileh">
+        <span className="cf-tilename">
+          <b className="cf-domname mono">{domain.host}</b>
+          {domain.isSample && <SampleTag />}
+        </span>
+        {ok ? <span className="tag pos">Verified</span> : <span className="tag alert">Needs DNS records</span>}
+      </div>
+      <div className="cf-chips">
+        {(["spf", "dkim", "dmarc"] as const).map((rec) => (
+          <span className={"tag " + (domain[rec] ? "pos" : "alert")} key={rec}>
+            {domain[rec] && <CheckIcon />}
+            {rec.toUpperCase()}
+          </span>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function MailboxCard({
+  account,
+  campaigns,
+  onChange,
+}: {
+  account: EmailAccount;
+  campaigns: Campaign[];
+  onChange: () => void;
+}) {
+  const cap = useSavedSetting(account.settings.cap, (v) => api.updateAccount(account.id, { cap: v }));
+  const [rotate, setRotate] = useState(account.settings.rotate);
+  const [rotateError, setRotateError] = useState(false);
+
+  async function toggleRotate() {
+    const next = !rotate;
+    setRotate(next);
+    setRotateError(false);
+    try {
+      await api.updateAccount(account.id, { rotate: next });
+    } catch {
+      setRotate(!next);
+      setRotateError(true);
+    }
+  }
+
+  const { health, provider, warmDay } = account.settings;
+  const warm = account.state === "warm";
+
+  return (
+    <article className="card cf-tile">
+      <div className="cf-tileh">
+        <span className="cf-mbico">
+          <Glyph n="mail" />
+        </span>
+        <span className="cf-tilename">
+          <b>{account.handle}</b>
+          <span className={"tag " + (warm ? "pos" : "hl")}>{warm ? "Warm" : "Warming"}</span>
+          {account.isSample && <SampleTag />}
+        </span>
+      </div>
+      <span className="cf-tilesub">
+        {provider}
+        {warmDay ? ` · day ${warmDay}/14` : ""}
+      </span>
+      {(cap.failed || rotateError) && <Issue>{cap.failed ?? "Couldn't save that. Try again."}</Issue>}
+
+      <div className="cf-tilegrid">
+        <div className="cf-list">
+          <TileLabel label="Health" unit="/100" />
+          <b className={"cf-tilenum num" + (health < 80 ? " cf-bad" : "")}>{health}</b>
+        </div>
+        <TileLimit
+          label="Daily cap"
+          value={cap.value}
+          onChange={cap.set}
+          max={EMAIL_CAP_MAX}
+          safe={60}
+          hint="Keep each mailbox under 60/day for cold email"
+        />
+        <div className="cf-list cf-span2 row" style={{ justifyContent: "space-between" }}>
+          <TileLabel label="Rotate into sending pool" />
+          <Switch on={rotate} label={`Rotate ${account.handle}`} onChange={() => void toggleRotate()} />
+        </div>
+        <UsedBy account={account} campaigns={campaigns} onChange={onChange} />
+      </div>
+    </article>
   );
 }
 
@@ -490,446 +506,40 @@ function Tracking() {
   );
 }
 
-/* ========== WhatsApp ===================================================== */
+/* ========== The planned channels ========================================== */
+
+function Planned({ channel, what }: { channel: string; what: string }) {
+  return (
+    <div className="cf-stack">
+      <PlannedNote channel={channel} />
+      <p className="cf-nocontent">{what}</p>
+    </div>
+  );
+}
 
 export function WhatsAppTab() {
-  const [sub, setSub] = useState<"templates" | "number" | "rules">("templates");
-  const rules = useToggles(WHATSAPP_RULES);
-  const n = WHATSAPP_NUMBER;
-
   return (
-    <div className="cf-stack">
-      <PlannedNote channel="WhatsApp" />
-
-      <Segmented
-        value={sub}
-        onChange={setSub}
-        items={[
-          ["templates", "Templates"],
-          ["number", "Number & quality"],
-          ["rules", "Conversation rules"],
-        ]}
-      />
-
-      {sub === "templates" && (
-        <Panel
-          title="Message templates"
-          sub="Business-initiated WhatsApp messages must use a Meta-approved template. Review usually takes under 24 hours."
-          action={
-            <button type="button" className="btn sm pri" disabled title="WhatsApp is not connected yet">
-              New template
-            </button>
-          }
-        >
-          <div className="tblw">
-            <table className="tbl cf-tbl inner">
-              <thead>
-                <tr>
-                  <th>Template</th>
-                  <th>Status</th>
-                  <th>Category</th>
-                  <th>Language</th>
-                  <th className="r">Read rate</th>
-                  <th className="r">Campaigns</th>
-                </tr>
-              </thead>
-              <tbody>
-                {WHATSAPP_TEMPLATES.map((t) => (
-                  <tr key={t.name}>
-                    <td>
-                      <div className="cf-sm">
-                        <b className="mono">{t.name}</b>
-                        <small className="cf-ell">{t.body}</small>
-                      </div>
-                    </td>
-                    <td>
-                      <span
-                        className={
-                          "tag " +
-                          (t.status === "approved" ? "pos" : t.status === "review" ? "hl" : "alert")
-                        }
-                      >
-                        {t.status === "approved" ? "Approved" : t.status === "review" ? "In review" : "Rejected"}
-                      </span>
-                    </td>
-                    <td>{t.category}</td>
-                    <td>{t.language}</td>
-                    <td className="r num">{t.read == null ? "—" : `${t.read}%`}</td>
-                    <td className="r num">{t.campaigns ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
-      )}
-
-      {sub === "number" && (
-        <Panel title="Business number">
-          <Row label={n.name} hint={`${n.number} · ${n.via}`}>
-            <span className="tag pos">
-              <CheckIcon />
-              Verified business
-            </span>
-          </Row>
-          <Row label="Quality rating" hint="Based on blocks and reports over the last 7 days">
-            <span className="cf-q">
-              <i />
-              <i />
-              <i />
-              <b>{n.quality}</b>
-            </span>
-          </Row>
-          <Row
-            label="Messaging limit"
-            hint={`New conversations you can start per 24 hours. Next tier ${n.nextTier.toLocaleString("en-US")} · reach 50% of your limit for 7 days at High quality.`}
-          >
-            <span className="num">
-              {n.started.toLocaleString("en-US")} / {n.limit.toLocaleString("en-US")} today
-            </span>
-          </Row>
-        </Panel>
-      )}
-
-      {sub === "rules" && (
-        <Panel title="Conversation rules">
-          {WHATSAPP_RULES.map((r) => (
-            <ToggleRowView key={r.id} {...r} on={rules.on[r.id]} onChange={rules.toggle} />
-          ))}
-        </Panel>
-      )}
-
-      <DemoNote />
-    </div>
+    <Planned
+      channel="WhatsApp"
+      what="WhatsApp needs a business number and Meta-approved templates. None of that exists yet, so there is nothing to configure."
+    />
   );
 }
-
-/* ========== Calls ======================================================== */
 
 export function CallsTab() {
-  const [sub, setSub] = useState<"scripts" | "dialer" | "outcomes">("scripts");
-
   return (
-    <div className="cf-stack">
-      <PlannedNote channel="Calling" />
-
-      <Segmented
-        value={sub}
-        onChange={setSub}
-        items={[
-          ["scripts", "Scripts"],
-          ["dialer", "Dialer & recording"],
-          ["outcomes", "Call outcomes"],
-        ]}
-      />
-
-      {sub === "scripts" && <Scripts />}
-      {sub === "dialer" && <Dialer />}
-      {sub === "outcomes" && <Outcomes />}
-
-      <DemoNote />
-    </div>
+    <Planned
+      channel="Calling"
+      what="Calls will add a dialer, call scripts and outcomes. Today a call step in a workflow creates a to-do for a person; nothing dials."
+    />
   );
 }
-
-function Scripts() {
-  return (
-    <Panel
-      title="Call scripts"
-      sub="What reps see on screen during a call. Versioned like sequences."
-      action={
-        <button type="button" className="btn sm pri" disabled title="Calling is not connected yet">
-          New script
-        </button>
-      }
-    >
-      <div className="tblw">
-        <table className="tbl cf-tbl inner">
-          <thead>
-            <tr>
-              <th>Script</th>
-              <th>Status</th>
-              <th>Used by</th>
-              <th className="r">Connect → meeting</th>
-              <th className="r">Edited</th>
-            </tr>
-          </thead>
-          <tbody>
-            {CALL_SCRIPTS.map((s: CallScript) => (
-              <tr key={s.id}>
-                <td>
-                  <b>{s.name}</b>
-                </td>
-                <td>
-                  <span className="row" style={{ gap: 6 }}>
-                    <span className={"tag " + (s.status === "live" ? "pos" : "")}>
-                      {s.status === "live" ? "Live" : "Draft"}
-                    </span>
-                    {s.version != null && <span className="tag">v{s.version}</span>}
-                  </span>
-                </td>
-                <td className="muted">{s.usedBy.length ? s.usedBy.join(", ") : "—"}</td>
-                <td className="r num">{s.rate == null ? "—" : `${s.rate}%`}</td>
-                <td className="r muted">{s.edited}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Panel>
-  );
-}
-
-function Dialer() {
-  const dialer = useToggles(CALL_DIALER);
-  const recording = useToggles(CALL_RECORDING);
-  const [callerId, setCallerId] = useState(CALLER_IDS[0]);
-  const [voicemail, setVoicemail] = useState(VOICEMAILS[0]);
-  const [attempts, setAttempts] = useState(3);
-  const [gap, setGap] = useState(2);
-
-  return (
-    <>
-      <Panel title="Dialer">
-        <Row label="Caller ID">
-          <select
-            className="sel cf-in"
-            aria-label="Caller ID"
-            value={callerId}
-            onChange={(e) => setCallerId(e.target.value)}
-          >
-            {CALLER_IDS.map((n) => (
-              <option key={n}>{n}</option>
-            ))}
-          </select>
-        </Row>
-        {CALL_DIALER.map((r) => (
-          <ToggleRowView key={r.id} {...r} on={dialer.on[r.id]} onChange={dialer.toggle} />
-        ))}
-        <Row label="Attempts per lead">
-          <Stepper value={attempts} max={10} onChange={setAttempts} />
-        </Row>
-        <Row label="Days between attempts">
-          <Stepper value={gap} max={30} onChange={setGap} />
-        </Row>
-        <Row label="Calling hours" hint="Calls only run inside this window, in the lead's own time zone">
-          <span className="num">9:00–21:00 lead&rsquo;s time</span>
-        </Row>
-      </Panel>
-
-      <Panel title="Recording & voicemail">
-        {CALL_RECORDING.map((r) => (
-          <ToggleRowView key={r.id} {...r} on={recording.on[r.id]} onChange={recording.toggle} />
-        ))}
-        <Row label="Voicemail message">
-          <select
-            className="sel cf-in"
-            aria-label="Voicemail message"
-            value={voicemail}
-            onChange={(e) => setVoicemail(e.target.value)}
-          >
-            {VOICEMAILS.map((v) => (
-              <option key={v}>{v}</option>
-            ))}
-          </select>
-        </Row>
-      </Panel>
-    </>
-  );
-}
-
-function Outcomes() {
-  const [actions, setActions] = useState(() => CALL_OUTCOMES.map(([, action]) => action));
-
-  return (
-    <Panel
-      title="What happens after each call"
-      sub="Reps pick an outcome; the campaign reacts on its own"
-      action={
-        <button type="button" className="btn sm line">
-          Add outcome
-        </button>
-      }
-    >
-      {CALL_OUTCOMES.map(([outcome], i) => (
-        <div className="cf-out" key={outcome}>
-          <b>{outcome}</b>
-          <span className="muted" aria-hidden="true">
-            →
-          </span>
-          <select
-            className="sel"
-            aria-label={`After "${outcome}"`}
-            value={actions[i]}
-            onChange={(e) =>
-              setActions((a) => a.map((v, j) => (j === i ? e.target.value : v)))
-            }
-          >
-            {OUTCOME_ACTIONS.map((a) => (
-              <option key={a}>{a}</option>
-            ))}
-          </select>
-        </div>
-      ))}
-    </Panel>
-  );
-}
-
-/* ========== SMS ========================================================== */
 
 export function SmsTab() {
-  const [sub, setSub] = useState<"templates" | "sender" | "optout">("templates");
-
   return (
-    <div className="cf-stack">
-      <PlannedNote channel="SMS" />
-
-      <Segmented
-        value={sub}
-        onChange={setSub}
-        items={[
-          ["templates", "Templates"],
-          ["sender", "Sender & DLT"],
-          ["optout", "Opt-out"],
-        ]}
-      />
-
-      {sub === "templates" && (
-        <Panel
-          title="SMS templates"
-          sub="In India every SMS must match a template registered on the DLT portal. Paste its template ID here."
-          action={
-            <button type="button" className="btn sm pri" disabled title="SMS is not connected yet">
-              New template
-            </button>
-          }
-        >
-          <div className="tblw">
-            <table className="tbl cf-tbl inner">
-              <thead>
-                <tr>
-                  <th>Template</th>
-                  <th>Status</th>
-                  <th>DLT template ID</th>
-                  <th className="r">Parts</th>
-                </tr>
-              </thead>
-              <tbody>
-                {SMS_TEMPLATES.map((t) => (
-                  <tr key={t.name}>
-                    <td>
-                      <div className="cf-sm">
-                        <b>{t.name}</b>
-                        <small className="cf-ell">{t.body}</small>
-                      </div>
-                    </td>
-                    <td>
-                      <span className={"tag " + (t.status === "approved" ? "pos" : "hl")}>
-                        {t.status === "approved" ? "Approved" : "In review"}
-                      </span>
-                    </td>
-                    <td className={"mono" + (t.dlt ? "" : " muted")}>{t.dlt ?? "Not registered"}</td>
-                    <td className="r num">{t.parts}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
-      )}
-
-      {sub === "sender" && <SmsSender />}
-      {sub === "optout" && <SmsOptOut />}
-
-      <DemoNote />
-    </div>
-  );
-}
-
-function SmsSender() {
-  return (
-    <>
-      <Panel title="India · DLT" sub="TRAI requires a registered entity, sender ID and templates">
-        <Row label="Principal entity ID">
-          <input className="inp cf-in mono" defaultValue={SMS_SENDER.entityId} aria-label="Principal entity ID" />
-        </Row>
-        <Row label="Entity status">
-          <span className="row" style={{ gap: 8 }}>
-            <span className="tag alert">Not verified</span>
-            <button type="button" className="btn sm pri">
-              Verify
-            </button>
-          </span>
-        </Row>
-        <Row label="Sender ID (header)" hint="6 letters, registered on DLT">
-          <input className="inp cf-in sm mono" defaultValue={SMS_SENDER.header} aria-label="Sender ID" />
-        </Row>
-      </Panel>
-
-      <Panel title="United States · 10DLC">
-        <Row label="Brand & campaign registration">
-          <span className="tag pos">Approved</span>
-        </Row>
-        <Row label="Sending number">
-          <span className="num">{SMS_SENDER.us.number}</span>
-        </Row>
-      </Panel>
-    </>
-  );
-}
-
-function SmsOptOut() {
-  const [keywords, setKeywords] = useState(SMS_OPT_OUT_KEYWORDS);
-  const [draft, setDraft] = useState("");
-
-  return (
-    <Panel title="Opt-out">
-      <Row
-        label="Opt-out keywords"
-        hint="A reply with any of these unsubscribes the number everywhere"
-      >
-        <div className="cf-kw">
-          {keywords.map((k) => (
-            <span className="tag" key={k}>
-              {k}
-              <button
-                type="button"
-                aria-label={`Remove ${k}`}
-                onClick={() => setKeywords((list) => list.filter((x) => x !== k))}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          <input
-            className="inp"
-            aria-label="Add keyword"
-            placeholder="Add"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value.toUpperCase())}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && draft.trim()) {
-                setKeywords((list) => Array.from(new Set([...list, draft.trim()])));
-                setDraft("");
-              }
-            }}
-          />
-        </div>
-      </Row>
-      <Row label="Confirmation message">
-        <input
-          className="inp cf-in wide"
-          defaultValue={SMS_CONFIRMATION}
-          aria-label="Confirmation message"
-        />
-      </Row>
-      <Row label="Quiet hours" hint="No texts between these times in the lead's time zone">
-        <span className="row" style={{ gap: 8 }}>
-          <input className="inp cf-in sm" type="time" defaultValue={SMS_QUIET_HOURS.from} aria-label="From" />
-          <span className="muted">to</span>
-          <input className="inp cf-in sm" type="time" defaultValue={SMS_QUIET_HOURS.until} aria-label="Until" />
-        </span>
-      </Row>
-    </Panel>
+    <Planned
+      channel="SMS"
+      what="SMS needs a registered sender and approved templates. Nothing is registered yet, so there is nothing to configure."
+    />
   );
 }

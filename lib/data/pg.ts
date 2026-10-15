@@ -22,16 +22,21 @@
 import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb } from "@/lib/db/client";
-import { MemoryRepository } from "@/lib/data/memory";
 import {
+  campaignAccounts,
   campaigns as campaignsTable,
+  channelAccounts,
   channelQuotas,
   dailyRollups,
   leads as leadsTable,
   memberships,
   messages as messagesTable,
+  segmentLeads,
+  segments as segmentsTable,
+  sendingDomains,
   tasks as tasksTable,
   threads as threadsTable,
+  uploads as uploadsTable,
   users,
   workflows as workflowsTable,
   workspaces,
@@ -48,17 +53,28 @@ import type {
   WriteError,
 } from "@/lib/data/repository";
 import type { WorkflowGraph } from "@/lib/app/workflow";
-import type { CampaignPatch, LeadPatch } from "@/lib/data/validate";
+import { setupChecks, blockingCount } from "@/lib/data/setup";
+import { findInJourney, mergeLeads, type InJourneyRow, type LeadProfile } from "@/lib/leads/merge";
+import { leadIdentity } from "@/lib/leads/profile";
+import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
+import { suggestMapping, type Mapping, type ParsedLead } from "@/lib/leads/validation";
+import type { Table } from "@/lib/leads/table";
+import type { AccountSettingsPatch, CampaignPatch, LeadPatch } from "@/lib/data/validate";
 import type {
+  AccountsSnapshot,
   Analytics,
+  Badges,
   Campaign,
   CampaignStatus,
   Channel,
+  ChannelAccount,
   ChannelBreakdown,
   ChannelQuota,
+  EmailSettings,
   FunnelStage,
   Lead,
   LeadQuery,
+  LinkedInSettings,
   Message,
   Metric,
   Overview,
@@ -344,7 +360,9 @@ export class PgRepository implements Repository {
     return [
       metric("replies", "Replies", replied, repliedPrev, "count", 0, spark("replied")),
       metric("meetings", "Meetings", meetings, meetingsPrev, "count", 0, spark("meetings")),
-      metric("reply-rate", "Reply rate", rate, ratePrev, "percent", 1, spark("replied"), "points"),
+      // A rate has no change to report against a period with nothing sent: comparing it with 0
+      // would present the whole rate as a gain.
+      { ...metric("reply-rate", "Reply rate", rate, ratePrev, "percent", 1, spark("replied"), "points"), ...(reachedPrev ? {} : { delta: null, trend: "flat" as const }) },
       metric("active-leads", "Active leads", Number(activeLeads), Number(activeLeads), "count", 0, spark("engaged")),
     ];
   }
@@ -616,18 +634,176 @@ export class PgRepository implements Repository {
 
   async removeSampleData(ctx: Ctx): Promise<{ campaigns: number; leads: number }> {
     return this.db.transaction(async (tx) => {
-      // Leads first: their threads and messages cascade, and the campaign FK is SET NULL anyway.
+      const sampleOnly = (table: { workspaceId: AnyPgColumn; isSample: AnyPgColumn }) =>
+        and(this.ws(table.workspaceId, ctx), eq(table.isSample, true));
+
+      // Leads first: their threads, messages, to-dos and segment links cascade, and the campaign
+      // FK is SET NULL anyway.
       const leadsGone = await tx
         .delete(leadsTable)
-        .where(and(this.ws(leadsTable.workspaceId, ctx), eq(leadsTable.isSample, true)))
+        .where(sampleOnly(leadsTable))
         .returning({ id: leadsTable.id });
-      // Deleting the campaign cascades to its workflow row.
+      // Deleting a campaign cascades to its workflow and its account assignments.
       const campaignsGone = await tx
         .delete(campaignsTable)
-        .where(and(this.ws(campaignsTable.workspaceId, ctx), eq(campaignsTable.isSample, true)))
+        .where(sampleOnly(campaignsTable))
         .returning({ id: campaignsTable.id });
+      // The invented LinkedIn account, mailbox and domain, and the invented funnel figures.
+      await tx.delete(channelAccounts).where(sampleOnly(channelAccounts));
+      await tx.delete(sendingDomains).where(sampleOnly(sendingDomains));
+      await tx.delete(dailyRollups).where(sampleOnly(dailyRollups));
       return { campaigns: campaignsGone.length, leads: leadsGone.length };
     });
+  }
+
+  /* ------------------------------------------- org-level channel accounts -- */
+
+  private toAccount(row: typeof channelAccounts.$inferSelect, campaignIds: string[]): ChannelAccount {
+    const base = {
+      id: row.id,
+      name: row.name,
+      handle: row.handle,
+      campaignIds,
+      isSample: row.isSample,
+    };
+    if (row.channel === "linkedin") {
+      const raw = row.settings as Partial<LinkedInSettings>;
+      return {
+        ...base,
+        channel: "linkedin",
+        state: row.state === "signed_out" ? "signed_out" : "healthy",
+        settings: {
+          connections: raw.connections ?? 0,
+          messages: raw.messages ?? 0,
+          visits: raw.visits ?? 0,
+          inmail: raw.inmail ?? null,
+        },
+      };
+    }
+    const raw = row.settings as Partial<EmailSettings>;
+    return {
+      ...base,
+      channel: "email",
+      state: row.state === "warming" ? "warming" : "warm",
+      settings: {
+        provider: raw.provider ?? "",
+        warmDay: raw.warmDay,
+        health: raw.health ?? 0,
+        cap: raw.cap ?? 0,
+        rotate: raw.rotate ?? false,
+      },
+    };
+  }
+
+  async listAccounts(ctx: Ctx): Promise<AccountsSnapshot> {
+    const [rows, links, domains] = await Promise.all([
+      this.db
+        .select()
+        .from(channelAccounts)
+        .where(this.ws(channelAccounts.workspaceId, ctx))
+        .orderBy(asc(channelAccounts.createdAt), asc(channelAccounts.id)),
+      this.db
+        .select({ accountId: campaignAccounts.accountId, campaignId: campaignAccounts.campaignId })
+        .from(campaignAccounts)
+        .where(this.ws(campaignAccounts.workspaceId, ctx)),
+      this.db
+        .select()
+        .from(sendingDomains)
+        .where(this.ws(sendingDomains.workspaceId, ctx))
+        .orderBy(asc(sendingDomains.host)),
+    ]);
+    const byAccount = new Map<string, string[]>();
+    for (const link of links) {
+      byAccount.set(link.accountId, [...(byAccount.get(link.accountId) ?? []), link.campaignId]);
+    }
+    return {
+      accounts: rows.map((row) => this.toAccount(row, byAccount.get(row.id) ?? [])),
+      domains: domains.map((d) => ({
+        id: d.id,
+        host: d.host,
+        spf: d.spf,
+        dkim: d.dkim,
+        dmarc: d.dmarc,
+        isSample: d.isSample,
+      })),
+    };
+  }
+
+  private async accountById(ctx: Ctx, id: string): Promise<ChannelAccount | null> {
+    const [row] = await this.db
+      .select()
+      .from(channelAccounts)
+      .where(and(eq(channelAccounts.id, id), this.ws(channelAccounts.workspaceId, ctx)))
+      .limit(1);
+    if (!row) return null;
+    const links = await this.db
+      .select({ campaignId: campaignAccounts.campaignId })
+      .from(campaignAccounts)
+      .where(and(eq(campaignAccounts.accountId, id), this.ws(campaignAccounts.workspaceId, ctx)));
+    return this.toAccount(row, links.map((l) => l.campaignId));
+  }
+
+  async updateAccount(ctx: Ctx, id: string, patch: AccountSettingsPatch): Promise<ChannelAccount | WriteError | null> {
+    const current = await this.accountById(ctx, id);
+    if (!current) return null;
+    const next = { ...current.settings, ...patch };
+    await this.db
+      .update(channelAccounts)
+      .set({ settings: next })
+      .where(and(eq(channelAccounts.id, id), this.ws(channelAccounts.workspaceId, ctx)));
+    return this.accountById(ctx, id);
+  }
+
+  async setAccountCampaigns(
+    ctx: Ctx,
+    id: string,
+    campaignIds: string[],
+  ): Promise<ChannelAccount | WriteError | null> {
+    const current = await this.accountById(ctx, id);
+    if (!current) return null;
+
+    if (campaignIds.length) {
+      // Both sides of the link must be this workspace's: the account was checked above, and each
+      // campaign id here comes from the request, so check it against the workspace too.
+      const owned = await this.db
+        .select({ id: campaignsTable.id })
+        .from(campaignsTable)
+        .where(and(inArray(campaignsTable.id, campaignIds), this.ws(campaignsTable.workspaceId, ctx)));
+      if (owned.length !== campaignIds.length) {
+        return { error: { field: "campaignIds", message: "One of those campaigns doesn't exist." } };
+      }
+    }
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .delete(campaignAccounts)
+        .where(and(eq(campaignAccounts.accountId, id), this.ws(campaignAccounts.workspaceId, ctx)));
+      if (campaignIds.length) {
+        await tx
+          .insert(campaignAccounts)
+          .values(campaignIds.map((campaignId) => ({ workspaceId: ctx.workspaceId, campaignId, accountId: id })));
+      }
+    });
+    return this.accountById(ctx, id);
+  }
+
+  async getBadges(ctx: Ctx): Promise<Badges> {
+    const [[open], [waiting], snapshot] = await Promise.all([
+      this.db
+        .select({ value: count() })
+        .from(tasksTable)
+        .where(and(this.ws(tasksTable.workspaceId, ctx), eq(tasksTable.done, false))),
+      this.db
+        .select({ value: count() })
+        .from(threadsTable)
+        .where(and(this.ws(threadsTable.workspaceId, ctx), eq(threadsTable.needsReply, true))),
+      this.listAccounts(ctx),
+    ]);
+    return {
+      tasks: Number(open?.value ?? 0),
+      inbox: Number(waiting?.value ?? 0),
+      config: blockingCount(setupChecks(snapshot)),
+    };
   }
 
   /* --------------------------------------------------------------- leads -- */
@@ -698,6 +874,8 @@ export class PgRepository implements Repository {
       initials: initialsOf(row.name),
       phone: row.phone,
       email: row.email,
+      whatsapp: row.whatsapp,
+      linkedin: row.linkedin,
       stage: row.stage,
       score: row.score,
       source: row.source,
@@ -1024,7 +1202,8 @@ export class PgRepository implements Repository {
     return {
       metrics: [
         metric("reached", "Reached", reached, reachedPrev, "count", 0, spark("reached")),
-        metric("reply-rate", "Reply rate", rate, ratePrev, "percent", 1, spark("replied"), "points"),
+        // See headlineMetrics: no previous reach means no meaningful rate change.
+        { ...metric("reply-rate", "Reply rate", rate, ratePrev, "percent", 1, spark("replied"), "points"), ...(reachedPrev ? {} : { delta: null, trend: "flat" as const }) },
         metric("positive", "Positive replies", positive, positivePrev, "count", 0, spark("positive")),
         metric("meetings", "Meetings", meetings, meetingsPrev, "count", 0, spark("meetings")),
       ],
@@ -1034,44 +1213,286 @@ export class PgRepository implements Repository {
     };
   }
 
-  /* ------------------------------------------- lead uploads and segments (TODO) --
-   *
-   * The file-upload feature landed from another work stream against the in-memory store, and
-   * its three concepts — parked uploads, segments, and the merged lead profiles behind them —
-   * have no tables yet. Rather than fake persistence or block the feature, these six methods
-   * delegate to the in-memory implementation, which is exactly the behaviour the feature ships
-   * with today (its own modal tells the user an upload is scratch space until the server
-   * restarts).
-   *
-   * What that costs, stated plainly: with DATABASE_URL set, segments and profiles still live in
-   * process memory and are lost on restart, and they are NOT tenant-isolated by the database the
-   * way every other table here is. Giving them real tables is tracked in CONTEXT.md §7 and
-   * should be designed with whoever owns the upload feature — the merge rules in
-   * lib/leads/merge.ts decide what the schema needs to hold.
-   */
-  private readonly scratch = new MemoryRepository();
+  /* ------------------------------------------------ lead uploads and segments -- */
 
-  createUpload(ctx: Ctx, input: Parameters<Repository["createUpload"]>[1]) {
-    return this.scratch.createUpload(ctx, input);
+  async createUpload(
+    ctx: Ctx,
+    input: { fileName: string; fileSize: number; table: Table },
+  ): Promise<UploadPreview> {
+    // Parked files are scratch: sweep anything older than an hour whenever a new one arrives, so
+    // abandoned uploads don't pile up in the database.
+    await this.db.delete(uploadsTable).where(sql`${uploadsTable.createdAt} < now() - interval '1 hour'`);
+    const id = newId("up");
+    await this.db.insert(uploadsTable).values({
+      id,
+      workspaceId: ctx.workspaceId,
+      fileName: input.fileName,
+      fileSize: input.fileSize,
+      headers: input.table.headers,
+      rows: input.table.rows,
+      createdBy: ctx.userId,
+    });
+    return {
+      uploadId: id,
+      fileName: input.fileName,
+      fileSize: input.fileSize,
+      headers: input.table.headers,
+      sample: input.table.rows.slice(0, 5),
+      totalRows: input.table.rows.length,
+      suggestedMapping: suggestMapping(input.table.headers),
+    };
   }
 
-  getUpload(ctx: Ctx, id: string) {
-    return this.scratch.getUpload(ctx, id);
+  async getUpload(ctx: Ctx, id: string) {
+    const [row] = await this.db
+      .select()
+      .from(uploadsTable)
+      .where(and(eq(uploadsTable.id, id), this.ws(uploadsTable.workspaceId, ctx)))
+      .limit(1);
+    if (!row) return null;
+    return {
+      fileName: row.fileName,
+      fileSize: row.fileSize,
+      table: { headers: row.headers as string[], rows: row.rows as string[][] },
+    };
   }
 
-  listSegments(ctx: Ctx) {
-    return this.scratch.listSegments(ctx);
+  /** The leads that already have a campaign, in the shape the matcher wants. */
+  private async knownInJourney(ctx: Ctx) {
+    const rows = await this.db
+      .select({
+        id: leadsTable.id,
+        campaignId: leadsTable.campaignId,
+        email: leadsTable.email,
+        mobile: leadsTable.phone,
+        whatsapp: leadsTable.whatsapp,
+        linkedin: leadsTable.linkedin,
+      })
+      .from(leadsTable)
+      .where(and(this.ws(leadsTable.workspaceId, ctx), sql`${leadsTable.campaignId} is not null`));
+    return rows;
   }
 
-  getSegment(ctx: Ctx, id: string) {
-    return this.scratch.getSegment(ctx, id);
+  async findInJourney(
+    ctx: Ctx,
+    leads: ParsedLead[],
+  ): Promise<{ hits: InJourneyRow[]; campaignNames: Record<string, string> }> {
+    const known = await this.knownInJourney(ctx);
+    const hits = known.length ? findInJourney(known, leads) : [];
+    const ids = [...new Set(hits.map((h) => h.campaignId))];
+    const campaignNames: Record<string, string> = {};
+    if (ids.length) {
+      const named = await this.db
+        .select({ id: campaignsTable.id, name: campaignsTable.name })
+        .from(campaignsTable)
+        .where(and(inArray(campaignsTable.id, ids), this.ws(campaignsTable.workspaceId, ctx)));
+      for (const c of named) campaignNames[c.id] = c.name;
+    }
+    return { hits, campaignNames };
   }
 
-  createSegment(ctx: Ctx, input: Parameters<Repository["createSegment"]>[1]) {
-    return this.scratch.createSegment(ctx, input);
+  private toSegment(row: typeof segmentsTable.$inferSelect): Segment {
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      fileName: row.fileName,
+      fileSize: row.fileSize,
+      mapping: row.mapping as Mapping,
+      totalRows: row.totalRows,
+      reachableRows: row.reachableRows,
+      channels: row.channels as Segment["channels"],
+      profilesCreated: row.profilesCreated,
+      profilesMerged: row.profilesMerged,
+      excludedInJourney: row.excludedInJourney,
+      errorCount: row.errorCount,
+      createdAt: iso(row.createdAt),
+      createdBy: row.createdBy ?? "",
+    };
   }
 
-  listProfiles(ctx: Ctx, segmentId?: string) {
-    return this.scratch.listProfiles(ctx, segmentId);
+  async listSegments(ctx: Ctx): Promise<Segment[]> {
+    const rows = await this.db
+      .select()
+      .from(segmentsTable)
+      .where(this.ws(segmentsTable.workspaceId, ctx))
+      .orderBy(desc(segmentsTable.createdAt), desc(segmentsTable.id));
+    return rows.map((row) => this.toSegment(row));
+  }
+
+  async getSegment(ctx: Ctx, id: string): Promise<Segment | null> {
+    const [row] = await this.db
+      .select()
+      .from(segmentsTable)
+      .where(and(eq(segmentsTable.id, id), this.ws(segmentsTable.workspaceId, ctx)))
+      .limit(1);
+    return row ? this.toSegment(row) : null;
+  }
+
+  async createSegment(
+    ctx: Ctx,
+    input: {
+      uploadId: string;
+      name: string;
+      description: string;
+      mapping: Mapping;
+      report: MappingReport;
+      leads: ParsedLead[];
+      consent: boolean;
+    },
+  ) {
+    const upload = await this.getUpload(ctx, input.uploadId);
+    if (!upload) return null;
+
+    const segmentId = newId("seg");
+    const now = new Date();
+
+    // People already in a journey elsewhere stay out. Recomputed here: the browser's warning is a
+    // courtesy, and the rows it showed may be minutes old.
+    const { hits } = await this.findInJourney(ctx, input.leads);
+    const out = new Set(hits.map((h) => h.row));
+    const incoming = input.leads.filter((lead) => !out.has(lead.row));
+
+    return this.db.transaction(async (tx) => {
+      // Every lead the workspace has, as profiles, so a row can merge into the right one.
+      const existingRows = await tx
+        .select({
+          id: leadsTable.id,
+          email: leadsTable.email,
+          mobile: leadsTable.phone,
+          whatsapp: leadsTable.whatsapp,
+          linkedin: leadsTable.linkedin,
+          extra: leadsTable.extra,
+          createdAt: leadsTable.createdAt,
+          updatedAt: leadsTable.updatedAt,
+        })
+        .from(leadsTable)
+        .where(this.ws(leadsTable.workspaceId, ctx));
+
+      const existing: LeadProfile[] = existingRows.map((r) => ({
+        id: r.id,
+        email: r.email,
+        mobile: r.mobile,
+        whatsapp: r.whatsapp,
+        linkedin: r.linkedin,
+        segmentIds: [],
+        extra: (r.extra ?? {}) as Record<string, string>,
+        createdAt: iso(r.createdAt),
+        updatedAt: iso(r.updatedAt),
+      }));
+      const before = new Map(existing.map((p) => [p.id, p]));
+
+      const merge = mergeLeads(
+        existing,
+        incoming.map((lead) => ({
+          row: lead.row,
+          email: lead.email,
+          mobile: lead.mobile,
+          whatsapp: lead.whatsapp,
+          linkedin: lead.linkedin,
+          extra: lead.extra,
+        })),
+        segmentId,
+        now.toISOString(),
+        () => newId("l"),
+      );
+
+      const created: LeadProfile[] = [];
+      const touched: LeadProfile[] = [];
+      for (const profile of merge.profiles) {
+        const was = before.get(profile.id);
+        if (!was) created.push(profile);
+        else if (profile.segmentIds.includes(segmentId)) touched.push(profile);
+      }
+
+      // Brand-new leads, in chunks that stay under Postgres's parameter limit.
+      for (let i = 0; i < created.length; i += 500) {
+        await tx.insert(leadsTable).values(
+          created.slice(i, i + 500).map((p) => {
+            const who = leadIdentity(p);
+            return {
+              id: p.id,
+              workspaceId: ctx.workspaceId,
+              name: who.name,
+              company: who.company,
+              title: who.title,
+              email: p.email,
+              phone: p.mobile,
+              whatsapp: p.whatsapp,
+              linkedin: p.linkedin,
+              extra: p.extra,
+              stage: "new" as const,
+              source: "csv" as const,
+              consent: input.consent,
+              ownerId: ctx.userId,
+            };
+          }),
+        );
+      }
+
+      // Existing leads that gained an attribute or a column from a matching row.
+      for (const p of touched) {
+        const was = before.get(p.id);
+        if (!was) continue;
+        const changed =
+          p.email !== was.email ||
+          p.mobile !== was.mobile ||
+          p.whatsapp !== was.whatsapp ||
+          p.linkedin !== was.linkedin ||
+          JSON.stringify(p.extra) !== JSON.stringify(was.extra);
+        if (!changed) continue;
+        await tx
+          .update(leadsTable)
+          .set({
+            email: p.email,
+            phone: p.mobile,
+            whatsapp: p.whatsapp,
+            linkedin: p.linkedin,
+            extra: p.extra,
+            updatedAt: now,
+          })
+          .where(and(eq(leadsTable.id, p.id), this.ws(leadsTable.workspaceId, ctx)));
+      }
+
+      const [segmentRow] = await tx
+        .insert(segmentsTable)
+        .values({
+          id: segmentId,
+          workspaceId: ctx.workspaceId,
+          name: input.name,
+          description: input.description,
+          fileName: upload.fileName,
+          fileSize: upload.fileSize,
+          mapping: input.mapping,
+          totalRows: input.report.totalRows,
+          reachableRows: input.report.reachableRows,
+          channels: input.report.channels,
+          profilesCreated: merge.created,
+          profilesMerged: merge.merged,
+          excludedInJourney: out.size,
+          errorCount: input.report.errorCount,
+          createdBy: ctx.userId,
+        })
+        .returning();
+
+      const members = [...created, ...touched];
+      for (let i = 0; i < members.length; i += 2000) {
+        await tx
+          .insert(segmentLeads)
+          .values(members.slice(i, i + 2000).map((p) => ({ workspaceId: ctx.workspaceId, segmentId, leadId: p.id })))
+          .onConflictDoNothing();
+      }
+
+      await tx
+        .delete(uploadsTable)
+        .where(and(eq(uploadsTable.id, input.uploadId), this.ws(uploadsTable.workspaceId, ctx)));
+
+      return {
+        segment: this.toSegment(segmentRow),
+        profilesCreated: merge.created,
+        profilesMerged: merge.merged,
+        excluded: out.size,
+      };
+    });
   }
 }

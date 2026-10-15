@@ -10,8 +10,9 @@
  *   2. Mapping  — the user points each system attribute at a column. Column
  *                 names are only ever a guess; the rules run on row content.
  *   3. Summary  — reachable leads per channel and the row-by-row error log,
- *                 then Submit, which saves the segment and merges the rows into
- *                 the lead profiles.
+ *                 a warning for anyone already in a journey in another campaign
+ *                 (they are left out), then Submit, which saves the segment and
+ *                 merges the rows into the workspace's leads.
  *
  * Nothing is kept in the browser but the upload id: every count on screen was
  * worked out on the server, and the server works them out again on submit.
@@ -20,7 +21,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { MAX_DESCRIPTION } from "@/lib/leads/upload";
-import { ACCEPTED_EXTENSIONS } from "@/lib/leads/limits";
+import { ACCEPTED_EXTENSIONS, MAX_UPLOAD_MB } from "@/lib/leads/limits";
 import { ATTRIBUTES, type Mapping } from "@/lib/leads/validation";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
 import { CheckIcon } from "../icons";
@@ -43,6 +44,7 @@ export function UploadLeads({ onClose, onSaved }: { onClose: () => void; onSaved
   const [preview, setPreview] = useState<UploadPreview | null>(null);
   const [mapping, setMapping] = useState<Mapping>({});
   const [report, setReport] = useState<MappingReport | null>(null);
+  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState<"" | "parsing" | "checking" | "saving">("");
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -103,6 +105,7 @@ export function UploadLeads({ onClose, onSaved }: { onClose: () => void; onSaved
         name: name.trim(),
         description: description.trim(),
         mapping,
+        consent,
       });
       onSaved(saved.segment);
       onClose();
@@ -186,7 +189,7 @@ export function UploadLeads({ onClose, onSaved }: { onClose: () => void; onSaved
                 }}
               >
                 <b>{busy === "parsing" ? "Reading the file…" : "Drop a .csv or .xlsx file here"}</b>
-                <span>Up to 64 MB. The first five rows are shown back to you before anything is saved.</span>
+                <span>Up to {MAX_UPLOAD_MB} MB. The first five rows are shown back to you before anything is saved.</span>
                 <button className="btn line sm" onClick={() => fileInput.current?.click()} disabled={busy === "parsing"}>
                   Choose file
                 </button>
@@ -292,10 +295,27 @@ export function UploadLeads({ onClose, onSaved }: { onClose: () => void; onSaved
                     );
                   })}
               </div>
+              {report.journey.excluded > 0 && (
+                <div className="warnbox" role="alert">
+                  <b>
+                    {report.journey.excluded.toLocaleString("en-US")}{" "}
+                    {report.journey.excluded === 1 ? "lead" : "leads"} will be excluded
+                  </b>
+                  <span>
+                    {report.journey.excluded === 1 ? "This person is" : "These people are"} already in a journey in
+                    another campaign (
+                    {report.journey.byCampaign
+                      .map((c) => `${c.name}: ${c.count.toLocaleString("en-US")}`)
+                      .join(", ")}
+                    ), so they are left out rather than added to a second sequence. The counts below don’t include
+                    them.
+                  </span>
+                </div>
+              )}
               <p className="uprow">
                 <b>
                   {report.reachableRows.toLocaleString("en-US")} of {report.totalRows.toLocaleString("en-US")} rows
-                  are reachable on at least one channel
+                  will be added, reachable on at least one channel
                 </b>
                 <span className="hint">
                   {report.errorCount.toLocaleString("en-US")} entries could not be used
@@ -331,10 +351,26 @@ export function UploadLeads({ onClose, onSaved }: { onClose: () => void; onSaved
                 </div>
               )}
 
+              <label className="uprow" style={{ alignItems: "flex-start", gap: 8, display: "flex" }}>
+                <input
+                  type="checkbox"
+                  checked={consent}
+                  onChange={(e) => setConsent(e.target.checked)}
+                  style={{ marginTop: 3 }}
+                />
+                <span>
+                  <b>These people have agreed to be contacted, or I have a lawful basis to contact them.</b>
+                  <span className="hint" style={{ display: "block" }}>
+                    Leads this file adds are marked with that consent. Without it they are saved, but they are
+                    flagged and won’t be contacted.
+                  </span>
+                </span>
+              </label>
+
               <p className="hint">
-                On submit, rows that match a lead you already have — same email, mobile, WhatsApp or LinkedIn — are
-                merged into that profile, and anything it was missing is filled in. Segments live in the prototype’s
-                in-memory store, so they last until the server restarts.
+                On submit, rows that match a lead you already have (same email, mobile, WhatsApp or LinkedIn) are
+                merged into that lead, and anything it was missing is filled in. An existing lead’s consent is never
+                changed by an upload.
               </p>
             </>
           )}
@@ -361,7 +397,11 @@ export function UploadLeads({ onClose, onSaved }: { onClose: () => void; onSaved
             </button>
           )}
           {step === "summary" && (
-            <button className="btn pri" onClick={() => void submit()} disabled={busy === "saving"}>
+            <button
+              className="btn pri"
+              onClick={() => void submit()}
+              disabled={busy === "saving" || !report || report.reachableRows === 0}
+            >
               {busy === "saving" ? "Saving…" : "Submit segment"}
             </button>
           )}

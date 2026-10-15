@@ -112,3 +112,35 @@ test("unmapped columns are kept on the lead rather than dropped", () => {
   );
   assert.deepEqual(summary.leads[0].extra, { company: "Example Co" });
 });
+
+/* ---------- leaving rows out (people already in another campaign) ---------- */
+
+import { withoutRows } from "../lib/leads/validation.ts";
+
+test("withoutRows drops the excluded rows from the segment's counts, not from the file's", () => {
+  const phone = (raw) => (/^\+\d{10,}$/.test(raw) ? { ok: true, value: raw } : { ok: false, reason: "bad" });
+  const summary = validateUpload(
+    ["Email", "Phone"],
+    [
+      ["a@x.example", "+14155550101"],
+      ["b@x.example", ""],
+      ["c@x.example", "+14155550103"],
+    ],
+    { email: "Email", mobile: "Phone" },
+    phone,
+  );
+  assert.equal(summary.reachableRows, 3);
+  const trimmed = withoutRows(summary, new Set([1, 3]));
+  assert.equal(trimmed.reachableRows, 1);
+  assert.deepEqual(trimmed.leads.map((l) => l.row), [2]);
+  const byKey = Object.fromEntries(trimmed.channels.map((c) => [c.attribute, c.reachable]));
+  assert.equal(byKey.email, 1);
+  assert.equal(byKey.mobile, 0);
+  assert.equal(trimmed.totalRows, 3, "the file still has three rows");
+  assert.equal(trimmed.errors.length, summary.errors.length, "the error log describes the file");
+});
+
+test("withoutRows with nothing to drop returns the summary unchanged", () => {
+  const summary = validateUpload(["Email"], [["a@x.example"]], { email: "Email" }, () => ({ ok: false }));
+  assert.equal(withoutRows(summary, new Set()), summary);
+});

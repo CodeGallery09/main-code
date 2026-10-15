@@ -5,18 +5,44 @@
  * no chart library — so the marks inherit the app's type and colour tokens.
  */
 
-/** Smooth path through points, using Catmull-Rom segments converted to cubics. */
+/**
+ * Smooth path through points that never overshoots them (a monotone cubic, after Fritsch and
+ * Carlson). A plain Catmull-Rom spline swings below zero beside a spike in sparse count data, which
+ * draws a dip that is not in the numbers.
+ */
 function smooth(points: [number, number][]) {
-  if (points.length < 2) return "";
+  const n = points.length;
+  if (n < 2) return "";
+  const dx: number[] = [];
+  const m: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = points[i + 1][0] - points[i][0];
+    m[i] = dx[i] === 0 ? 0 : (points[i + 1][1] - points[i][1]) / dx[i];
+  }
+  const t: number[] = new Array(n);
+  t[0] = m[0];
+  t[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) {
+      t[i] = 0;
+      t[i + 1] = 0;
+      continue;
+    }
+    const a = t[i] / m[i];
+    const b = t[i + 1] / m[i];
+    const r = a * a + b * b;
+    if (r > 9) {
+      const tau = 3 / Math.sqrt(r);
+      t[i] = tau * a * m[i];
+      t[i + 1] = tau * b * m[i];
+    }
+  }
   let d = `M${points[0][0]},${points[0][1]}`;
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i - 1] ?? points[i];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[i + 2] ?? p2;
-    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
-    const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-    d += `C${c1[0]},${c1[1]} ${c2[0]},${c2[1]} ${p2[0]},${p2[1]}`;
+  for (let i = 0; i < n - 1; i++) {
+    const [x0, y0] = points[i];
+    const [x1, y1] = points[i + 1];
+    d += `C${x0 + dx[i] / 3},${y0 + (t[i] * dx[i]) / 3} ${x1 - dx[i] / 3},${y1 - (t[i + 1] * dx[i]) / 3} ${x1},${y1}`;
   }
   return d;
 }

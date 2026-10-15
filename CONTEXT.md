@@ -45,28 +45,30 @@ only. The marketing site still implements an iOS "liquid glass" look (`globals.c
 surface to opaque `var(--surface)` panels on a flat `#FAFAF8` background — see §5, "Workspace is
 flat, not glass."
 
-### 2b. Two data models, bridged by an adapter
-This is the big one.
-
-| | `lib/data/` (canonical, DB-backed) | `lib/app/` (legacy, hardcoded) |
+### 2b. Two vocabularies, bridged by an adapter
+| | `lib/data/` (canonical, DB-backed) | what some screens render (`lib/app/`) |
 |---|---|---|
-| Lead id | `"l_omar"` (string) | `17` (number) |
+| Lead id | `"l_omar"` (string) | numeric in the old demo |
 | Channel | `linkedin` `email` `whatsapp` `call` `sms` | `li` `mail` `wa` `call` `sms` |
 | Campaign type | `standalone` `multichannel` | `single` `multi` |
 | Lead stage | lowercase, 9 values | Capitalised, 9 values |
-| Persistence | Postgres via `Repository` | module constants, none |
 
-`lib/data/` is the real one and the DB vocabulary is the **superset** of both.
-`lib/app/adapt.ts` maps between them. Screens still render the `lib/app` shape; they read live
-rows through the adapter. **Converging the two models is open follow-up work** — until then, a
-new field needs adding in both places plus the adapter.
+`lib/data/` is the real one. `lib/app/adapt.ts` maps between the two vocabularies for the screens
+that still render the short channel keys and capitalised stages (Leads, Campaigns). **`lib/app/` no
+longer holds any workspace data** — it is presentation helpers (`channels.ts`, `leads.ts` stage
+colours/score band/avatar tints, `campaigns.ts` status tags), the workflow model, the integrations
+catalogue and the Configuration rule defaults.
 
-### 2c. Some screens still read `lib/app/`, not the repository
-Leads, Campaigns and the Workflows library + builder are live on Postgres. **The other six
-screens (Home, Inbox, Analytics, Settings, Integrations, Configuration) still import `lib/app/`
-constants**, so they render demo data no matter what the database holds. Swapping the database
-alone does not make those screens live — each needs rewiring the way Leads and Campaigns were.
-Status per screen in §3.
+### 2c. Every workspace screen reads its own workspace
+Home, Inbox, Leads, Campaigns, Workflows (+ builder), Analytics, Configuration, Integrations and
+Settings all read through the repository / REST API, so a workspace only ever sees its own rows.
+**There is no demo content in the app any more except the sample world** (`lib/data/sample.ts` + `sampleSeed.ts`, §3):
+rows flagged `is_sample`, seeded at signup, labelled "Sample" in the UI and deleted by "Remove
+sample data". In the no-database demo mode (the `dev` deployment) `MemoryRepository` serves the
+old demo dataset (`lib/data/seed.ts`) through the same API, so the same screens work there.
+
+**The rule for new work:** a screen that needs data gets it from a repository method + an API
+route. Never put figures, names, accounts or campaigns in a component or in `lib/app/`.
 
 ---
 
@@ -75,21 +77,22 @@ Status per screen in §3.
 ### Storage seam — `lib/data/` (start here for anything data-related)
 | File | L | Purpose |
 |---|---|---|
-| `types.ts` | 241 | Domain types. Import-free + erasable (loadable by `node --test`). |
-| `repository.ts` | 193 | **The interface every page and route talks to.** `Ctx` is the first arg of every method — tenancy cannot be forgotten. `WriteError` ≠ `null` ≠ throw → 422/404/500. |
+| `types.ts` | 321 | Domain types. Import-free + erasable (loadable by `node --test`). |
+| `repository.ts` | 230 | **The interface every page and route talks to.** `Ctx` is the first arg of every method — tenancy cannot be forgotten. `WriteError` ≠ `null` ≠ throw → 422/404/500. |
 | `index.ts` | 22 | `getRepository()` factory. Returns Postgres when `DATABASE_URL` is set, memory otherwise. |
-| `memory.ts` | 735 | In-memory impl over the seed. No-config fallback; writes last until restart. Workflows: a `Map` by campaign id, falling back to the demo `WORKFLOWS` matched on campaign name, so the seed's four multichannel campaigns open a real graph. |
-| `pg.ts` | 1077 | Postgres impl via Drizzle. Filters `workspace_id` on every read *and* write (the `ws()` helper). Leads page in SQL; campaigns aggregate in JS. **Uploads/segments/profiles delegate to the in-memory store — see §7.** |
+| `memory.ts` | 852 | In-memory impl over the seed. No-config fallback; writes last until restart. Workflows: a `Map` by campaign id, falling back to the demo `WORKFLOWS` matched on campaign name, so the seed's four multichannel campaigns open a real graph. |
+| `pg.ts` | 1498 | Postgres impl via Drizzle. Filters `workspace_id` on every read *and* write (the `ws()` helper). Leads page in SQL; campaigns aggregate in JS. Uploads, segments, accounts, workflows and the sample world are all real tables now. |
 | `seed.ts` | 831 | Demo dataset. The only file that goes away once real data exists. |
-| `sample.ts` | 66 | The sample content every new workspace starts with: one paused multichannel campaign + 8 leads. Import-free; `tests/sample.test.mjs` pins that every email is on the reserved `.example` domain and every phone in the fictional 555-01xx range, so a sample lead can never be a real person. |
-| `sampleSeed.ts` | 79 | Server-only. Inserts the sample campaign, leads (all `is_sample = true`) and its workflow **inside the `signUp` transaction**. |
+| `sample.ts` | 214 | The sample content every new workspace starts with: one paused multichannel campaign + 8 leads. Import-free; `tests/sample.test.mjs` pins that every email is on the reserved `.example` domain and every phone in the fictional 555-01xx range, so a sample lead can never be a real person. |
+| `sampleSeed.ts` | 216 | Server-only. Inserts the whole sample world **inside the `signUp` transaction**: campaign + workflow, 8 leads, 4 conversations and 3 to-dos, the funnel by day, a LinkedIn account + mailbox + sending domain assigned to the campaign. All `is_sample`. |
+| `setup.ts` | 151 | `setupChecks(accounts, domains)`: what is and is not set up, **computed from the workspace's own accounts**. Drives the Configuration overview, the tab badges and the rail badge. Import-free, tested. |
 | `query.ts` | 68 | Pure filter/sort/paginate helpers shared by both impls. Import-free, tested. |
-| `validate.ts` | 305 | Write-path validation, `{ok,data}|{ok,errors}`. Import-free, erasable, tested. |
+| `validate.ts` | 385 | Write-path validation, `{ok,data}|{ok,errors}`. Import-free, erasable, tested. |
 
 ### Database — `lib/db/`
 | File | L | Purpose |
 |---|---|---|
-| `schema.ts` | 440 | 15 tables. `campaigns.is_sample` / `leads.is_sample` mark invented rows (migration `0002_sample_flag`). Drizzle definitions + Postgres enums. |
+| `schema.ts` | 592 | 21 tables. `campaigns.is_sample` / `leads.is_sample` mark invented rows (migration `0002_sample_flag`). Drizzle definitions + Postgres enums. |
 | `client.ts` | 60 | The one `pg` Pool, cached on `globalThis`. **Needs a pooled connection string.** |
 | `../lib/password.ts` | 48 | scrypt hash/verify. Imports only `node:crypto`, so the seed and tests can load it. |
 | `../drizzle/*.sql` | — | Generated migrations, committed. Never `db:push` at a deployed DB. |
@@ -97,6 +100,8 @@ Status per screen in §3.
 
 Tables, grouped:
 - **tenancy** `workspaces` `users` `memberships` `sessions`
+- **org-level channel accounts** `channel_accounts` `campaign_accounts` (many to many) `sending_domains`
+- **uploads** `uploads` (parked parsed files, swept after 1 h) `segments` `segment_leads`
 - **domain** `leads` `campaigns` `workflows` `threads` `messages` `tasks`
 - **quota/metrics** `channel_quotas` `daily_rollups` `events`
 - **engine (not yet written to)** `workflow_runs` `step_jobs`
@@ -118,6 +123,11 @@ directly.
 | `/api/campaigns`, `/api/campaigns/[id]` | GET POST PATCH DELETE | full CRUD. A multichannel campaign needs ≥ 2 channels (validate.ts). |
 | `/api/campaigns/[id]/workflow` | GET, PUT | the campaign's workflow. PUT takes `{ name, graph }` and **rebuilds the graph from a whitelist** (`validateWorkflowGraph`); 422 names the reason. 404 for another workspace's campaign. |
 | `/api/workflows` | GET | every workflow in the workspace, newest edit first |
+| `/api/accounts` | GET | the workspace's LinkedIn accounts, mailboxes and sending domains, each with the campaigns that use it |
+| `/api/accounts/[id]` | PATCH | the dials only (LinkedIn daily caps; mailbox cap + rotate). Identity/state/health are never accepted |
+| `/api/accounts/[id]/campaigns` | PUT | `{ campaignIds }` replaces the campaigns sending from an account; a foreign campaign id is a 422 |
+| `/api/badges` | GET | `{ tasks, inbox, config }`: the rail counts, fetched on every navigation |
+| `/api/leads/uploads`, `…/[id]/validate`, `/api/leads/segments` | POST, GET | parked file → per-channel reach + **in-journey warning** → saved segment. Max 4 MB (Vercel's body cap) |
 | `/api/workspace/sample` | DELETE | removes the sample campaign (its workflow cascades) + sample leads; idempotent |
 | `/api/threads`, `/api/threads/[id]`, `/api/threads/[id]/messages` | GET, POST | |
 | `/api/analytics` | GET | `?range=`, `?channels=` |
@@ -151,27 +161,40 @@ campaign is. Each signup gets **its own workspace** — there is no way to join 
 | `SignOutItem` + `SignOutButton` in `AppShell.tsx` | The labelled rail item and the top-bar icon (the rail is hidden on phones). Both use `useSignOut()`: `api.logout()` → `POST /api/logout` deletes the session row, and it navigates only after the server confirms. |
 
 ### Lead uploads and segments — `lib/leads/` + `components/app/leads/`
-`parseFile.ts` (csv/xlsx via exceljs) · `validation.ts` (the `ATTRIBUTES` catalogue and column
-mapping) · `merge.ts` (how an uploaded row merges into an existing lead profile) · `phone.ts`
-(libphonenumber-js) · `segments.ts` `table.ts` `limits.ts` `ctx.ts` · `UploadLeads.tsx` is the
-upload modal, and `LeadsScreen` renders the segment list above the table.
-**Backed by the in-memory store only** — see §7.
+`parseFile.ts` (csv/xlsx via exceljs) · `validation.ts` (`ATTRIBUTES`, column mapping, `validateUpload`,
+`withoutRows`) · `merge.ts` (merge an uploaded row into an existing lead **and** `findInJourney`:
+which rows are people already in another campaign) · `profile.ts` (a name/company/title for a row,
+from its columns or, failing that, its email/LinkedIn) · `analyse.ts` (server-only: the one pass the
+summary step and the save step share) · `phone.ts` `segments.ts` `table.ts` `limits.ts` `ctx.ts` ·
+`UploadLeads.tsx` is the three-step modal.
+
+**It is all in Postgres now.** A parsed file is parked in `uploads` (not process memory: serverless
+instances do not share it); saving creates a `segments` row, inserts new people as ordinary `leads`
+(source `csv`, stage `new`), merges matches into existing leads, and links everyone in
+`segment_leads`. A person can be in several segments.
+
+**Cross-campaign dedupe.** A lead belongs to at most one campaign (`leads.campaign_id`). Any
+uploaded row matching a lead who has a campaign on **any** of email / mobile / WhatsApp / LinkedIn
+is *excluded* from the new segment, the summary step says how many and from which campaigns, and the
+save step recomputes it server-side (never trusts the browser). Excluded rows are not enriched
+either. `tests/leadsJourney.test.mjs` pins the "any field matches" rule.
+**Consent:** the modal asks the user to attest the people may be contacted; that sets `consent` on
+leads the upload *creates*. It never changes an existing lead's consent.
 
 ### Workspace screens — `components/app/`
-| File | L | Reads from | Live? |
+| File | L | Reads from | Notes |
 |---|---|---|---|
-| `AppShell.tsx` | 210 | `lib/app/inbox`, `leads` | no |
-| `HomeScreen.tsx` | 224 | `lib/app/*` (5 modules) | no |
-| `LeadsScreen.tsx` | 400 | `lib/api.ts` | **yes — full CRUD, server-side filter/sort/page** |
-| `LeadEditor.tsx` | 250 | — | create/edit dialog; server 422s render inline |
-| `CampaignsScreen.tsx` | 330 | `lib/api.ts` | **yes — full CRUD, live figures** |
-| `CampaignEditor.tsx` | 190 | — | create/edit dialog |
-| `InboxScreen.tsx` | 231 | `lib/app/inbox` | no |
-| `AnalyticsScreen.tsx` | 388 | `lib/app/metrics` | no |
-| `SettingsScreen.tsx` | 153 | `lib/app/workspace` | no |
-| `WorkflowsScreen.tsx` | 175 | `lib/app/workflowLibrary` | no |
-| `IntegrationsScreen.tsx` | 342 | `lib/app/integrations` | no |
-| `ConfigurationScreen.tsx` + `configuration/` | 1805 | `lib/app/configuration`, `lib/app/campaigns` | no |
+| `AppShell.tsx` | 405 | `/api/badges` | rail, top bar, mobile tab bar, sign-out. Badges refetch on every navigation |
+| `HomeScreen.tsx` | 292 | `/api/overview`, `/api/campaigns` | stats, to-dos (completable), campaigns, daily quotas |
+| `InboxScreen.tsx` | 315 | `/api/threads` | read-only: the composer is disabled while `!SENDING_ENABLED` |
+| `LeadsScreen.tsx` + `LeadEditor.tsx` | 592 + 269 | `/api/leads` | full CRUD, server-side filter/sort/page |
+| `CampaignsScreen.tsx` + `CampaignEditor.tsx` | 405 + 192 | `/api/campaigns` | full CRUD |
+| `AnalyticsScreen.tsx` | 526 | `/api/analytics`, `/api/campaigns` | Overview / Channels / Campaigns. No per-person or per-campaign daily data exists, so none is shown |
+| `WorkflowsScreen.tsx` | 240 | server props from the repository | library + template picker |
+| `ConfigurationScreen.tsx` + `configuration/` | 96 + ~1340 | `/api/accounts`, `/api/campaigns` | see below |
+| `IntegrationsScreen.tsx` | 416 | `/api/accounts` | provider state is *derived* (`providerView`) |
+| `SettingsScreen.tsx` | 227 | `/api/workspace`, `/api/accounts` | channels, domains, members, plan |
+| `SampleBanner.tsx` | 60 | `/api/workspace` | "this workspace includes sample data" + Remove button; renders on every data screen |
 | `ui.tsx` `charts.tsx` `icons.tsx` | 628 | — | shared controls, SVG charts, 24px icons |
 | `glass.ts` | ~230 | — | refraction + specular runtime, **marketing-only now** (see §5) |
 
@@ -229,46 +252,32 @@ status/channel form and were removed. Starting a workflow from a template (`Work
 campaign-creation path. Creating a **multichannel** campaign from `CampaignEditor` also saves an empty workflow and opens the builder on it.
 
 ### Configuration — `/dashboard/configuration`
-`ConfigurationScreen.tsx` + `components/app/configuration/` (`Overview`, `ChannelTabs`,
-`RuleTabs`, `parts`), reading `lib/app/configuration.ts`. Nine tabs: an overview of the setup
-checks that are failing, one per channel (LinkedIn, Email, WhatsApp, Calls, SMS), then
-Variables, Sending rules and Compliance. Reached from the rail's **foot group**, with
-Integrations and Settings — it is workspace-level setup, not a working screen, so it stays out
-of `DASHBOARD_NAV` and off the mobile tab bar. `CONFIGURATION_HREF` is in `lib/nav.ts`.
+`ConfigurationScreen.tsx` + `components/app/configuration/` (`Overview`, `ChannelTabs`, `RuleTabs`,
+`parts`). Nine tabs: overview, LinkedIn, Email, WhatsApp, Calls, SMS, Variables, Sending rules,
+Compliance. Reached from the rail's foot group (workspace-level setup, so not in `DASHBOARD_NAV`).
 
-Three things to know before changing it:
-- **Edits are in-component only.** Every switch, stepper and field holds state for the length of
-  the visit; there is no configuration store or route behind it. Each tab carries the
-  `<DemoNote>` saying so, and the figures are sample data, not measurements (§6).
-- **WhatsApp, Calls and SMS carry `<PlannedNote>`** and disable their primary buttons, for the
-  same reason Integrations marks them planned (§6). *Known inconsistency:* `SettingsScreen`
-  still shows those three as "Connected", because `lib/app/workspace.ts` predates the rule.
-- **The akkari palette/font used to be scoped to this screen alone** (a `.cfg` class). It is now
-  the whole dashboard's default — see §5, "Workspace is flat, not glass."
+**LinkedIn accounts and mailboxes belong to the workspace, not to a campaign.** There is no campaign
+scope on this screen. Each account tile has a "Used by campaigns" control (real campaigns, many to
+many for BOTH channels — a mailbox is no longer exclusive to one campaign) saved through
+`PUT /api/accounts/:id/campaigns`; the daily caps and mailbox rotation are saved (debounced) through
+`PATCH /api/accounts/:id`. Domains show their SPF/DKIM/DMARC state. With nothing connected a tab says
+so and the Connect button is disabled: **connecting a LinkedIn account or mailbox is not built**.
 
-**Campaign scoping.** The `cf-head` row carries a campaign picker (`CAMPAIGNS` from
-`lib/app/campaigns.ts`, demo data, same as the Workflows library) alongside the tab strip, so it
-shows on every tab. Only the LinkedIn and Email tabs read it (`scopeCampaignId` prop into
-`LinkedInTab`/`EmailTab`): picking a campaign tags the seat or mailbox that serves it with a
-"Selected campaign" badge, and a multichannel pick adds an "Open workflow" link to its builder.
-Sending rules, variables and compliance stay workspace-wide on purpose — they are not per-campaign
-in the product brief, so the picker does not filter them; the screen says this under the tab
-strip when a campaign is selected.
+The Overview's checks come from `lib/data/setup.ts` (real state), not from a constant.
+**WhatsApp, Calls and SMS** show only the planned note. **Variables, Sending rules, Compliance and
+the "All accounts" / Tracking rule switches** show the defaults a workspace starts with in
+`lib/app/configuration.ts`; edits last for the visit only (`<DemoNote>` says so) and nothing enforces
+them, because nothing sends. Persisting them needs a settings store (§7).
 
-**Channel assignment is exclusive for email, shared for LinkedIn.** `Mailbox.campaignId` is a
-single `number | null` — a mailbox sends for one campaign at a time, and `Mailboxes()`'s `assign()`
-clears any other mailbox already holding that campaign id when it is reassigned, so the rule holds
-even though nothing is persisted. `LinkedInSeat.campaignIds` is a `number[]` — a seat can carry
-several campaigns at once, with no such exclusivity. Both are edited from a "Used by campaigns" /
-"Assigned campaign" control on the seat/mailbox tile in `ChannelTabs.tsx`, state-only like the rest
-of the screen.
-
-
-### Legacy demo data — `lib/app/` (2631L, hardcoded)
-`channels.ts` `leads.ts` `campaigns.ts` `inbox.ts` `workspace.ts` `integrations.ts`
-`configuration.ts` (829L — the Configuration screen's content) `workflowLibrary.ts` · `metrics.ts` (241L) is a seeded PRNG walking 180 days, deterministic so
-the screens still on it agree with each other · **`adapt.ts` (200L) bridges to `lib/data`** and is
-import-free at runtime, so `tests/adapt.test.mjs` pins every channel and stage round-trip.
+### Presentation helpers — `lib/app/`
+`channels.ts` (the short channel keys and their colours) · `leads.ts` (stage colours, score band,
+phone mask, tag colours, avatar tints) · `campaigns.ts` (status pill wording) · `configuration.ts`
+(tab list + rule defaults) · `integrations.ts` (provider catalogue + `providerView`) ·
+`workflow.ts` (the graph model, templates, validation) · `workflowLibrary.ts` · `segments.ts` (a
+tiny event so the builder refreshes when a segment is saved) · **`adapt.ts` bridges to `lib/data`**
+and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and stage round-trip.
+**Nothing in here is workspace data.** (`workflow.ts` still carries the five demo workflows and
+`LISTS` — used only by `MemoryRepository` for demo mode and by the tests that pin their figures.)
 
 ### Marketing — `components/` + `app/`
 `Hero.tsx` (321L, pinned scroll-driven card merge) · `Journey.tsx` (383L) ·
@@ -281,7 +290,7 @@ import-free at runtime, so `tests/adapt.test.mjs` pins every channel and stage r
 
 ### Tests — `tests/` (Node's built-in runner, not Jest/Vitest)
 `dataQuery.test.mjs` · `demoRequest.test.mjs` · `workflow.test.mjs` · `validate.test.mjs` ·
-`adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `workflowPersist.test.mjs` (+ leads and segment suites) — **141 tests**
+`adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `setup.test.mjs` · `workflowPersist.test.mjs` · `leadsValidation` `leadsMerge` `leadsJourney` `leadsProfile` `workflowSegment` — **175 tests**
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).
@@ -304,6 +313,9 @@ namespaces, no parameter properties).
 | Add a nav item | `lib/nav.ts` (workspace) or `lib/site.ts` (marketing) |
 | Change what a new workspace starts with | `lib/data/sample.ts` (content, tested) and `sampleSeed.ts` (insert). Keep every email on `.example` and every phone in 555-01xx — the tests enforce it. |
 | Add a field to a stored workflow | `WorkflowGraph` + `validateWorkflowGraph` in `lib/app/workflow.ts` (the whitelist **drops/refuses** anything not listed) + a case in `tests/workflowPersist.test.mjs` |
+| Change what a connected account can do | `lib/data/types.ts` (`LinkedInSettings`/`EmailSettings`) → `validateAccountPatch` in `validate.ts` → `pg.ts` + `memory.ts` → `ChannelTabs.tsx` |
+| Add a setup check | `lib/data/setup.ts` (and its test). It is derived from `AccountsSnapshot`; do not hardcode |
+| Change how uploaded people are matched | `lib/leads/merge.ts` (`mergeLeads` + `findInJourney`) and `tests/leadsMerge`/`leadsJourney` |
 | Add a builder step kind | `STEPS` + `defaults()` + `stepLabel()` in `lib/app/workflow.ts`; tests pin the five seeded graphs |
 | Add a Configuration setting | the data in `lib/app/configuration.ts`, then the tab in `components/app/configuration/`. Rows are `<Row>`/`<ToggleRowView>` from `parts.tsx` — don't hand-roll one. |
 | Re-skin a single workspace screen | there is no scope mechanism for this any more (the old `.cfg` scope was removed once its palette became the dashboard-wide default — see §5). A screen that must differ needs its own new token scope, the same shape `.cfg` used to be. |
@@ -456,53 +468,42 @@ namespaces, no parameter properties).
 
 Roughly in the order they should be closed.
 
-1. **Six screens still read `lib/app/` constants** (Home, Inbox, Analytics, Settings,
-   Integrations, Configuration) — they render demo data regardless of the database, so
-   a real tester sees invented tasks and conversations next to their own empty workspace. All but
-   Settings carry an "Illustrative demo data" chip (Configuration has its own `DemoNote`). Leads and
-   Campaigns show the pattern to follow.
-2. **Two data models** bridged by `lib/app/adapt.ts`; converging them removes the adapter and the
-   need to add every new field in three places.
-3. **Uploads, segments and lead profiles have no tables.** The upload feature works against the
-   in-memory store, and `PgRepository` delegates its six methods there, so with `DATABASE_URL`
-   set those rows still live in process memory, vanish on restart, and are not tenant-isolated by
-   the database the way every other table is. Parked uploads are meant to be scratch (the modal
-   says so); segments and profiles are not. `lib/leads/merge.ts` defines what the schema needs.
-3b. **A stored workflow can name a segment that no longer exists.** The Audience step keeps the
-   segment id, and segments are in-memory (gap 3), so after a restart the canvas shows 0 leads for
-   it. `campaign` / `workspace` audiences are unaffected (counted from the database).
-4. **A campaign's `channels` is not derived from its workflow's steps.** Both are stored; editing
-   the workflow does not update `campaigns.channels`, so the table's channel dots can drift from
-   what the graph actually sends on.
-4b. **Configuration does not persist either, and has no sequence editor.** Every control holds
-   state for the visit. The design reference also opens a sequence/script into a step editor
-   (step list, A/B variants, traffic split, token palette, live preview, send-test); the
-   `.cf-steps` / `.cf-pv*` / `.cf-phone*` / `.cf-ab` / `.cf-tok` rules in `app.css` are the
-   reference's own and are waiting for it. Nothing renders them today, and sequence rows do not
-   open.
-5. **No execution engine.** `workflow_runs` / `step_jobs` are shaped for it; nothing writes them.
+1. **Enrollment: when does a lead "enter a campaign"?** `leads.campaign_id` is what the upload
+   dedupe reads, and today it is set only by hand (the lead editor) and by the sample. Choosing a
+   segment as a workflow's audience does **not** assign its leads, and nothing releases them. The
+   natural moment is Launch (not built). Until then, two overlapping files uploaded for two draft
+   campaigns will not warn about each other.
+2. **No execution engine.** `workflow_runs` / `step_jobs` are shaped for it; nothing writes them.
    Intended shape: an authenticated `/api/jobs/tick` claiming due rows with
    `FOR UPDATE SKIP LOCKED`, poked by cron (a GitHub Actions schedule is a free MVP scheduler).
-6. **Nothing writes `events`, and no job builds `daily_rollups`.** The seed writes rollups
-   directly, so analytics is real SQL over invented numbers. `lib/app/metrics.ts` (the PRNG) still
-   backs the screens not yet rewired.
-7. **Campaign counters are denormalised and nothing maintains them.** `campaigns.sent/delivered/
-   openRate/...` come from the seed; the engine should own them.
+   `SENDING_ENABLED` stays false until it lands.
+3. **LinkedIn and email connection are not built.** `channel_accounts` / `sending_domains` are
+   ready and the UI reads them, but a real workspace has none (only the sample's). A new workspace
+   therefore shows two blocking setup checks, which is true.
+4. **Configuration rules are not stored.** Variables, sending rules, compliance, tracking and the
+   "All accounts" switches are in-component defaults. Needs a `workspace_settings` store and the
+   engine to enforce them.
+5. **`campaigns.channels` is not derived from the workflow's steps.** Both are stored; editing the
+   workflow does not update the campaign's channel list.
+6. **Nothing writes `events`, and no job builds `daily_rollups`.** Only the sample's rollups exist,
+   so Analytics is real SQL over invented numbers until the engine lands. Rollups have no campaign
+   or person dimension, so Analytics cannot filter by either.
+7. **Campaign counters are denormalised and nothing maintains them** (`sent`, `delivered`,
+   rates): the sample's are derived from its rollups (a test pins that); real campaigns show "—".
 8. **Auth has no email verification, password reset link, OAuth or login rate limiting.** Fine for
    an invited handful; none of it is optional before a public launch. Login is brute-forceable
-   (scrypt's cost slows it but does not stop it), and an address on the allowlist is trusted
-   without proving the user owns it. Roles exist as a column (`memberships.role`) that nothing
-   enforces. Sessions are not refreshed on use, so an 8-hour session ends mid-work.
+   (scrypt's cost slows it but does not stop it). Roles exist (`memberships.role`) but nothing
+   enforces them. Sessions are not refreshed on use, so an 8-hour session ends mid-work.
 9. **No way to join an existing workspace.** Every signup creates its own, so invited testers
-   cannot share leads or campaigns with each other, which a team product needs. Needs an
-   invite-to-workspace flow (a `memberships` row for an existing `workspace_id`) and a `members`
-   UI; the schema already supports many users per workspace.
-10a. **LinkedIn and sending-domain connection are not built** (deprioritised on purpose). The
-    Integrations screen still reads `lib/app/integrations.ts`; no workspace has real connections.
-10. **The rail badges (Home 6, Inbox 4) are hardcoded** from `lib/app/inbox`, so a brand-new real
-    account shows them. The screens they point to now say "Illustrative demo data"; the badges
-    themselves do not.
-11. `gtm_mock.html` at the root is a standalone design reference, not part of the app.
+   cannot share leads or campaigns. Needs an invite-to-workspace flow; the schema already supports
+   many users per workspace. Settings → Team says inviting is unavailable.
+10. **Uploads are capped at 4 MB** because Vercel rejects larger request bodies before our code
+    runs. A bigger limit needs a direct-to-storage upload.
+11. **Two simultaneous uploads containing the same new person can create two leads** (there is no
+    unique key on a lead's email, by design: contacts without one exist). The second upload would
+    merge into the first.
+12. **The Inbox cannot mark a thread read/handled** (no endpoint) and cannot reply (nothing sends).
+13. `gtm_mock.html` at the root is a standalone design reference, not part of the app.
 
 ## 8. Running it locally
 
@@ -529,10 +530,12 @@ the in-memory seed.
 **Do not create a database or a Neon branch for `dev`.** Develop and verify against a local
 Postgres or the in-memory demo mode instead. Promoting is merging `dev` into `main`; run
 `npm run db:migrate` against the production database first **only if the change adds a file under
-`drizzle/`**. **`0002_sample_flag` does:** `main` must not receive code that selects
-`campaigns.is_sample` / `leads.is_sample` before that migration has run on Neon (apply it with the
-Neon MCP `run_sql_transaction`, one statement per element, plus a `drizzle.__drizzle_migrations`
-row holding the file's real sha256).
+`drizzle/`**. `0002_sample_flag` and `0003_workspace_data_model` do: `main` must not receive code
+that reads their columns/tables before the migration has run on Neon (apply with the Neon MCP
+`run_sql_transaction`, one statement per element, then insert a `drizzle.__drizzle_migrations` row
+with the file's real sha256 and the journal entry's `when`). Check the generated SQL's statement
+*order* first: drizzle-kit emitted `ADD CONSTRAINT … PRIMARY KEY(…, is_sample)` before `ADD COLUMN
+is_sample` in 0003 and it had to be reordered by hand.
 
 **Giving access to a few testers** (deployed, no seed needed): set `DATABASE_URL` (pooled) and
 `SIGNUP_ALLOWED_EMAILS` on the host, run `npm run db:migrate` once, and tell each person to open

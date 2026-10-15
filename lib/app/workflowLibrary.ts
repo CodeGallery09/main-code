@@ -2,17 +2,14 @@
  * Derived view of the workflow library.
  *
  * `lib/app/workflow.ts` owns the graph model; this module turns it into the
- * handful of numbers the library grid shows, so the cards and the builder can
- * never disagree. Figures are illustrative demo data, derived from the
- * workflow itself rather than stored, same as the builder's canvas stats.
+ * handful of facts the library grid shows (steps, channels, pace, status), so
+ * the cards and the builder can never disagree. Nothing is sent yet, so there
+ * are no results to show: those fields are dashes, never invented numbers.
  */
 
 import { CHANNEL, type ChannelKey } from "@/lib/app/channels";
-import { CAMPAIGNS, hasRun } from "@/lib/app/campaigns";
-import { campaignMetrics, DAYS } from "@/lib/app/metrics";
 import {
   STEPS,
-  WORKFLOWS,
   fromGraph,
   graphFromTemplate,
   validateWorkflowGraph,
@@ -22,7 +19,7 @@ import {
 } from "@/lib/app/workflow";
 
 export type WorkflowSummary = {
-  /** The campaign id for a stored workflow; a small number for the demo library. */
+  /** The campaign id. */
   id: number | string;
   name: string;
   status: WorkflowStatus;
@@ -61,14 +58,6 @@ export function incomplete(w: Workflow): boolean {
 
 export function summarise(w: Workflow): WorkflowSummary {
   const channels = workflowChannels(w) as ChannelKey[];
-  // Anything that has never been published shows dashes rather than invented numbers.
-  // `hasRun` is the same rule the campaigns table uses, so the two screens agree.
-  // The demo metrics are keyed by the demo campaign's number; a stored workflow has none.
-  const demoId = typeof w.id === "number" ? w.id : null;
-  const campaign = demoId === null ? undefined : CAMPAIGNS.find((c) => c.id === demoId);
-  const ran = campaign ? hasRun(campaign) : false;
-  const m = ran && demoId !== null && channels.length ? campaignMetrics(demoId, channels, DAYS - 30, DAYS - 1) : null;
-
   return {
     id: w.id,
     name: w.name,
@@ -77,15 +66,15 @@ export function summarise(w: Workflow): WorkflowSummary {
     steps: w.nodes.filter((n) => n.kind !== "audience").length,
     started: w.started,
     daily: w.daily,
-    ran,
-    inFlight: m ? Math.round(m.sent - m.replied) : 0,
-    replies: m ? Math.round(m.replied) : 0,
-    meetings: m ? Math.round(m.meetings) : 0,
+    // Nothing is sent yet, so there are no results to report: the card shows dashes rather than
+    // invented numbers. The fields stay so the card can show them once a sender exists.
+    ran: false,
+    inFlight: 0,
+    replies: 0,
+    meetings: 0,
     needsWork: incomplete(w),
   };
 }
-
-export const workflowSummaries = (): WorkflowSummary[] => WORKFLOWS.map(summarise);
 
 export const channelNames = (keys: ChannelKey[]) =>
   keys.length ? keys.map((k) => CHANNEL[k].name).join(" · ") : "No channels yet";

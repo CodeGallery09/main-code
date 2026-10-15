@@ -14,15 +14,12 @@ import { CHANNEL } from "@/lib/app/channels";
 import {
   AUDIENCE_RULES,
   CONSENT,
-  DNC_COUNT,
   GUARDRAILS,
   HOLIDAY_COUNTRIES,
   REGIONAL_RULES,
   RETENTION_OPTIONS,
   SENDING_RULES,
-  SNIPPETS,
   STOP_RULES,
-  SUPPRESSED_DOMAINS,
   VARIABLES,
   VARIABLE_CHANNELS,
   WEEK,
@@ -53,7 +50,7 @@ export function VariablesTab() {
         title={`${name} variables`}
         sub={`Write {first_name} in any message on this channel. The fallback is used when a lead has no value.`}
         action={
-          <button type="button" className="btn sm line">
+          <button type="button" className="btn sm line" disabled title="Not available yet">
             Add variable
           </button>
         }
@@ -71,21 +68,13 @@ export function VariablesTab() {
       <Panel
         title="Snippets"
         sub="Reusable text, shared across every channel. Write {{booking_link}} and it updates everywhere when you change it here."
-        action={
-          <button type="button" className="btn sm line">
-            Add snippet
-          </button>
-        }
       >
-        {SNIPPETS.map((s) => (
-          <div className="cf-vrow snip" key={s.token}>
-            <span className="mono">{s.token}</span>
-            <textarea className="ta" defaultValue={s.body} rows={s.body.includes("\n") ? 3 : 1} aria-label={s.token} />
-          </div>
-        ))}
+        <p className="cf-nocontent">
+          No snippets yet. Saving snippets isn&apos;t available yet, so write the text in the message for now.
+        </p>
       </Panel>
 
-      <DemoNote what="variables" />
+      <DemoNote what="fallbacks above" />
     </div>
   );
 }
@@ -252,7 +241,7 @@ export function SendingRulesTab() {
         </Row>
       </Panel>
 
-      <DemoNote what="limits" />
+      <DemoNote what="rules above" />
     </div>
   );
 }
@@ -261,7 +250,7 @@ export function SendingRulesTab() {
 
 export function ComplianceTab() {
   const regional = useToggles(REGIONAL_RULES);
-  const [domains, setDomains] = useState(SUPPRESSED_DOMAINS);
+  const [domains, setDomains] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   const [consent, setConsent] = useState(() =>
     Object.fromEntries(CONSENT.map((c) => [c.k, c.chosen ?? 0])),
@@ -276,17 +265,17 @@ export function ComplianceTab() {
             <div>
               <h3>Do-not-contact list</h3>
             </div>
-            <button type="button" className="btn sm line">
+            <button type="button" className="btn sm line" disabled title="Not available yet">
               Upload CSV
             </button>
           </div>
           <div className="cf-body">
             <div className="cf-big">
-              <b className="num">{DNC_COUNT.toLocaleString("en-US")}</b>
-              <span className="muted">emails and numbers never contacted, on any channel</span>
+              <b className="num">0</b>
+              <span className="muted">emails and numbers on your do-not-contact list</span>
             </div>
             <small className="muted">
-              Opt-outs and &ldquo;Do not call&rdquo; outcomes are added here automatically.
+              Nothing is on the list yet. Uploading a list isn&apos;t available yet.
             </small>
           </div>
         </section>
@@ -377,7 +366,7 @@ export function ComplianceTab() {
         </Row>
       </Panel>
 
-      <DemoNote what="counts" />
+      <DemoNote what="choices above" />
     </div>
   );
 }

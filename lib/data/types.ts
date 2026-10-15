@@ -111,6 +111,9 @@ export type Lead = {
   campaignId: string | null;
   starred: boolean;
   updatedAt: string;
+  /** Other ways to reach the lead, filled by uploads. */
+  whatsapp?: string | null;
+  linkedin?: string | null;
   /** A dummy lead seeded at signup. Absent means false. */
   isSample?: boolean;
 };
@@ -238,4 +241,81 @@ export type WorkflowRecord = {
   name: string;
   graph: WorkflowGraph;
   updatedAt: string;
+};
+
+/* ------------------------------------------------------ channel accounts -- */
+
+/**
+ * LinkedIn accounts and mailboxes belong to the **workspace**. Any number of campaigns can send
+ * from one (`campaignIds`), for both channels: a mailbox is not locked to a single campaign.
+ */
+export type LinkedInSettings = {
+  /** Daily ceilings for this account. */
+  connections: number;
+  messages: number;
+  visits: number;
+  /** InMail credits left, or null when the account cannot report them. */
+  inmail: number | null;
+};
+
+export type EmailSettings = {
+  provider: string;
+  /** Day of the warm-up while the mailbox is still warming. */
+  warmDay?: number;
+  /** 0–100 sender reputation, as the provider reports it. */
+  health: number;
+  /** Emails per day. */
+  cap: number;
+  /** Rotate this mailbox with the others on the same campaign. */
+  rotate: boolean;
+};
+
+type AccountBase = {
+  id: string;
+  name: string;
+  /** Profile URL for LinkedIn, address for email. */
+  handle: string;
+  /** Campaigns that send from this account. */
+  campaignIds: string[];
+  /** Invented at signup with the sample campaign; removed with it. */
+  isSample: boolean;
+};
+
+export type LinkedInAccount = AccountBase & {
+  channel: "linkedin";
+  /** `signed_out` pauses the steps that use it until it reconnects. */
+  state: "healthy" | "signed_out";
+  settings: LinkedInSettings;
+};
+
+export type EmailAccount = AccountBase & {
+  channel: "email";
+  state: "warm" | "warming";
+  settings: EmailSettings;
+};
+
+export type ChannelAccount = LinkedInAccount | EmailAccount;
+
+export type SendingDomain = {
+  id: string;
+  host: string;
+  spf: boolean;
+  dkim: boolean;
+  dmarc: boolean;
+  isSample: boolean;
+};
+
+export type AccountsSnapshot = {
+  accounts: ChannelAccount[];
+  domains: SendingDomain[];
+};
+
+/** What the rail badges and the setup overview count, in one cheap read. */
+export type Badges = {
+  /** Open to-dos. */
+  tasks: number;
+  /** Conversations waiting on a reply. */
+  inbox: number;
+  /** Blocking setup issues on the Configuration screen. */
+  config: number;
 };

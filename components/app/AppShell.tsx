@@ -23,8 +23,7 @@ import {
 import { api } from "@/lib/api";
 import { LOGIN_HREF } from "@/lib/site";
 import { CONFIGURATION_HREF, DASHBOARD_NAV, INTEGRATIONS_HREF, SETTINGS_HREF } from "@/lib/nav";
-import { TASKS } from "@/lib/app/inbox";
-import { CONFIG_ISSUES } from "@/lib/app/configuration";
+import type { Badges } from "@/lib/data/types";
 import { avatarTint, initials } from "@/lib/app/leads";
 import { Thumb } from "./ui";
 import { UploadLeads } from "./leads/UploadLeads";
@@ -39,17 +38,37 @@ const ICONS = {
   analytics: AnalyticsIcon,
 } as const;
 
-/** Counts shown on the rail; the inbox badge is the threads still owed a reply. */
-const BADGES: Record<string, number> = {
-  "/dashboard": TASKS.length,
-  "/dashboard/inbox": 4,
-};
+/**
+ * The counts on the rail, read from the workspace: open to-dos on Home, conversations waiting on a
+ * reply on Inbox, blocking setup issues on Configuration. Fetched on every navigation, because a
+ * layout does not re-render between pages and a count taken at sign-in would go stale as soon as
+ * someone completed a task.
+ */
+function useBadges(pathname: string): Badges {
+  const [badges, setBadges] = useState<Badges>({ tasks: 0, inbox: 0, config: 0 });
+  useEffect(() => {
+    let live = true;
+    api
+      .badges()
+      .then((next) => live && setBadges(next))
+      .catch(() => undefined); // A missing badge is better than a broken rail.
+    return () => {
+      live = false;
+    };
+  }, [pathname]);
+  return badges;
+}
 
 export function AppShell({ user, children }: { user: { name: string; org: string }; children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [tint, ink] = avatarTint(user.name);
+  const badges = useBadges(pathname);
+  const BADGES: Record<string, number> = {
+    "/dashboard": badges.tasks,
+    "/dashboard/inbox": badges.inbox,
+  };
 
   // The deepest matching route wins, so /dashboard only lights up on Home itself.
   const isCurrent = (href: string) => (href === "/dashboard" ? pathname === href : pathname.startsWith(href));
@@ -113,7 +132,7 @@ export function AppShell({ user, children }: { user: { name: string; org: string
           >
             <ConfigurationIcon />
             <span className="lbl">Configuration</span>
-            {CONFIG_ISSUES ? <span className="bdg">{CONFIG_ISSUES}</span> : null}
+            {badges.config ? <span className="bdg">{badges.config}</span> : null}
           </Link>
 
           <Link
@@ -157,7 +176,7 @@ export function AppShell({ user, children }: { user: { name: string; org: string
         />
       )}
 
-      <TabBar pathname={pathname} isCurrent={isCurrent} />
+      <TabBar pathname={pathname} isCurrent={isCurrent} badges={BADGES} />
     </div>
   );
 }
@@ -345,7 +364,15 @@ export function Screen({
  * Mobile tab bar. The reference styles these as `.tabbar button`, so they are
  * buttons that navigate, with a glass thumb that slides to the current tab.
  */
-function TabBar({ pathname, isCurrent }: { pathname: string; isCurrent: (href: string) => boolean }) {
+function TabBar({
+  pathname,
+  isCurrent,
+  badges,
+}: {
+  pathname: string;
+  isCurrent: (href: string) => boolean;
+  badges: Record<string, number>;
+}) {
   const router = useRouter();
   return (
     <nav
@@ -358,7 +385,7 @@ function TabBar({ pathname, isCurrent }: { pathname: string; isCurrent: (href: s
       {DASHBOARD_NAV.map((item) => {
         const Icon = ICONS[item.icon];
         const on = isCurrent(item.href);
-        const badge = BADGES[item.href];
+        const badge = badges[item.href];
         return (
           <button
             key={item.href}

@@ -9,7 +9,6 @@ import { Inspector, WorkflowSettings } from "./Inspector";
 import { StepChip } from "./StepCard";
 import { CHANNEL } from "@/lib/app/channels";
 import {
-  LISTS,
   type AudienceList,
   NODE_W,
   PALETTE,
@@ -153,8 +152,6 @@ export function WorkflowBuilder({
       { k: AUDIENCE_CAMPAIGN, name: "Leads in this campaign", n: counts?.campaign ?? 0, src: "This campaign" },
       { k: AUDIENCE_WORKSPACE, name: "All leads", n: counts?.workspace ?? 0, src: "Workspace" },
       ...uploaded,
-      // The demo lists are invented, so say so wherever one is picked.
-      ...LISTS.map((l) => ({ ...l, name: `${l.name} (demo)` })),
     ],
     [uploaded, counts],
   );

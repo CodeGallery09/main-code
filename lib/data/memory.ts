@@ -17,8 +17,10 @@ import {
   trendOf,
 } from "@/lib/data/query";
 import {
+  ACCOUNTS,
   CAMPAIGNS,
   DEMO_USER,
+  DOMAINS,
   LEADS,
   MESSAGES,
   QUOTAS,
@@ -37,17 +39,22 @@ import type {
   ThreadQuery,
   WriteError,
 } from "@/lib/data/repository";
-import { WORKFLOWS, toGraph, type WorkflowGraph } from "@/lib/app/workflow";
-import type { CampaignPatch, LeadPatch } from "@/lib/data/validate";
-import { mergeLeads, type LeadProfile } from "@/lib/leads/merge";
+import { AUDIENCE_CAMPAIGN, WORKFLOWS, toGraph, type WorkflowGraph } from "@/lib/app/workflow";
+import type { AccountSettingsPatch, CampaignPatch, LeadPatch } from "@/lib/data/validate";
+import { findInJourney, mergeLeads, type InJourneyRow, type LeadProfile } from "@/lib/leads/merge";
+import { leadIdentity } from "@/lib/leads/profile";
+import { blockingCount, setupChecks } from "@/lib/data/setup";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
 import { suggestMapping, type Mapping, type ParsedLead } from "@/lib/leads/validation";
 import type { Table } from "@/lib/leads/table";
 import type {
+  AccountsSnapshot,
   Analytics,
+  Badges,
   Campaign,
   CampaignStatus,
   Channel,
+  ChannelAccount,
   ChannelBreakdown,
   FunnelStage,
   Lead,
@@ -66,17 +73,14 @@ import type {
 } from "@/lib/data/types";
 
 /**
- * Uploaded files, saved segments and the lead profiles they build up.
- *
- * All three live in module state, so they last until the server restarts — the
- * same deal as every other write in this store. A database implementation of
- * `Repository` is where they become permanent.
+ * Uploaded files and saved segments. Module state, so they last until the server restarts, like
+ * every other write in this store. Uploaded rows merge into `leadRows`, the same lead list the
+ * Leads screen shows, so memory mode behaves like the database.
  */
 const uploads = new Map<string, { fileName: string; fileSize: number; table: Table; at: number }>();
 const segments: Segment[] = [];
-let profiles: LeadProfile[] = [];
+const segmentMembers = new Map<string, Set<string>>();
 let segmentSeq = 1;
-let profileSeq = 1;
 let uploadSeq = 1;
 
 /** Parsed files are scratch space; drop anything older than an hour. */
@@ -91,6 +95,8 @@ const messages: Message[] = MESSAGES.map((m) => ({ ...m }));
 const threads: Thread[] = THREADS.map((t) => ({ ...t }));
 const leadRows: Lead[] = LEADS.map((l) => ({ ...l }));
 const trend: TrendPoint[] = buildTrend(90);
+const accounts: ChannelAccount[] = ACCOUNTS.map((a) => structuredClone(a));
+const domains = DOMAINS.map((d) => ({ ...d }));
 
 /** Monotonic ids for prototype creates, so two leads made in the same millisecond differ. */
 /** Workflows saved in this process, by campaign id. Seed campaigns fall back to the demo graphs. */
@@ -382,7 +388,11 @@ export class MemoryRepository implements Repository {
     return structuredClone({
       campaignId,
       name: demo.name,
-      graph: toGraph(demo),
+      // The demo graphs name invented audience lists; in a workspace they read the campaign's leads.
+      graph: ((g) => ({
+        ...g,
+        nodes: g.nodes.map((n) => (n.kind === "audience" ? { ...n, data: { ...n.data, list: AUDIENCE_CAMPAIGN } } : n)),
+      }))(toGraph(demo)),
       updatedAt: campaign.startedAt,
     });
   }
@@ -433,7 +443,44 @@ export class MemoryRepository implements Repository {
         removedCampaigns++;
       }
     }
+    for (let i = accounts.length - 1; i >= 0; i--) if (accounts[i].isSample) accounts.splice(i, 1);
+    for (let i = domains.length - 1; i >= 0; i--) if (domains[i].isSample) domains.splice(i, 1);
     return { campaigns: removedCampaigns, leads: removedLeads };
+  }
+
+  /* ------------------------------------------- org-level channel accounts -- */
+
+  private account(a: ChannelAccount): ChannelAccount {
+    return structuredClone(a);
+  }
+
+  async listAccounts(_ctx: Ctx): Promise<AccountsSnapshot> {
+    return { accounts: accounts.map((a) => this.account(a)), domains: domains.map((d) => ({ ...d })) };
+  }
+
+  async updateAccount(_ctx: Ctx, id: string, patch: AccountSettingsPatch): Promise<ChannelAccount | WriteError | null> {
+    const found = accounts.find((a) => a.id === id);
+    if (!found) return null;
+    Object.assign(found.settings, patch);
+    return this.account(found);
+  }
+
+  async setAccountCampaigns(_ctx: Ctx, id: string, campaignIds: string[]): Promise<ChannelAccount | WriteError | null> {
+    const found = accounts.find((a) => a.id === id);
+    if (!found) return null;
+    if (campaignIds.some((cid) => !campaigns.some((c) => c.id === cid))) {
+      return { error: { field: "campaignIds", message: "One of those campaigns doesn't exist." } };
+    }
+    found.campaignIds = [...campaignIds];
+    return this.account(found);
+  }
+
+  async getBadges(ctx: Ctx): Promise<Badges> {
+    return {
+      tasks: tasks.filter((t) => !t.done).length,
+      inbox: threads.filter((t) => t.needsReply).length,
+      config: blockingCount(setupChecks(await this.listAccounts(ctx))),
+    };
   }
 
   async listLeads(_ctx: Ctx, query: LeadQuery): Promise<Paged<Lead>> {
@@ -665,6 +712,27 @@ export class MemoryRepository implements Repository {
     return upload ? { fileName: upload.fileName, fileSize: upload.fileSize, table: upload.table } : null;
   }
 
+  async findInJourney(
+    _ctx: Ctx,
+    leads: ParsedLead[],
+  ): Promise<{ hits: InJourneyRow[]; campaignNames: Record<string, string> }> {
+    const known = leadRows.map((l) => ({
+      id: l.id,
+      campaignId: l.campaignId,
+      email: l.email,
+      mobile: l.phone,
+      whatsapp: l.whatsapp ?? null,
+      linkedin: l.linkedin ?? null,
+    }));
+    const hits = findInJourney(known, leads);
+    const campaignNames: Record<string, string> = {};
+    for (const hit of hits) {
+      const campaign = campaigns.find((c) => c.id === hit.campaignId);
+      if (campaign) campaignNames[campaign.id] = campaign.name;
+    }
+    return { hits, campaignNames };
+  }
+
   async listSegments(_ctx: Ctx): Promise<Segment[]> {
     return segments.map((s) => ({ ...s })).reverse();
   }
@@ -683,6 +751,7 @@ export class MemoryRepository implements Repository {
       mapping: Mapping;
       report: MappingReport;
       leads: ParsedLead[];
+      consent: boolean;
     },
   ) {
     const upload = uploads.get(input.uploadId);
@@ -690,21 +759,72 @@ export class MemoryRepository implements Repository {
 
     const id = "seg_" + segmentSeq++;
     const now = new Date().toISOString();
+    const { hits } = await this.findInJourney(ctx, input.leads);
+    const out = new Set(hits.map((h) => h.row));
+    const incoming = input.leads.filter((lead) => !out.has(lead.row));
+
+    const existing: LeadProfile[] = leadRows.map((l) => ({
+      id: l.id,
+      email: l.email,
+      mobile: l.phone,
+      whatsapp: l.whatsapp ?? null,
+      linkedin: l.linkedin ?? null,
+      segmentIds: [],
+      extra: {},
+      createdAt: l.updatedAt,
+      updatedAt: l.updatedAt,
+    }));
+    const known = new Set(existing.map((p) => p.id));
     const merge = mergeLeads(
-      profiles,
-      input.leads.map((lead) => ({
-        row: lead.row,
-        email: lead.email,
-        mobile: lead.mobile,
-        whatsapp: lead.whatsapp,
-        linkedin: lead.linkedin,
-        extra: lead.extra,
-      })),
+      existing,
+      incoming.map((lead) => ({ row: lead.row, email: lead.email, mobile: lead.mobile, whatsapp: lead.whatsapp, linkedin: lead.linkedin, extra: lead.extra })),
       id,
       now,
-      () => "prof_" + profileSeq++,
+      () => "l_" + nextId("lead"),
     );
-    profiles = merge.profiles;
+
+    const members = new Set<string>();
+    for (const profile of merge.profiles) {
+      if (!known.has(profile.id)) {
+        const who = leadIdentity(profile);
+        leadRows.push({
+          id: profile.id,
+          name: who.name,
+          company: who.company,
+          title: who.title,
+          initials: who.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase(),
+          phone: profile.mobile,
+          email: profile.email,
+          whatsapp: profile.whatsapp,
+          linkedin: profile.linkedin,
+          stage: "new",
+          score: 0,
+          source: "csv",
+          tags: [],
+          consent: input.consent,
+          avgCallSeconds: null,
+          messageCount: 0,
+          callCount: 0,
+          nextStep: "",
+          ownerId: ctx.userId,
+          ownerName: "",
+          campaignId: null,
+          starred: false,
+          updatedAt: now,
+        });
+        members.add(profile.id);
+      } else if (profile.segmentIds.includes(id)) {
+        const lead = leadRows.find((l) => l.id === profile.id);
+        if (lead) {
+          lead.email = profile.email;
+          lead.phone = profile.mobile;
+          lead.whatsapp = profile.whatsapp;
+          lead.linkedin = profile.linkedin;
+          lead.updatedAt = now;
+        }
+        members.add(profile.id);
+      }
+    }
 
     const segment: Segment = {
       id,
@@ -718,18 +838,15 @@ export class MemoryRepository implements Repository {
       channels: input.report.channels,
       profilesCreated: merge.created,
       profilesMerged: merge.merged,
+      excludedInJourney: out.size,
       errorCount: input.report.errorCount,
       createdAt: now,
       createdBy: ctx.userId,
     };
     segments.push(segment);
+    segmentMembers.set(id, members);
     uploads.delete(input.uploadId);
 
-    return { segment, profilesCreated: merge.created, profilesMerged: merge.merged };
-  }
-
-  async listProfiles(_ctx: Ctx, segmentId?: string): Promise<LeadProfile[]> {
-    const all = segmentId ? profiles.filter((p) => p.segmentIds.includes(segmentId)) : profiles;
-    return all.map((p) => ({ ...p, segmentIds: [...p.segmentIds], extra: { ...p.extra } })).reverse();
+    return { segment, profilesCreated: merge.created, profilesMerged: merge.merged, excluded: out.size };
   }
 }

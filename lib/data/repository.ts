@@ -18,17 +18,20 @@
  * guessable key, so a missing workspace predicate is an access-control hole, not an optimisation.
  */
 
-import type { LeadProfile } from "@/lib/leads/merge";
+import type { InJourneyRow } from "@/lib/leads/merge";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
 import type { Mapping, ParsedLead } from "@/lib/leads/validation";
 import type { Table } from "@/lib/leads/table";
 
 import type {
+  AccountsSnapshot,
   Analytics,
+  Badges,
   Campaign,
   CampaignStatus,
   CampaignType,
   Channel,
+  ChannelAccount,
   Lead,
   LeadQuery,
   Message,
@@ -42,7 +45,7 @@ import type {
   WorkflowRecord,
   Workspace,
 } from "@/lib/data/types";
-import type { CampaignPatch, LeadPatch } from "@/lib/data/validate";
+import type { AccountSettingsPatch, CampaignPatch, LeadPatch } from "@/lib/data/validate";
 import type { WorkflowGraph } from "@/lib/app/workflow";
 
 /**
@@ -140,25 +143,61 @@ export interface Repository {
   ): Promise<WorkflowRecord | WriteError | null>;
 
   /**
-   * Deletes the sample campaign(s) and leads seeded at signup. Workflows go with their campaign.
-   * Returns how many of each were removed; never touches anything the user created.
+   * Deletes everything seeded at signup as an example: the sample campaign (its workflow goes with
+   * it), the sample leads (their threads, messages and to-dos go with them), the sample LinkedIn
+   * account, mailbox and sending domain, and the sample figures. Returns how many campaigns and
+   * leads were removed; never touches anything the user created.
    */
   removeSampleData(ctx: Ctx): Promise<{ campaigns: number; leads: number }>;
+
+  /* ------------------------------------------------- org-level channel accounts -- */
+
+  /** Every LinkedIn account and mailbox the workspace has, with the campaigns that use each. */
+  listAccounts(ctx: Ctx): Promise<AccountsSnapshot>;
+  /**
+   * Changes the dials of one account (daily caps, rotation). `null` when it is not yours; a
+   * `WriteError` for a value the account cannot take.
+   */
+  updateAccount(ctx: Ctx, id: string, patch: AccountSettingsPatch): Promise<ChannelAccount | WriteError | null>;
+  /**
+   * Replaces the set of campaigns that send from an account. Accounts belong to the workspace,
+   * not to a campaign, so this is many to many for both channels. A campaign id from another
+   * workspace is a `WriteError`, never silently dropped.
+   */
+  setAccountCampaigns(ctx: Ctx, id: string, campaignIds: string[]): Promise<ChannelAccount | WriteError | null>;
+
+  /** The numbers on the rail badges. One cheap read, called on every navigation. */
+  getBadges(ctx: Ctx): Promise<Badges>;
 
   /* ------------------------------------------------ lead uploads and segments -- */
 
   /**
-   * Parks a parsed file so the mapping and summary steps don't have to upload it
-   * again. Uploads are scratch space: the memory store keeps them until the
-   * server restarts, which the modal says out loud.
+   * Parks a parsed file so the mapping and summary steps don't have to upload it again. Stored in
+   * the database (not process memory) because serverless instances do not share memory; parked
+   * files older than an hour are discarded.
    */
   createUpload(ctx: Ctx, input: { fileName: string; fileSize: number; table: Table }): Promise<UploadPreview>;
   getUpload(ctx: Ctx, id: string): Promise<{ fileName: string; fileSize: number; table: Table } | null>;
 
+  /**
+   * Which of these rows are people already in a journey in another campaign: a match on any of
+   * email, mobile, WhatsApp or LinkedIn with a lead who has a campaign. `campaignNames` resolves
+   * the ids for the warning.
+   */
+  findInJourney(
+    ctx: Ctx,
+    leads: ParsedLead[],
+  ): Promise<{ hits: InJourneyRow[]; campaignNames: Record<string, string> }>;
+
   listSegments(ctx: Ctx): Promise<Segment[]>;
   getSegment(ctx: Ctx, id: string): Promise<Segment | null>;
 
-  /** Saves a validated upload as a segment, merging its rows into lead profiles. */
+  /**
+   * Saves a validated upload as a segment. Rows already in a journey elsewhere are left out
+   * (recomputed here, not trusted from the browser); the rest are merged into the workspace's leads
+   * by email, mobile, WhatsApp or LinkedIn, and linked to the segment. `consent` applies to leads
+   * this upload *creates*; it never upgrades the consent of a lead that already existed.
+   */
   createSegment(
     ctx: Ctx,
     input: {
@@ -168,11 +207,9 @@ export interface Repository {
       mapping: Mapping;
       report: MappingReport;
       leads: ParsedLead[];
+      consent: boolean;
     },
-  ): Promise<{ segment: Segment; profilesCreated: number; profilesMerged: number } | null>;
-
-  /** Profiles the uploads have built up, newest first; `segmentId` narrows to one segment. */
-  listProfiles(ctx: Ctx, segmentId?: string): Promise<LeadProfile[]>;
+  ): Promise<{ segment: Segment; profilesCreated: number; profilesMerged: number; excluded: number } | null>;
 }
 
 /**

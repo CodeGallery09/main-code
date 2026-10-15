@@ -1,232 +1,313 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { TopBar } from "./AppShell";
 import { BackIcon } from "./icons";
+import { SampleBanner } from "./SampleBanner";
 import { Avatar, Dot, Segmented } from "./ui";
-import { CHANNEL, OWNERS, type ChannelKey } from "@/lib/app/channels";
-import { CAMPAIGNS } from "@/lib/app/campaigns";
-import { INTENT_TONE, THREADS } from "@/lib/app/inbox";
-import { leadById, scoreBand, SIGNAL_LABEL, SIGNAL_SCORE, STAGE_COLOR } from "@/lib/app/leads";
+import { api } from "@/lib/api";
+import { relativeTime, toChannelKey, toStageLabel } from "@/lib/app/adapt";
+import { CHANNEL } from "@/lib/app/channels";
+import { scoreBand, STAGE_COLOR } from "@/lib/app/leads";
+import { SENDING_ENABLED, SENDING_OFF_NOTE } from "@/lib/capabilities";
+import type { Message, Thread } from "@/lib/data/types";
 
-/** Which campaign a lead sits in, used for the context rail. */
-const CAMPAIGN_FOR_LEAD: Record<number, string> = {
-  15: "Inbound follow-up",
-  2: "Net-new outbound",
-  1: "Net-new outbound",
-  8: "Net-new outbound",
-  13: "Inbound follow-up",
-  5: "Q4 webinar invite",
-  7: "Closed-lost re-engage",
+/** Display label and pill tone per intent the API reports. */
+const INTENT: Record<Thread["intent"], { label: string; tone: string }> = {
+  interested: { label: "Interested", tone: "pos" },
+  question: { label: "Question", tone: "acc" },
+  objection: { label: "Objection", tone: "hl" },
+  "out-of-office": { label: "Out of office", tone: "" },
+  "opt-out": { label: "Opt-out", tone: "alert" },
 };
 
-/** Last thing said in a thread, for the list preview. */
-function preview(messages: { t: string }[]) {
-  return messages[messages.length - 1]?.t ?? "";
+const WHEN = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function when(iso: string): string {
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime()) ? WHEN.format(d) : "";
 }
+
+type Detail = { messages: Message[] } | { error: string };
 
 export function InboxScreen() {
   const [filter, setFilter] = useState<"needs" | "all">("needs");
-  const [selected, setSelected] = useState(THREADS[0].id);
-  const [read, setRead] = useState<number[]>([]);
-  const [handled, setHandled] = useState<number[]>([]);
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const shown = THREADS.filter((t) => (filter === "needs" ? t.needs && !handled.includes(t.id) : true));
-  const thread = useMemo(
-    () => THREADS.find((t) => t.id === selected) ?? shown[0] ?? THREADS[0],
-    [selected, shown],
-  );
-  const lead = leadById(thread.id);
-  const [channel, setChannel] = useState<ChannelKey>(thread.ch);
-  const [draft, setDraft] = useState(thread.sugg ?? "");
+  const [selected, setSelected] = useState<string | null>(null);
+  /** Phone width shows either the list or the conversation; this is which. */
+  const [open, setOpen] = useState(false);
+  const [details, setDetails] = useState<Record<string, Detail>>({});
 
-  const select = (id: number) => {
-    const next = THREADS.find((t) => t.id === id);
-    setSelected(id);
-    setRead((r) => (r.includes(id) ? r : [...r, id]));
-    setChannel(next?.ch ?? "mail");
-    setDraft(next?.sugg ?? "");
+  /** Guards against an out-of-order response overwriting a newer one. */
+  const listRequest = useRef(0);
+
+  const load = useCallback(async () => {
+    const id = ++listRequest.current;
+    setLoading(true);
+    try {
+      const result = await api.threads({ filter: "all" });
+      if (id !== listRequest.current) return;
+      setThreads(result.threads);
+      setDetails({});
+      setError(null);
+    } catch (caught) {
+      if (id !== listRequest.current) return;
+      setError(caught instanceof Error ? caught.message : "Could not load conversations.");
+    } finally {
+      if (id === listRequest.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const needing = threads.filter((t) => t.needsReply);
+  const shown = filter === "needs" ? needing : threads;
+  const thread = shown.find((t) => t.id === selected) ?? shown[0] ?? null;
+  const threadId = thread?.id ?? null;
+  const detail = threadId ? details[threadId] : undefined;
+
+  // Fetch the messages of whichever thread is showing; each is fetched once per list load.
+  useEffect(() => {
+    if (!threadId) return;
+    let live = true;
+    api
+      .thread(threadId)
+      .then((r) => live && setDetails((d) => ({ ...d, [threadId]: { messages: r.messages } })))
+      .catch(
+        (caught) =>
+          live &&
+          setDetails((d) => ({
+            ...d,
+            [threadId]: { error: caught instanceof Error ? caught.message : "Could not load this conversation." },
+          })),
+      );
+    return () => {
+      live = false;
+    };
+  }, [threadId, threads]);
+
+  const retryDetail = () => {
+    if (!threadId) return;
+    setDetails((d) => {
+      const { [threadId]: _drop, ...rest } = d;
+      return rest;
+    });
+    // Re-selecting the same id would not re-run the effect, so reload the list, which does.
+    void load();
   };
 
-  if (!lead) return null;
+  const pick = (id: string) => {
+    setSelected(id);
+    setOpen(true);
+  };
+
+  const first = thread?.leadName.split(" ")[0] ?? "";
 
   return (
     <div className="main">
       <TopBar title="Inbox" />
       <div className="scroll">
-        <div className="full inbox">
-          <div className="ib-list pane">
-            <div className="ib-list-h">
-              <Segmented<"needs" | "all">
-                value={filter}
-                onChange={setFilter}
-                items={[
-                  ["needs", "To reply", THREADS.filter((t) => t.needs && !handled.includes(t.id)).length],
-                  ["all", "All", THREADS.length],
-                ]}
-              />
-              {/* These conversations are the demo constants in lib/app/inbox, not this workspace's
-                  messages. Label them so a real account does not mistake them for its own. */}
-              <span className="samp">Illustrative demo data</span>
-            </div>
-
-            <div className="threads">
-              {shown.map((t) => {
-                const person = leadById(t.id);
-                if (!person) return null;
-                const unread = t.unread && !read.includes(t.id);
-                return (
-                  <button
-                    key={t.id}
-                    className={"th" + (t.id === thread.id ? " on" : "") + (unread ? " unread" : "")}
-                    onClick={() => select(t.id)}
-                  >
-                    <Avatar name={person.n} />
-                    <div>
-                      <div className="r1">
-                        <b>{person.n}</b>
-                        <time>{t.time}</time>
-                      </div>
-                      <p>{preview(t.msgs)}</p>
-                      <div className="r3">
-                        <span className="chname">
-                          <Dot k={t.ch} />
-                          {CHANNEL[t.ch].name}
-                        </span>
-                        <span className={"tag " + INTENT_TONE[t.intent]}>{t.intent}</span>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-              {shown.length === 0 && <p className="empty">Inbox zero. Nothing left to reply to.</p>}
-            </div>
+        {/* A column, so the sample banner takes its height and the panes share what is left. */}
+        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          <div style={{ padding: "6px var(--g) 0", flex: "none" }}>
+            <SampleBanner onRemoved={() => void load()} />
           </div>
-
-          <section className="convo pane">
-            <div className="convo-h">
-              <button className="ib back" aria-label="Back" onClick={() => setSelected(0)}>
-                <BackIcon />
-              </button>
-              <Avatar name={lead.n} />
-              <div>
-                <b>{lead.n}</b>
-                <small>
-                  {lead.t} · {lead.c}
-                </small>
-              </div>
-              <div className="acts">
-                <Link className="btn sm line hide-m" href="/dashboard/leads">
-                  Profile
-                </Link>
-                <button className="btn sm acc">Call</button>
-              </div>
-            </div>
-
-            <div className="msgs">
-              {thread.msgs.map((m, i) =>
-                "sys" in m ? (
-                  <div className="sys" key={i}>
-                    {m.t}
-                  </div>
-                ) : (
-                  <div className={"msg " + m.s} key={i}>
-                    <div className="meta">
-                      {m.s === "me" ? "You" : lead.n.split(" ")[0]} · {CHANNEL[m.ch].name} · {m.w}
-                    </div>
-                    {m.subj && <div className="subj">{m.subj}</div>}
-                    <div className="bubble">{m.t}</div>
-                  </div>
-                ),
-              )}
-            </div>
-
-            {thread.auto ? (
-              <div className="composer">
-                <p className="ack">{thread.auto}</p>
-              </div>
-            ) : (
-              <div className="composer">
-                <div className="f">
-                  <Segmented<ChannelKey>
-                    value={channel}
-                    onChange={setChannel}
-                    items={[
-                      ["li", "LinkedIn"],
-                      ["mail", "Email"],
-                      ["wa", "WhatsApp"],
-                    ]}
-                  />
-                  {thread.sugg && draft === thread.sugg && (
-                    <span className="tag acc hide-m">Suggested reply</span>
-                  )}
-                </div>
-                <textarea
-                  className="ta"
-                  aria-label="Reply"
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
+          <div
+            className={"full inbox" + (open && thread ? " thread" : "")}
+            style={{ flex: "1 1 0", minHeight: 0, height: "auto" }}
+          >
+            <div className="ib-list pane">
+              <div className="ib-list-h">
+                <Segmented<"needs" | "all">
+                  value={filter}
+                  onChange={setFilter}
+                  items={[
+                    ["needs", "To reply", needing.length],
+                    ["all", "All", threads.length],
+                  ]}
                 />
-                <div className="f">
-                  <button className="btn sm line" onClick={() => setDraft((d) => `${d}\n\nflightpath.app/aarav`)}>
-                    Booking link
-                  </button>
-                  <button
-                    className="btn sm ghost"
-                    onClick={() => setHandled((h) => [...h, thread.id])}
-                  >
-                    Mark handled
-                  </button>
-                  <span className="sp" />
-                  <button className="btn pri" onClick={() => setHandled((h) => [...h, thread.id])}>
-                    Send
-                  </button>
-                </div>
               </div>
-            )}
-          </section>
 
-          <aside className="ctx pane">
-            <div style={{ display: "grid", gap: 6, justifyItems: "start" }}>
-              <Avatar name={lead.n} size="lg" />
-              <b style={{ fontSize: 15 }}>{lead.n}</b>
-              <span className="muted" style={{ fontSize: 12.5 }}>
-                {lead.t} · {lead.c}
-              </span>
+              <div className="threads" aria-busy={loading}>
+                {shown.map((t) => {
+                  const key = toChannelKey(t.channel);
+                  const intent = INTENT[t.intent];
+                  return (
+                    <button
+                      key={t.id}
+                      className={"th" + (t.id === thread?.id ? " on" : "") + (t.unread ? " unread" : "")}
+                      onClick={() => pick(t.id)}
+                    >
+                      <Avatar name={t.leadName} />
+                      <div>
+                        <div className="r1">
+                          <b>{t.leadName}</b>
+                          <time dateTime={t.lastAt}>{relativeTime(t.lastAt)}</time>
+                        </div>
+                        <p>{t.preview}</p>
+                        <div className="r3">
+                          <span className="chname">
+                            <Dot k={key} />
+                            {CHANNEL[key].name}
+                          </span>
+                          <span className={"tag " + intent.tone}>{intent.label}</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {loading && threads.length === 0 && !error && (
+                  <p className="empty" role="status">
+                    Loading conversations…
+                  </p>
+                )}
+                {error && (
+                  <p className="empty" role="alert">
+                    {error}{" "}
+                    <button className="sortb" onClick={() => void load()}>
+                      Retry
+                    </button>
+                  </p>
+                )}
+                {!loading && !error && threads.length === 0 && (
+                  <p className="empty">No conversations yet. Replies from your leads will show up here.</p>
+                )}
+                {!loading && !error && threads.length > 0 && shown.length === 0 && (
+                  <p className="empty">Nothing is waiting for a reply.</p>
+                )}
+              </div>
             </div>
-            <dl>
-              <dt>Score</dt>
-              <dd>
-                <span className={"score " + scoreBand(lead.score)}>{lead.score}</span>
-              </dd>
-              <dt>Stage</dt>
-              <dd>
-                <span className="stage">
-                  <i style={{ background: STAGE_COLOR[lead.stage] }} />
-                  {lead.stage}
-                </span>
-              </dd>
-              <dt>Campaign</dt>
-              <dd>{CAMPAIGN_FOR_LEAD[lead.id] ?? CAMPAIGNS[1].name}</dd>
-              <dt>Owner</dt>
-              <dd>{OWNERS[lead.own]}</dd>
-            </dl>
-            <ul className="sigs">
-              {lead.sig.map((s) => (
-                <li key={s}>
-                  <span>{SIGNAL_LABEL[s]}</span>
-                  <span className="p">
-                    {SIGNAL_SCORE[s] >= 0 ? "+" : ""}
-                    {SIGNAL_SCORE[s]}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <Link className="btn line block" href="/dashboard/leads">
-              Open lead
-            </Link>
-          </aside>
+
+            <section className="convo pane">
+              {thread ? (
+                <>
+                  <div className="convo-h">
+                    <button className="ib back" aria-label="Back to conversations" onClick={() => setOpen(false)}>
+                      <BackIcon />
+                    </button>
+                    <Avatar name={thread.leadName} />
+                    <div>
+                      <b>{thread.leadName}</b>
+                      <small>
+                        {thread.role} · {thread.company}
+                      </small>
+                    </div>
+                    <div className="acts">
+                      <Link className="btn sm line" href="/dashboard/leads">
+                        Open lead
+                      </Link>
+                    </div>
+                  </div>
+
+                  <div className="msgs" aria-busy={!detail}>
+                    {!detail && (
+                      <p className="empty" role="status">
+                        Loading messages…
+                      </p>
+                    )}
+                    {detail && "error" in detail && (
+                      <p className="empty" role="alert">
+                        {detail.error}{" "}
+                        <button className="sortb" onClick={retryDetail}>
+                          Retry
+                        </button>
+                      </p>
+                    )}
+                    {detail && "messages" in detail && detail.messages.length === 0 && (
+                      <p className="empty">No messages in this conversation yet.</p>
+                    )}
+                    {detail &&
+                      "messages" in detail &&
+                      detail.messages.map((m) => (
+                        <div className={"msg " + (m.from === "us" ? "me" : "them")} key={m.id}>
+                          <div className="meta">
+                            {m.from === "us" ? "You" : first} · {CHANNEL[toChannelKey(m.channel)].name} ·{" "}
+                            {when(m.sentAt)}
+                          </div>
+                          <div className="bubble">{m.body}</div>
+                        </div>
+                      ))}
+                  </div>
+
+                  <div className="composer">
+                    <textarea
+                      className="ta"
+                      aria-label="Reply"
+                      placeholder="Replying isn't available yet."
+                      disabled={!SENDING_ENABLED}
+                    />
+                    <div className="f">
+                      {!SENDING_ENABLED && (
+                        <span className="muted" style={{ fontSize: 12.5 }}>
+                          {SENDING_OFF_NOTE}
+                        </span>
+                      )}
+                      <span className="sp" />
+                      <button className="btn pri" disabled={!SENDING_ENABLED}>
+                        Send
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                threads.length > 0 && <p className="empty">Select a conversation to read it.</p>
+              )}
+            </section>
+
+            <aside className="ctx pane">
+              {thread && (
+                <>
+                  <div style={{ display: "grid", gap: 6, justifyItems: "start" }}>
+                    <Avatar name={thread.leadName} size="lg" />
+                    <b style={{ fontSize: 15 }}>{thread.leadName}</b>
+                    <span className="muted" style={{ fontSize: 12.5 }}>
+                      {thread.role} · {thread.company}
+                    </span>
+                  </div>
+                  <dl>
+                    <dt>Score</dt>
+                    <dd>
+                      <span className={"score " + scoreBand(thread.score)}>{thread.score}</span>
+                    </dd>
+                    <dt>Stage</dt>
+                    <dd>
+                      <span className="stage">
+                        <i style={{ background: STAGE_COLOR[toStageLabel(thread.stage)] }} />
+                        {toStageLabel(thread.stage)}
+                      </span>
+                    </dd>
+                    <dt>Campaign</dt>
+                    <dd>{thread.campaignName ?? "—"}</dd>
+                    <dt>Owner</dt>
+                    <dd>{thread.ownerName || "—"}</dd>
+                  </dl>
+                  {thread.signals.length > 0 && (
+                    <ul className="sigs">
+                      {thread.signals.map((s) => (
+                        <li key={s.label}>
+                          <span>{s.label}</span>
+                          <span className="p">
+                            {s.points >= 0 ? "+" : ""}
+                            {s.points}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <Link className="btn line block" href="/dashboard/leads">
+                    Open lead
+                  </Link>
+                </>
+              )}
+            </aside>
+          </div>
         </div>
       </div>
     </div>

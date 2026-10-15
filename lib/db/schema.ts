@@ -193,6 +193,11 @@ export const leads = pgTable(
     title: text("title").notNull().default(""),
     phone: text("phone"),
     email: text("email"),
+    /** Other places this person can be reached, filled by uploads. Normalised like `phone`/`email`. */
+    whatsapp: text("whatsapp"),
+    linkedin: text("linkedin"),
+    /** Columns of an uploaded file with no field of their own, kept so nothing is dropped. */
+    extra: jsonb("extra").notNull().default({}),
     stage: leadStageEnum("stage").notNull().default("reaching"),
     score: integer("score").notNull().default(0),
     source: leadSourceEnum("source").notNull().default("form"),
@@ -242,6 +247,146 @@ export const workflows = pgTable(
     index("workflows_workspace_idx").on(t.workspaceId),
     uniqueIndex("workflows_campaign_key").on(t.campaignId),
   ],
+);
+
+/* ------------------------------------------------- uploads and segments -- */
+
+/**
+ * A file the user has uploaded but not yet saved as a segment. Parsed once, on the server, and kept
+ * here rather than in process memory: serverless instances do not share memory, so a map in the
+ * module would lose the upload between the preview request and the save request. Rows older than an
+ * hour are swept whenever a new upload arrives.
+ */
+export const uploads = pgTable(
+  "uploads",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    fileSize: integer("file_size").notNull(),
+    headers: jsonb("headers").notNull(),
+    rows: jsonb("rows").notNull(),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("uploads_workspace_idx").on(t.workspaceId), index("uploads_created_idx").on(t.createdAt)],
+);
+
+/** One saved upload. The leads it brought in are linked through `segment_leads`. */
+export const segments = pgTable(
+  "segments",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    fileName: text("file_name").notNull(),
+    fileSize: integer("file_size").notNull(),
+    /** The column the user mapped to each attribute. */
+    mapping: jsonb("mapping").notNull().default({}),
+    totalRows: integer("total_rows").notNull(),
+    reachableRows: integer("reachable_rows").notNull(),
+    /** Per-channel reachable/invalid/blank counts, as the summary step showed them. */
+    channels: jsonb("channels").notNull().default([]),
+    profilesCreated: integer("profiles_created").notNull().default(0),
+    profilesMerged: integer("profiles_merged").notNull().default(0),
+    /** Rows left out because the person is already in a journey in another campaign. */
+    excludedInJourney: integer("excluded_in_journey").notNull().default(0),
+    errorCount: integer("error_count").notNull().default(0),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("segments_workspace_idx").on(t.workspaceId)],
+);
+
+/** A person can belong to several segments without being stored twice. */
+export const segmentLeads = pgTable(
+  "segment_leads",
+  {
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    segmentId: text("segment_id")
+      .notNull()
+      .references(() => segments.id, { onDelete: "cascade" }),
+    leadId: text("lead_id")
+      .notNull()
+      .references(() => leads.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.segmentId, t.leadId] }), index("segment_leads_lead_idx").on(t.leadId)],
+);
+
+/* ------------------------------------------- org-level channel accounts -- */
+
+/**
+ * A LinkedIn account or a mailbox the **workspace** owns. Accounts belong to the org, not to a
+ * campaign: any number of campaigns can send from the same one, through `campaign_accounts`. The
+ * channel-specific knobs (daily caps, warm-up day, health, provider) live in `settings` because
+ * they differ per channel and change often; what every account has is typed.
+ */
+export const channelAccounts = pgTable(
+  "channel_accounts",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    /** Only `linkedin` and `email` can be connected today; the rest are roadmap. */
+    channel: channelEnum("channel").notNull(),
+    /** Display name: the person for a LinkedIn seat, the mailbox label for email. */
+    name: text("name").notNull(),
+    /** Profile URL for LinkedIn, address for email. */
+    handle: text("handle").notNull(),
+    /** `healthy`, `signed_out`, `warming`, `warm`: what the Configuration screen reports. */
+    state: text("state").notNull().default("healthy"),
+    settings: jsonb("settings").notNull().default({}),
+    /** Invented at signup alongside the sample campaign; removed with it. */
+    isSample: boolean("is_sample").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("channel_accounts_workspace_idx").on(t.workspaceId),
+    uniqueIndex("channel_accounts_handle_key").on(t.workspaceId, t.channel, t.handle),
+  ],
+);
+
+/** Which campaigns send from which account. Many to many, for both channels. */
+export const campaignAccounts = pgTable(
+  "campaign_accounts",
+  {
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => channelAccounts.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.campaignId, t.accountId] }), index("campaign_accounts_account_idx").on(t.accountId)],
+);
+
+/** A domain the workspace sends email from, with the DNS authentication state of each record. */
+export const sendingDomains = pgTable(
+  "sending_domains",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    host: text("host").notNull(),
+    spf: boolean("spf").notNull().default(false),
+    dkim: boolean("dkim").notNull().default(false),
+    dmarc: boolean("dmarc").notNull().default(false),
+    isSample: boolean("is_sample").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("sending_domains_host_key").on(t.workspaceId, t.host)],
 );
 
 export const threads = pgTable(
@@ -356,9 +501,14 @@ export const dailyRollups = pgTable(
     replied: integer("replied").notNull().default(0),
     positive: integer("positive").notNull().default(0),
     meetings: integer("meetings").notNull().default(0),
+    /**
+     * Illustrative figures belonging to the sample campaign. Part of the key so the engine's real
+     * counts for the same day and channel never merge into (or get deleted with) the sample's.
+     */
+    isSample: boolean("is_sample").notNull().default(false),
   },
   (t) => [
-    primaryKey({ columns: [t.workspaceId, t.day, t.channel] }),
+    primaryKey({ columns: [t.workspaceId, t.day, t.channel, t.isSample] }),
     index("daily_rollups_workspace_day_idx").on(t.workspaceId, t.day),
   ],
 );

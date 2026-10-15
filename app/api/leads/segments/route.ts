@@ -3,17 +3,18 @@
  * POST /api/leads/segments — saves a validated upload as a segment.
  *
  * The POST re-validates the file server-side rather than trusting the counts the
- * browser showed, then merges every reachable row into the lead profiles:
- * matching on email, mobile, WhatsApp or LinkedIn in that order, filling in
- * whatever the existing profile was missing.
+ * browser showed. People already in a journey in another campaign are left out;
+ * every other reachable row is merged into the workspace's leads, matching on
+ * email, mobile, WhatsApp or LinkedIn in that order and filling in whatever the
+ * existing lead was missing. `consent: true` is the user's attestation that the
+ * people in the file may be contacted; it applies to leads this upload creates.
  */
 
 import { getRepository } from "@/lib/data";
 import { fail, json } from "@/lib/http";
 import { requestCtx } from "@/lib/leads/ctx";
-import { checkPhone } from "@/lib/leads/phone";
-import { MAX_DESCRIPTION, MAX_ERRORS, readMapping } from "@/lib/leads/upload";
-import { validateUpload } from "@/lib/leads/validation";
+import { analyseUpload } from "@/lib/leads/analyse";
+import { MAX_DESCRIPTION, readMapping } from "@/lib/leads/upload";
 
 export async function GET() {
   const ctx = await requestCtx();
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
   if (!ctx) return fail("unauthenticated", "Sign in to upload leads.", 401);
 
   const body = (await request.json().catch(() => null)) as
-    | { uploadId?: unknown; name?: unknown; description?: unknown; mapping?: unknown }
+    | { uploadId?: unknown; name?: unknown; description?: unknown; mapping?: unknown; consent?: unknown }
     | null;
 
   const uploadId = typeof body?.uploadId === "string" ? body.uploadId : "";
@@ -44,29 +45,26 @@ export async function POST(request: Request) {
   const upload = await repo.getUpload(ctx, uploadId);
   if (!upload) return fail("not_found", "That upload is no longer available. Upload the file again.", 404);
 
-  const summary = validateUpload(upload.table.headers, upload.table.rows, mapping, checkPhone);
-  const reachable = summary.leads.filter((lead) => lead.email || lead.mobile || lead.whatsapp || lead.linkedin);
-  if (!reachable.length) return fail("no_reachable_leads", "No row in that file is reachable on a mapped channel.", 422);
+  const { report, leads } = await analyseUpload(repo, ctx, upload.table, mapping);
+  if (!leads.length) {
+    return fail(
+      "no_reachable_leads",
+      report.journey.excluded
+        ? "Every reachable row in that file is already in a journey in another campaign."
+        : "No row in that file is reachable on a mapped channel.",
+      422,
+    );
+  }
 
   const saved = await repo.createSegment(ctx, {
     uploadId,
     name,
     description,
     mapping,
-    report: {
-      totalRows: summary.totalRows,
-      reachableRows: summary.reachableRows,
-      channels: summary.channels.map(({ attribute, column, reachable: ok, invalid, blank }) => ({
-        attribute,
-        column,
-        reachable: ok,
-        invalid,
-        blank,
-      })),
-      errors: summary.errors.slice(0, MAX_ERRORS),
-      errorCount: summary.errors.length,
-    },
-    leads: reachable,
+    report,
+    leads,
+    // Only an explicit `true` counts. Anything else leaves new leads without consent.
+    consent: body?.consent === true,
   });
   if (!saved) return fail("not_found", "That upload is no longer available. Upload the file again.", 404);
 

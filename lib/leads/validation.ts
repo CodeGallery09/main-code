@@ -180,6 +180,27 @@ export function validateUpload(
   return { totalRows: rows.length, reachableRows, channels, errors, leads };
 }
 
+/**
+ * The same summary with some rows taken out — used for people already in another campaign, who are
+ * not part of the segment. Counts of reachable rows drop by the entries those rows contributed;
+ * `totalRows` and the error log stay as the file was, since they describe the file, not the segment.
+ */
+export function withoutRows(summary: UploadSummary, rows: ReadonlySet<number>): UploadSummary {
+  if (!rows.size) return summary;
+  const dropped = summary.leads.filter((lead) => rows.has(lead.row));
+  const channels = summary.channels.map((channel) => ({
+    ...channel,
+    reachable: channel.reachable - dropped.filter((lead) => lead[channel.attribute]).length,
+  }));
+  const leads = summary.leads.filter((lead) => !rows.has(lead.row));
+  return {
+    ...summary,
+    channels,
+    leads,
+    reachableRows: leads.filter((l) => l.email || l.mobile || l.whatsapp || l.linkedin).length,
+  };
+}
+
 const BLANK_REASON: Record<AttributeKey, string> = {
   email: "Email is blank",
   mobile: "Mobile number is blank",

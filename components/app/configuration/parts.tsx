@@ -214,14 +214,14 @@ export function Issue({ children, soft }: { children: React.ReactNode; soft?: bo
 }
 
 /**
- * The note every tab carries: this screen is a prototype, so edits last for
- * the length of the visit and the figures are sample data, not measurements.
+ * The note on the tabs whose switches are not stored: they show the defaults a workspace starts
+ * with, edits last for the length of the visit, and nothing enforces them yet.
  */
-export function DemoNote({ what = "figures" }: { what?: string }) {
+export function DemoNote({ what = "settings" }: { what?: string }) {
   return (
     <p className="cf-nocontent">
-      Illustrative demo data — the {what} here are samples, not measurements, and changes last for
-      this visit only. There is no configuration store behind this screen yet.
+      The {what} are defaults you can try out. Changes to them last for this visit only, and nothing
+      enforces them yet because nothing sends.
     </p>
   );
 }
@@ -236,8 +236,8 @@ export function PlannedNote({ channel }: { channel: string }) {
   return (
     <div className="warnbox">
       <b>{channel} is planned, not connected</b>
-      These settings are a preview of how {channel} will be configured. Nothing sends on this channel
-      today, and nothing here is saved.
+      {channel} isn&apos;t available yet. Nothing sends on this channel today, and there is nothing to
+      configure.
     </div>
   );
 }

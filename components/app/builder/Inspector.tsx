@@ -8,7 +8,6 @@ import {
   CHECKS,
   GEOS,
   GOALS,
-  LISTS,
   MERGE_VARS,
   SIZES,
   STEPS,
@@ -112,12 +111,12 @@ export function Inspector({
   onClose,
   onDelete,
   onDuplicate,
-  lists = LISTS,
+  lists = [],
   audienceKey,
 }: {
   node: StepNode;
   issue?: string;
-  /** Uploaded segments first, then the demo lists. */
+  /** The audiences the first step can start from. */
   lists?: AudienceList[];
   audienceKey?: string;
   onChange: (patch: StepData) => void;
@@ -129,7 +128,6 @@ export function Inspector({
   const kind = node.kind;
   const own = lists.filter((l) => l.src === "This campaign" || l.src === "Workspace");
   const uploaded = lists.filter((l) => l.src === "Uploaded file");
-  const demo = lists.filter((l) => l.src !== "Uploaded file" && !own.includes(l));
   const attribute = STEP_ATTRIBUTE[kind];
   const audience = lists.find((l) => l.k === (kind === "audience" ? d.list : audienceKey));
   const column = attribute && audience && audience.columns ? audience.columns[attribute] : undefined;
@@ -201,20 +199,13 @@ export function Inspector({
                     ))}
                   </optgroup>
                 )}
-                <optgroup label="Demo lists">
-                  {demo.map((l) => (
-                    <option value={l.k} key={l.k}>
-                      {l.name} · {l.n}
-                    </option>
-                  ))}
-                </optgroup>
               </select>
               <span className="hint">
                 {audience && audience.src === "Uploaded file"
                   ? "Counted from the leads that file can actually reach, not its row count."
                   : audience && own.includes(audience)
                     ? "Counted live from the leads in your workspace."
-                    : "Demo lists are illustrative. Pick your own leads, or upload a file from Leads."}
+                    : "Pick the leads in this campaign, all your leads, or a file you uploaded from Leads."}
               </span>
             </div>
 

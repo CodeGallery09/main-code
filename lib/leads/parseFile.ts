@@ -7,7 +7,7 @@
  */
 
 import ExcelJS from "exceljs";
-import { ACCEPTED_EXTENSIONS, MAX_UPLOAD_BYTES } from "./limits";
+import { ACCEPTED_EXTENSIONS, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "./limits";
 import { toTable, parseCsv, type Table } from "./table";
 
 export type ParseFailure = { code: "too_large" | "bad_type" | "empty" | "unreadable"; message: string };
@@ -18,7 +18,7 @@ export function checkFile(name: string, size: number): ParseFailure | null {
     return { code: "bad_type", message: "Only .csv and .xlsx files can be uploaded." };
   }
   if (size > MAX_UPLOAD_BYTES) {
-    return { code: "too_large", message: "That file is over the 64 MB limit." };
+    return { code: "too_large", message: `That file is over the ${MAX_UPLOAD_MB} MB limit.` };
   }
   if (size === 0) return { code: "empty", message: "That file is empty." };
   return null;

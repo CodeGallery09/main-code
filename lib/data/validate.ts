@@ -308,3 +308,78 @@ export function validateMessageBody(input: unknown): Validation<{ body: string }
   }
   return { ok: true, data: { body } };
 }
+
+/* --------------------------------------------------------------- accounts -- */
+
+/** The ceilings the Configuration sliders are drawn against; the server enforces the same. */
+export const LINKEDIN_LIMITS = { connections: 30, messages: 100, visits: 120 } as const;
+export const EMAIL_CAP_MAX = 500;
+
+export type AccountSettingsPatch = {
+  connections?: number;
+  messages?: number;
+  visits?: number;
+  cap?: number;
+  rotate?: boolean;
+};
+
+const wholeNumber = (value: unknown, max: number): number | null =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= max ? value : null;
+
+/**
+ * Only the dials a user can turn. Identity (handle, name), state and health are facts about the
+ * connected account, not preferences, so they are never accepted from a request body.
+ */
+export function validateAccountPatch(
+  channel: "linkedin" | "email",
+  input: unknown,
+): Validation<AccountSettingsPatch> {
+  if (!isObject(input)) return { ok: false, errors: { _: "Expected an object." } };
+  const errors: ValidationErrors = {};
+  const out: AccountSettingsPatch = {};
+
+  const numeric = (key: "connections" | "messages" | "visits" | "cap", max: number, label: string) => {
+    if (input[key] === undefined) return;
+    const value = wholeNumber(input[key], max);
+    if (value === null) errors[key] = `${label} must be a whole number from 0 to ${max}.`;
+    else out[key] = value;
+  };
+
+  if (channel === "linkedin") {
+    numeric("connections", LINKEDIN_LIMITS.connections, "Connection requests");
+    numeric("messages", LINKEDIN_LIMITS.messages, "Messages");
+    numeric("visits", LINKEDIN_LIMITS.visits, "Profile visits");
+  } else {
+    numeric("cap", EMAIL_CAP_MAX, "The daily cap");
+    if (input.rotate !== undefined) {
+      if (typeof input.rotate !== "boolean") errors.rotate = "Rotate must be on or off.";
+      else out.rotate = input.rotate;
+    }
+  }
+
+  // Keys that belong to the other channel are mistakes, not no-ops.
+  const allowed =
+    channel === "linkedin" ? ["connections", "messages", "visits"] : ["cap", "rotate"];
+  for (const key of Object.keys(input)) {
+    if (!allowed.includes(key)) errors[key] = "That setting can't be changed here.";
+  }
+
+  if (Object.keys(errors).length) return { ok: false, errors };
+  if (Object.keys(out).length === 0) return { ok: false, errors: { _: "Send at least one setting to change." } };
+  return { ok: true, data: out };
+}
+
+/** A list of campaign ids, deduplicated; whether they exist is the repository's check. */
+export function validateCampaignIds(input: unknown): Validation<string[]> {
+  if (!isObject(input) || !Array.isArray(input.campaignIds)) {
+    return { ok: false, errors: { campaignIds: "Send the campaigns as a list." } };
+  }
+  const ids = new Set<string>();
+  for (const entry of input.campaignIds) {
+    const id = text(entry);
+    if (!id || id.length > 64) return { ok: false, errors: { campaignIds: "Each campaign must be an id." } };
+    ids.add(id);
+  }
+  if (ids.size > 200) return { ok: false, errors: { campaignIds: "Too many campaigns." } };
+  return { ok: true, data: [...ids] };
+}

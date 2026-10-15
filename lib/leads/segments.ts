@@ -32,9 +32,11 @@ export type Segment = {
   /** Rows reachable on at least one mapped channel. */
   reachableRows: number;
   channels: SegmentChannel[];
-  /** How the rows landed against profiles that already existed. */
+  /** How the rows landed against leads that already existed. */
   profilesCreated: number;
   profilesMerged: number;
+  /** Rows left out because the person is already in a journey in another campaign. */
+  excludedInJourney: number;
   errorCount: number;
   createdAt: string;
   createdBy: string;
@@ -52,6 +54,14 @@ export type UploadPreview = {
   suggestedMapping: Mapping;
 };
 
+/** The warning the summary step shows when the file contains people already in a campaign. */
+export type JourneyWarning = {
+  excluded: number;
+  /** 1-based file rows, capped for transport. */
+  rows: number[];
+  byCampaign: { campaignId: string; name: string; count: number }[];
+};
+
 /** What the summary step shows before the user submits. */
 export type MappingReport = {
   totalRows: number;
@@ -60,6 +70,8 @@ export type MappingReport = {
   /** Capped for transport; `errorCount` is the real total. */
   errors: RowError[];
   errorCount: number;
+  /** Rows that will be left out, and why. Counts above already exclude them. */
+  journey: JourneyWarning;
 };
 
 /** Reachable count for a channel, which is what a channel node sends to. */

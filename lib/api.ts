@@ -6,7 +6,10 @@
  */
 
 import type {
+  AccountsSnapshot,
   Analytics,
+  Badges,
+  ChannelAccount,
   Campaign,
   CampaignStatus,
   Lead,
@@ -21,7 +24,7 @@ import type {
 } from "@/lib/data/types";
 import type { CampaignTotals } from "@/lib/data/repository";
 import type { WorkflowGraph } from "@/lib/app/workflow";
-import type { CampaignPatch, LeadPatch } from "@/lib/data/validate";
+import type { AccountSettingsPatch, CampaignPatch, LeadPatch } from "@/lib/data/validate";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
 import type { Mapping } from "@/lib/leads/validation";
 
@@ -138,6 +141,22 @@ export const api = {
       method: "DELETE",
     }),
 
+  accounts: () => request<AccountsSnapshot>("/api/accounts"),
+
+  updateAccount: (id: string, patch: AccountSettingsPatch) =>
+    request<{ account: ChannelAccount }>(`/api/accounts/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+
+  setAccountCampaigns: (id: string, campaignIds: string[]) =>
+    request<{ account: ChannelAccount }>(`/api/accounts/${encodeURIComponent(id)}/campaigns`, {
+      method: "PUT",
+      body: JSON.stringify({ campaignIds }),
+    }),
+
+  badges: () => request<Badges>("/api/badges"),
+
   leads: (
     params: {
       q?: string;
@@ -165,8 +184,15 @@ export const api = {
   deleteLead: (id: string) =>
     request<{ deleted: string }>(`/api/leads/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
-  threads: (params: { filter?: string; q?: string } = {}) =>
-    request<{ threads: Thread[] }>(`/api/threads${qs(params)}`),
+  /**
+   * Built by hand, not through `qs()`: that helper drops the value "all" as a default, but for
+   * threads "all" is the opt-in and "to-reply" is what the server assumes when it is missing.
+   */
+  threads: (params: { filter?: "to-reply" | "all"; q?: string } = {}) => {
+    const search = new URLSearchParams({ filter: params.filter ?? "to-reply" });
+    if (params.q) search.set("q", params.q);
+    return request<{ threads: Thread[] }>(`/api/threads?${search}`);
+  },
 
   thread: (id: string) =>
     request<{ thread: Thread; messages: Message[] }>(`/api/threads/${encodeURIComponent(id)}`),
@@ -195,8 +221,15 @@ export const api = {
 
   segments: () => request<{ segments: Segment[] }>("/api/leads/segments"),
 
-  createSegment: (input: { uploadId: string; name: string; description: string; mapping: Mapping }) =>
-    request<{ segment: Segment; profilesCreated: number; profilesMerged: number }>("/api/leads/segments", {
+  createSegment: (input: {
+    uploadId: string;
+    name: string;
+    description: string;
+    mapping: Mapping;
+    /** The user's attestation that the people in the file may be contacted. */
+    consent: boolean;
+  }) =>
+    request<{ segment: Segment; profilesCreated: number; profilesMerged: number; excluded: number }>("/api/leads/segments", {
       method: "POST",
       body: JSON.stringify(input),
     }),

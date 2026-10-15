@@ -78,3 +78,67 @@ test("the funnel figures are internally consistent", () => {
 test("there are enough leads to show the table, few enough to read at a glance", () => {
   assert.ok(SAMPLE_LEADS.length >= 5 && SAMPLE_LEADS.length <= 12);
 });
+
+/* ------------------------------------------- the rest of the sample world -- */
+
+import { SAMPLE_ACCOUNTS, SAMPLE_ROLLUPS, SAMPLE_TASKS, SAMPLE_THREADS } from "../lib/data/sample.ts";
+
+const sum = (key) => SAMPLE_ROLLUPS.reduce((total, row) => total + row[key], 0);
+
+test("the campaign's figures are derived from the rollups, so every screen agrees", () => {
+  assert.equal(SAMPLE_CAMPAIGN.delivered, sum("reached"));
+  assert.equal(SAMPLE_CAMPAIGN.openRate, Number(((sum("engaged") / sum("reached")) * 100).toFixed(1)));
+  assert.equal(SAMPLE_CAMPAIGN.replyRate, Number(((sum("replied") / sum("reached")) * 100).toFixed(1)));
+});
+
+test("the funnel only narrows: reached >= engaged >= replied >= positive >= meetings", () => {
+  assert.ok(sum("reached") >= sum("engaged"));
+  assert.ok(sum("engaged") >= sum("replied"));
+  assert.ok(sum("replied") >= sum("positive"));
+  assert.ok(sum("positive") >= sum("meetings"));
+  for (const row of SAMPLE_ROLLUPS) {
+    assert.ok(row.reached >= row.engaged && row.engaged >= row.replied, `day ${row.daysAgo}`);
+  }
+});
+
+test("rollups fall inside the campaign's life, on the channels it uses, one row per day and channel", () => {
+  const seen = new Set();
+  for (const row of SAMPLE_ROLLUPS) {
+    assert.ok(row.daysAgo >= 0 && row.daysAgo <= SAMPLE_CAMPAIGN.startedDaysAgo, `daysAgo ${row.daysAgo}`);
+    assert.ok(SAMPLE_CAMPAIGN.channels.includes(row.channel));
+    const key = `${row.daysAgo}:${row.channel}`;
+    assert.ok(!seen.has(key), `duplicate ${key}`);
+    seen.add(key);
+  }
+});
+
+test("every thread and task is about a sample lead, and none about the lead without consent", () => {
+  const byEmail = new Map(SAMPLE_LEADS.map((l) => [l.email, l]));
+  for (const thread of SAMPLE_THREADS) {
+    const lead = byEmail.get(thread.leadEmail);
+    assert.ok(lead, thread.leadEmail);
+    assert.ok(lead.consent, `${lead.name} has a thread but no consent`);
+    assert.ok(thread.messages.length >= 2);
+  }
+  for (const task of SAMPLE_TASKS) assert.ok(byEmail.has(task.leadEmail), task.leadEmail);
+});
+
+test("a thread needing a reply ends with a message from the lead", () => {
+  for (const thread of SAMPLE_THREADS.filter((t) => t.needsReply)) {
+    const latest = [...thread.messages].sort((a, b) => a.hoursAgo - b.hoursAgo)[0];
+    assert.equal(latest.from, "them", thread.leadEmail);
+  }
+});
+
+test("sample accounts and domain use the reserved .example domain", () => {
+  assert.match(SAMPLE_ACCOUNTS.email.handle, /@[^@]+\.example$/);
+  assert.match(SAMPLE_ACCOUNTS.domain.host, /\.example$/);
+});
+
+test("sample messages never speak as a named real person", () => {
+  for (const thread of SAMPLE_THREADS) {
+    for (const message of thread.messages.filter((m) => m.from === "us")) {
+      assert.doesNotMatch(message.body, /\[|\{|Aarav/);
+    }
+  }
+});

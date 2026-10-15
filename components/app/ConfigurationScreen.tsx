@@ -1,81 +1,95 @@
 "use client";
 
 /**
- * The Configuration screen: everything a workspace sets up once, so campaigns
- * can run. Nine tabs — an overview of what is broken, one per channel, then the
- * variables, sending rules and compliance that apply across all of them.
+ * The Configuration screen: everything a workspace sets up once, so campaigns can run.
  *
- * Edits live in component state for the length of the visit; there is no
- * configuration store behind it yet, and every tab says so.
+ * LinkedIn accounts and mailboxes belong to the **workspace**, not to a campaign: connect one and
+ * any number of campaigns can send from it. This screen therefore has no campaign scope. It loads
+ * the workspace's accounts and campaigns, derives the setup checks from them, and hands each tab
+ * what it needs.
+ *
+ * Account dials (daily caps, rotation) and which campaigns use an account are saved. The rule
+ * switches on the other tabs are not stored yet, and say so.
  */
 
-import { useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Screen } from "./AppShell";
 import { Tabs } from "./ui";
-import { CheckIcon } from "./icons";
-import { CONFIG_TABS, TAB_ISSUES, type ConfigTab } from "@/lib/app/configuration";
-import { CAMPAIGNS } from "@/lib/app/campaigns";
+import { SampleBanner } from "./SampleBanner";
+import { api } from "@/lib/api";
+import { CONFIG_TABS, type ConfigTab } from "@/lib/app/configuration";
+import { setupChecks, tabIssues } from "@/lib/data/setup";
+import type { AccountsSnapshot, Campaign } from "@/lib/data/types";
 import { Overview } from "./configuration/Overview";
 import { CallsTab, EmailTab, LinkedInTab, SmsTab, WhatsAppTab } from "./configuration/ChannelTabs";
 import { ComplianceTab, SendingRulesTab, VariablesTab } from "./configuration/RuleTabs";
 
+const EMPTY: AccountsSnapshot = { accounts: [], domains: [] };
+
 export function ConfigurationScreen() {
   const [tab, setTab] = useState<ConfigTab>("overview");
-  const [scope, setScope] = useState<number | "all">("all");
-  const scopedCampaign = scope === "all" ? null : CAMPAIGNS.find((c) => c.id === scope) ?? null;
+  const [snapshot, setSnapshot] = useState<AccountsSnapshot>(EMPTY);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const [accounts, list] = await Promise.all([api.accounts(), api.campaigns()]);
+      setSnapshot(accounts);
+      setCampaigns(list.items);
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not load the configuration.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const checks = useMemo(() => setupChecks(snapshot), [snapshot]);
+  const issues = useMemo(() => tabIssues(checks), [checks]);
 
   return (
     <Screen title="Configuration">
       <div className="cf-main">
+        <SampleBanner onRemoved={() => void load()} />
+
         <div className="cf-head between">
           <Tabs<ConfigTab>
             value={tab}
             onChange={setTab}
-            items={CONFIG_TABS.map(([k, label]) => [k, label, TAB_ISSUES[k] ?? null])}
+            items={CONFIG_TABS.map(([k, label]) => [k, label, k in issues ? (issues as Record<string, number>)[k] : null])}
           />
-          <span className="row" style={{ gap: 10 }}>
-            <select
-              className="sel pill"
-              aria-label="Scope settings to a campaign"
-              value={scope}
-              onChange={(e) => setScope(e.target.value === "all" ? "all" : Number(e.target.value))}
-            >
-              <option value="all">All campaigns</option>
-              {CAMPAIGNS.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            {scopedCampaign?.type === "multi" && (
-              <Link className="btn sm" href={`/dashboard/workflows/${scopedCampaign.id}`}>
-                Open workflow
-              </Link>
-            )}
-            <span className="cf-saved on">
-              <CheckIcon />
-              Changes last for this visit
-            </span>
-          </span>
         </div>
 
-        {scopedCampaign && (
-          <p className="muted" style={{ fontSize: 12.5, marginTop: -6 }}>
-            Showing LinkedIn and email account assignment for <b>{scopedCampaign.name}</b>. Sending rules,
-            variables and compliance apply workspace-wide, whichever campaign is selected.
+        {error && (
+          <p className="empty" role="status">
+            {error}{" "}
+            <button className="sortb" onClick={() => void load()}>
+              Retry
+            </button>
           </p>
         )}
 
-        {tab === "overview" && <Overview go={setTab} />}
-        {tab === "li" && <LinkedInTab scopeCampaignId={scope === "all" ? null : scope} />}
-        {tab === "mail" && <EmailTab scopeCampaignId={scope === "all" ? null : scope} />}
-        {tab === "wa" && <WhatsAppTab />}
-        {tab === "call" && <CallsTab />}
-        {tab === "sms" && <SmsTab />}
-        {tab === "variables" && <VariablesTab />}
-        {tab === "sending" && <SendingRulesTab />}
-        {tab === "compliance" && <ComplianceTab />}
+        {loading ? (
+          <p className="empty">Loading your configuration…</p>
+        ) : (
+          <>
+            {tab === "overview" && <Overview go={setTab} checks={checks} snapshot={snapshot} />}
+            {tab === "li" && <LinkedInTab snapshot={snapshot} campaigns={campaigns} onChange={load} />}
+            {tab === "mail" && <EmailTab snapshot={snapshot} campaigns={campaigns} onChange={load} />}
+            {tab === "wa" && <WhatsAppTab />}
+            {tab === "call" && <CallsTab />}
+            {tab === "sms" && <SmsTab />}
+            {tab === "variables" && <VariablesTab />}
+            {tab === "sending" && <SendingRulesTab />}
+            {tab === "compliance" && <ComplianceTab />}
+          </>
+        )}
       </div>
     </Screen>
   );

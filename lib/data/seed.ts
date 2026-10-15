@@ -7,6 +7,8 @@
  */
 
 import type {
+  ChannelAccount,
+  SendingDomain,
   Campaign,
   ChannelQuota,
   Lead,
@@ -829,3 +831,67 @@ export function buildTrend(days = 90, endISO = "2026-10-12T00:00:00.000Z"): Tren
   }
   return out;
 }
+
+/**
+ * The demo workspace's channel accounts, for the no-database demo mode only. A real workspace gets
+ * its accounts from the database; these are invented people and domains (`.co`, `.io`, `.com`
+ * placeholders), shown in the dev deployment so the Configuration screen has something to explain.
+ */
+export const ACCOUNTS: ChannelAccount[] = [
+  {
+    id: "a_aarav",
+    channel: "linkedin",
+    name: "Aarav Kapoor",
+    handle: "linkedin.com/in/aarav-kapoor",
+    state: "healthy",
+    settings: { connections: 25, messages: 60, visits: 80, inmail: 38 },
+    campaignIds: ["c_netnew", "c_saasboomi"],
+    isSample: false,
+  },
+  {
+    id: "a_neha",
+    channel: "linkedin",
+    name: "Neha Sharma",
+    handle: "linkedin.com/in/neha-sharma-growth",
+    state: "signed_out",
+    settings: { connections: 20, messages: 50, visits: 60, inmail: null },
+    campaignIds: ["c_closedlost"],
+    isSample: false,
+  },
+  {
+    id: "m_aarav",
+    channel: "email",
+    name: "Aarav",
+    handle: "aarav@acme.co",
+    state: "warm",
+    settings: { provider: "Google Workspace", health: 96, cap: 60, rotate: true },
+    campaignIds: ["c_netnew"],
+    isSample: false,
+  },
+  {
+    id: "m_neha",
+    channel: "email",
+    name: "Neha",
+    handle: "neha@acme.co",
+    state: "warm",
+    settings: { provider: "Google Workspace", health: 91, cap: 50, rotate: true },
+    campaignIds: ["c_inbound"],
+    isSample: false,
+  },
+  {
+    id: "m_sales",
+    channel: "email",
+    name: "Sales",
+    handle: "sales@getacme.io",
+    state: "warming",
+    settings: { provider: "Microsoft 365", warmDay: 9, health: 74, cap: 20, rotate: false },
+    campaignIds: [],
+    isSample: false,
+  },
+];
+
+export const DOMAINS: SendingDomain[] = [
+  { id: "d_acme", host: "acme.co", spf: true, dkim: true, dmarc: true, isSample: false },
+  { id: "d_getacme", host: "getacme.io", spf: true, dkim: true, dmarc: false, isSample: false },
+  { id: "d_acmehq", host: "acmehq.com", spf: false, dkim: false, dmarc: false, isSample: false },
+];
