@@ -128,6 +128,15 @@ export function BellIcon(p: IconProps) {
   );
 }
 
+export function SignOutIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M9 4H5a1 1 0 00-1 1v14a1 1 0 001 1h4" />
+      <path d="M16 8l4 4-4 4M20 12H9" />
+    </Icon>
+  );
+}
+
 export function ClockIcon(p: IconProps) {
   return (
     <Icon {...p}>

@@ -2049,3 +2049,8 @@ html, body { background:#FAFAF8 }
 .cf-tile { padding:11px 13px 13px }
 .typecard { padding:18px 18px 16px;min-height:0 }
 .stats, .kpis { margin-bottom:12px }
+
+/* "Sign out" is a <button> styled as a rail item. `.navi` was written for links, so a button
+   needs the browser's own button chrome removed and the rail's type settings restored. */
+button.navi { background:none;border:0;font:inherit;font-weight:500;font-size:14px;cursor:pointer }
+button.navi:disabled { cursor:progress;opacity:.7 }

@@ -66,6 +66,9 @@ export function InboxScreen() {
                   ["all", "All", THREADS.length],
                 ]}
               />
+              {/* These conversations are the demo constants in lib/app/inbox, not this workspace's
+                  messages. Label them so a real account does not mistake them for its own. */}
+              <span className="samp">Illustrative demo data</span>
             </div>
 
             <div className="threads">
