@@ -184,7 +184,7 @@ leads the upload *creates*. It never changes an existing lead's consent.
 ### Workspace screens — `components/app/`
 | File | L | Reads from | Notes |
 |---|---|---|---|
-| `AppShell.tsx` | 405 | `/api/badges` | rail, top bar, mobile tab bar, sign-out. Badges refetch on every navigation |
+| `AppShell.tsx` | 407 | `/api/badges` | rail, top bar, mobile tab bar, sign-out. Badges refetch on every navigation |
 | `HomeScreen.tsx` | 292 | `/api/overview`, `/api/campaigns` | stats, to-dos (completable), campaigns, daily quotas |
 | `InboxScreen.tsx` | 315 | `/api/threads` | read-only: the composer is disabled while `!SENDING_ENABLED` |
 | `LeadsScreen.tsx` + `LeadEditor.tsx` | 592 + 269 | `/api/leads` | full CRUD, server-side filter/sort/page |
@@ -192,7 +192,7 @@ leads the upload *creates*. It never changes an existing lead's consent.
 | `AnalyticsScreen.tsx` | 526 | `/api/analytics`, `/api/campaigns` | Overview / Channels / Campaigns. No per-person or per-campaign daily data exists, so none is shown |
 | `WorkflowsScreen.tsx` | 240 | server props from the repository | library + template picker |
 | `ConfigurationScreen.tsx` + `configuration/` | 96 + ~1340 | `/api/accounts`, `/api/campaigns` | see below |
-| `IntegrationsScreen.tsx` | 416 | `/api/accounts` | provider state is *derived* (`providerView`) |
+| `IntegrationsScreen.tsx` | 264 | `/api/accounts` | one card of collapsible sections (`.intg*` CSS at the end of `app.css`); provider state is *derived* (`providerView`) |
 | `SettingsScreen.tsx` | 227 | `/api/workspace`, `/api/accounts` | channels, domains, members, plan |
 | `SampleBanner.tsx` | 60 | `/api/workspace` | "this workspace includes sample data" + Remove button; renders on every data screen |
 | `ui.tsx` `charts.tsx` `icons.tsx` | 628 | — | shared controls, SVG charts, 24px icons |
@@ -231,7 +231,12 @@ template **creates a draft multichannel campaign + its workflow, then opens the 
 workflow needs a campaign; creating on a GET would let link prefetch create rows). Library
 "in flight"/"meetings" are dashes: nothing has been sent, so there is nothing to report.
 `/dashboard/integrations` (`IntegrationsScreen`, `lib/app/integrations.ts`): only LinkedIn and
-email can connect; every other provider is `state: "planned"` with a disabled primary button.
+email can connect; every other provider is `state: "planned"`. Layout: a search box, then ONE card of
+collapsible sections, each a two-column grid of rows (logo tile, name + pill, description, "+" or
+"Manage"). Providers that are connected or need attention are pulled out of their category into a
+**Connected** section on top (rows show the live detail and a Manage link to Configuration); the
+rest stay under Channels / Calendar / CRM / Developer. "+" opens the explainer drawer. The old
+per-account LinkedIn/DNS panels were removed: Configuration → Mailboxes & domains owns that detail.
 
 **Nothing sends, and the UI says so (`lib/capabilities.ts`).** `SENDING_ENABLED = false` gates every
 path to "live": the builder's Launch/Resume and Test are disabled, the Campaigns switch refuses to
@@ -450,6 +455,13 @@ namespaces, no parameter properties).
 - `Hero`'s `DESKTOP_MQ` media query must match the CSS block in `globals.css`.
 
 ---
+
+- **Sign-out must be a full page load** (`useSignOut()` uses `window.location.assign`, not
+  `router.push`). `app/app.css` is unscoped (it resets `*` and restyles `body`) and Next keeps a
+  visited route's CSS across client-side navigation, so a soft navigation to `/login` rendered the
+  marketing page with the workspace stylesheet still applied (left-aligned, no padding). A fresh
+  document loads only the marketing styles. Same rule for any future jump from the app to a
+  marketing route.
 
 ## 6. Content rules (from the product brief — these are commitments, not preferences)
 

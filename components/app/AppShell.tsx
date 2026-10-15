@@ -284,7 +284,6 @@ export function TopBar({ title }: { title: string }) {
  * Shared by the sidebar item and the top-bar icon so the two can never behave differently.
  */
 function useSignOut() {
-  const router = useRouter();
   const [busy, setBusy] = useState(false);
 
   async function signOut() {
@@ -297,8 +296,11 @@ function useSignOut() {
       window.alert("Couldn't sign you out. Check your connection and try again.");
       return;
     }
-    router.push(LOGIN_HREF);
-    router.refresh();
+    // A full page load, not a client-side navigation: `app.css` is unscoped (it resets every
+    // element's margin and padding and restyles `body`), and Next keeps a visited route's
+    // stylesheet on the page after a client navigation. The marketing page the user lands on would
+    // inherit it and render broken. A fresh document has only the marketing styles.
+    window.location.assign(LOGIN_HREF);
   }
 
   return { busy, signOut };
