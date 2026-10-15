@@ -91,6 +91,16 @@ export function AnalyticsIcon(p: IconProps) {
   );
 }
 
+/** Sliders: the setup a workspace does once, before campaigns run. */
+export function ConfigurationIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+      <path d="M16 7a2 2 0 10-4 0 2 2 0 004 0zM10 17a2 2 0 10-4 0 2 2 0 004 0z" />
+    </Icon>
+  );
+}
+
 export function SettingsIcon(p: IconProps) {
   return (
     <Icon {...p}>
@@ -207,6 +217,7 @@ const GLYPHS: Record<string, string | string[]> = {
   split: ["M12 3v6", "M12 9l-6 6v5M12 9l6 6v5"],
   flag: "M5 21V4M5 4h12l-2 4 2 4H5",
   exit: ["M15 4h4v16h-4", "M10 8l-4 4 4 4M6 12h10"],
+  lock: ["M6 10h12v10H6z", "M9 10V7a3 3 0 016 0v3"],
   plus: "M12 5v14M5 12h14",
   minus: "M5 12h14",
   x: "M6 6l12 12M18 6L6 18",

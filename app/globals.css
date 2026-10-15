@@ -71,8 +71,11 @@
   --color-alert: var(--alert);
   --color-alert-soft: var(--alert-soft);
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", var(--font-body), system-ui, sans-serif;
-  --font-serif: -apple-system, BlinkMacSystemFont, "SF Pro Display", var(--font-body), system-ui, sans-serif; /* name kept for the font-serif utility; it is the bold display face */
-  --font-mono: -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-body), system-ui, sans-serif; /* labels use the system face, like iOS section headers */
+  /* akkari's own headlines are set in mono too (confirmed via its rendered font: weight 500,
+     ui-monospace stack) — not a serif. --font-serif keeps its name (other utilities reference it)
+     but now aliases the mono stack; --font-display (Instrument Serif) stays loaded but unused here. */
+  --font-serif: var(--font-code), "JetBrains Mono", -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-body), system-ui, monospace;
+  --font-mono: var(--font-code), "JetBrains Mono", -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-body), system-ui, monospace; /* akkari-style mono voice for eyebrows, labels and CTAs */
   --shadow-card: var(--shadow-card);
   --shadow-float: var(--shadow-float);
 }
@@ -99,12 +102,12 @@ body {
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(1000px 760px at 6% -8%, rgb(150 182 255 / 0.5), transparent 68%),
-    radial-gradient(880px 700px at 96% 2%, rgb(206 172 255 / 0.42), transparent 70%),
-    radial-gradient(900px 720px at 84% 70%, rgb(140 224 203 / 0.38), transparent 70%),
-    radial-gradient(820px 680px at 0% 78%, rgb(255 198 160 / 0.34), transparent 70%),
-    radial-gradient(700px 560px at 50% 112%, rgb(168 196 255 / 0.4), transparent 70%),
-    linear-gradient(180deg, #f8f9fc, var(--bg));
+    radial-gradient(1000px 760px at 6% -8%, rgb(150 182 255 / 0.16), transparent 68%),
+    radial-gradient(880px 700px at 96% 2%, rgb(206 172 255 / 0.13), transparent 70%),
+    radial-gradient(900px 720px at 84% 70%, rgb(140 224 203 / 0.11), transparent 70%),
+    radial-gradient(820px 680px at 0% 78%, rgb(255 198 160 / 0.15), transparent 70%),
+    radial-gradient(700px 560px at 50% 112%, rgb(168 196 255 / 0.13), transparent 70%),
+    linear-gradient(180deg, #f8f7f3, #f3f1e9);
 }
 
 ::selection {
@@ -131,25 +134,26 @@ body::before {
 }
 
 .eyebrow {
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   font-size: 12.5px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-weight: 500;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
 .display {
   font-family: var(--font-serif);
-  font-weight: 700;
-  letter-spacing: -0.04em;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   line-height: 1.02;
   text-wrap: balance;
 }
 .display em { font-style: normal; color: var(--muted); }
 
-/* The display face (font-serif) is always bold; utilities can still override. */
-.font-serif { font-weight: 700; letter-spacing: -0.035em; }
+/* The display face (font-serif) is medium-weight mono, like akkari's own headlines — a monospace
+   face already reads bold at weight 500, and needs none of a serif's negative tracking. */
+.font-serif { font-weight: 500; letter-spacing: -0.005em; }
 .font-mono { font-weight: 500; font-variant-numeric: tabular-nums; }
 
 /* Liquid glass panes. The material itself lives in the glass skin at the end of
@@ -226,7 +230,14 @@ body::before {
   white-space: nowrap;
 }
 .btn:active { transform: scale(0.97); }
-.btn-primary { color: #fff; }
+.btn-primary {
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .btn-primary:hover { color: #fff; }
 .btn-ghost { color: var(--ink); }
 .btn-ghost:hover { color: var(--accent-ink); }
@@ -301,61 +312,14 @@ body::before {
 /* =====================================================================
    HERO: cards scattered around the headline assemble into one overview
    card as you scroll (desktop). Elsewhere it is a simple static stack.
+   Sits in the normal light scope, on the same colour wash as the rest of
+   the page — the dark photograph trial that used to live here (and the
+   light-on-dark token flip it required) was removed at the user's request.
    ===================================================================== */
-/* Trial: a photograph behind the hero only (a park lake at dusk). The hero
-   runs to the top of the page so the picture is full bleed and the floating
-   navbar has something real to refract — without the pull-up the header takes
-   its own strip of page wallpaper above the photo. Inside the hero the theme
-   flips to its dark scope, so every token below it is the light-on-dark one. */
 .hero {
   position: relative;
-  margin-top: calc(-1 * var(--nav-h));
-  /* Dark scope: utilities and the glass skin both read these. */
-  --ink: #ffffff;
-  --ink-2: rgb(255 255 255 / 0.88);
-  --muted: rgb(255 255 255 / 0.74);
-  --surface: rgb(255 255 255 / 0.9);
-  --surface-2: rgb(255 255 255 / 0.18);
-  --sky: rgb(255 255 255 / 0.5);
-  --line: rgb(255 255 255 / 0.18);
-  --line-strong: rgb(255 255 255 / 0.34);
-  --accent: #ffffff;
-  --accent-ink: #ffffff;
-  --success: #8ff0ab;
-  --success-soft: rgb(143 240 171 / 0.18);
-  --shadow: rgb(0 0 0 / 0.55);
-  /* Dark glass: a thin smoked tint with a bright rim, as the material reads
-     over a dark scene. */
-  --g-tint: rgb(10 18 16 / 0.26);
-  --g-blur: 16px;
-  --g-sat: 150%;
-  --g-rim: inset 0 0 0 0.5px rgb(255 255 255 / 0.34), inset 0 1px 0 rgb(255 255 255 / 0.5);
-  color: var(--ink);
 }
-.hero-wrap { padding-top: calc(var(--nav-h) + 1rem); }
 
-.hero-sky {
-  position: absolute; inset: 0; pointer-events: none;
-  background-image:
-    /* a soft dark veil, deepest behind the headline, so white type holds */
-    radial-gradient(1100px 620px at 50% 44%, rgb(6 12 10 / 0.52), rgb(6 12 10 / 0.3) 60%, rgb(6 12 10 / 0.12) 82%),
-    linear-gradient(180deg, rgb(6 12 10 / 0.42) 0%, rgb(6 12 10 / 0.1) 26%, rgb(6 12 10 / 0.18) 72%, rgb(238 240 246 / 0.72) 93%, rgb(238 240 246 / 0.9) 100%),
-    url("/hero-forest.jpg");
-  background-size: cover, cover, cover;
-  background-position: center, center, center 42%;
-  background-repeat: no-repeat;
-  /* The pinned frame ends on a hard edge where the section does; dissolve the
-     last few pixels so the picture melts into the page instead of cutting. */
-  -webkit-mask-image: linear-gradient(180deg, #000 93%, transparent 100%);
-  mask-image: linear-gradient(180deg, #000 93%, transparent 100%);
-}
-@media (max-width: 760px) {
-  .hero-sky { background-image:
-    radial-gradient(760px 560px at 50% 42%, rgb(6 12 10 / 0.56), rgb(6 12 10 / 0.34) 60%, rgb(6 12 10 / 0.14) 84%),
-    linear-gradient(180deg, rgb(6 12 10 / 0.46) 0%, rgb(6 12 10 / 0.12) 24%, rgb(6 12 10 / 0.2) 72%, rgb(238 240 246 / 0.74) 93%, rgb(238 240 246 / 0.9) 100%),
-    url("/hero-forest-sm.jpg");
-    background-position: center, center, 42% 46%; }
-}
 .hero-sticky { position: relative; }
 .hero-frame { position: relative; margin-top: 56px; }
 .hero-frame-bg {
@@ -584,6 +548,7 @@ body::before {
 .glass-lg,
 .hero-frame-bg,
 .hcard,
+.hero-cta-bar,
 .btn-secondary,
 .field,
 .bk-nav,
@@ -621,7 +586,7 @@ body::before {
 }
 
 /* Panes sit still and brighten; controls also lift a little. */
-.card:hover, .glass:hover, .glass-lg:hover, .jr-card:hover, .wf-box:hover, .hcard:hover { --hl: 1; }
+.card:hover, .glass:hover, .glass-lg:hover, .jr-card:hover, .wf-box:hover, .hcard:hover, .hero-cta-bar:hover { --hl: 1; }
 .btn-secondary:hover,
 .bk-nav:hover:not(:disabled),
 .bk-day:not(.is-sel):not(:disabled):hover,
@@ -638,6 +603,14 @@ body::before {
 .glass-lg, .card, .jr-card { --g-tint: rgb(255 255 255 / 0.52); --g-blur: 26px; }
 .hero-frame-bg { --g-tint: rgb(255 255 255 / 0.46); --g-blur: 28px; }
 .hcard { --g-tint: rgb(255 255 255 / 0.5); --g-blur: 16px; border-radius: 18px; }
+/* The one concentrated glass moment on the page: a pill holding the hero CTAs.
+   Stacked on mobile, two full-pill buttons inside a 999px capsule pinch at the
+   waist, so it only goes full pill once the row is horizontal (matches the
+   sm:flex-row breakpoint on the markup). */
+.hero-cta-bar { --g-tint: rgb(255 255 255 / 0.4); --g-blur: 22px; border-radius: var(--radius-lg); padding: 8px; }
+@media (min-width: 640px) {
+  .hero-cta-bar { border-radius: 999px; }
+}
 .why-chip, .uf-chip, .tag-sample, .bk-nav, .bk-day, .bk-slot { --g-blur: 12px; }
 .wf-canvas-bg { --g-tint: rgb(255 255 255 / 0.34); --g-blur: 14px; }
 
@@ -704,7 +677,7 @@ body::before {
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .card, .glass, .glass-lg, .hero-frame-bg, .hcard, .jr-card, .field {
+  .card, .glass, .glass-lg, .hero-frame-bg, .hcard, .jr-card, .field, .hero-cta-bar {
     background-color: rgb(255 255 255 / 0.94);
   }
 }
@@ -850,36 +823,6 @@ body::before {
   inherits: false;
   initial-value: 1;
 }
-/* =====================================================================
-   HERO, DARK: the same material read over a photograph.
-   The tokens are set on `.hero` above; these are the pieces that carry their
-   own colours and so have to be told again.
-   ===================================================================== */
-.hero .hcard { --g-tint: rgb(10 18 16 / 0.3); --g-blur: 14px; }
-.hero .hcard:hover { --g-tint: rgb(10 18 16 / 0.244); }
-.hero .hero-frame-bg { --g-tint: rgb(10 18 16 / 0.2); --g-blur: 26px; }
-.hero .live-dot { background: var(--success); }
-
-/* The two calls to action are glass too: one frosted bright, one clear. */
-.hero .btn-primary {
-  --hl: 0;
-  color: #0a0a0a;
-  background-color: rgb(255 255 255 / 0.76);
-  background-image:
-    radial-gradient(170px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / calc(0.63 * var(--hl))), transparent 66%),
-    linear-gradient(180deg, rgb(255 255 255 / 0.3), transparent);
-  -webkit-backdrop-filter: var(--lens, opacity(1)) blur(14px) saturate(160%);
-  backdrop-filter: var(--lens, opacity(1)) blur(14px) saturate(160%);
-  box-shadow:
-    inset 0 0 0 0.5px rgb(255 255 255 / 0.8),
-    inset 0 1px 0 rgb(255 255 255 / 0.95),
-    0 16px 34px -18px rgb(0 0 0 / 0.7);
-}
-.hero .btn-primary:hover { --hl: 1; background-color: rgb(255 255 255 / 0.83); }
-.hero .btn-secondary { --g-tint: rgb(10 18 16 / 0.3); --g-blur: 14px; }
-.hero .btn-secondary:hover { --g-tint: rgb(255 255 255 / 0.14); }
-.hero .cue-mouse { border-color: rgb(255 255 255 / 0.5); }
-
 /* The navbar floats over the photo at the top of the landing page, so it
    flips to the dark material there and back to light once the page scrolls
    past the hero. Overriding the tokens turns the wordmark and links with it. */

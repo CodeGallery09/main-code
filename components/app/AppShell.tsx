@@ -4,11 +4,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Glass from "./Glass";
 import {
   AnalyticsIcon,
   BellIcon,
   CampaignsIcon,
+  ConfigurationIcon,
   HomeIcon,
   InboxIcon,
   IntegrationsIcon,
@@ -22,10 +22,11 @@ import {
 } from "./icons";
 import { api } from "@/lib/api";
 import { LOGIN_HREF } from "@/lib/site";
-import { DASHBOARD_NAV, INTEGRATIONS_HREF, SETTINGS_HREF } from "@/lib/nav";
+import { CONFIGURATION_HREF, DASHBOARD_NAV, INTEGRATIONS_HREF, SETTINGS_HREF } from "@/lib/nav";
 import { TASKS } from "@/lib/app/inbox";
+import { CONFIG_ISSUES } from "@/lib/app/configuration";
 import { avatarTint, initials } from "@/lib/app/leads";
-import { useThumb } from "./ui";
+import { Thumb } from "./ui";
 import { UploadLeads } from "./leads/UploadLeads";
 import { segmentSaved } from "@/lib/app/segments";
 
@@ -55,8 +56,6 @@ export function AppShell({ user, children }: { user: { name: string; org: string
 
   return (
     <div className={"app-shell app" + (collapsed ? " collapsed" : "")}>
-      <Glass />
-
       <aside className="side" aria-label="Main navigation">
         <div className="side-top">
           <span className="logo">
@@ -75,14 +74,8 @@ export function AppShell({ user, children }: { user: { name: string; org: string
           </button>
         </div>
 
-        <Link className="btn pri new" href="/dashboard/workflows/new" title="New campaign">
-          <span className="lbl">New campaign</span>
-          <span className="cplus" aria-hidden="true">
-            +
-          </span>
-        </Link>
-
         <nav className="navlist">
+          <Thumb selector=".navi.on" deps={[pathname]} axis="y" variant="navthumb" />
           {DASHBOARD_NAV.map((item) => {
             const Icon = ICONS[item.icon];
             const badge = BADGES[item.href];
@@ -111,23 +104,36 @@ export function AppShell({ user, children }: { user: { name: string; org: string
 
         <span className="grow" />
 
-        <Link
-          className={"navi" + (isCurrent(INTEGRATIONS_HREF) ? " on" : "")}
-          href={INTEGRATIONS_HREF}
-          aria-current={isCurrent(INTEGRATIONS_HREF) ? "page" : undefined}
-        >
-          <IntegrationsIcon />
-          <span className="lbl">Integrations</span>
-        </Link>
+        <nav className="navlist foot" aria-label="Workspace">
+          <Thumb selector=".navi.on" deps={[pathname]} axis="y" variant="navthumb" />
+          <Link
+            className={"navi" + (isCurrent(CONFIGURATION_HREF) ? " on" : "")}
+            href={CONFIGURATION_HREF}
+            aria-current={isCurrent(CONFIGURATION_HREF) ? "page" : undefined}
+          >
+            <ConfigurationIcon />
+            <span className="lbl">Configuration</span>
+            {CONFIG_ISSUES ? <span className="bdg">{CONFIG_ISSUES}</span> : null}
+          </Link>
 
-        <Link
-          className={"navi" + (isCurrent(SETTINGS_HREF) ? " on" : "")}
-          href={SETTINGS_HREF}
-          aria-current={isCurrent(SETTINGS_HREF) ? "page" : undefined}
-        >
-          <SettingsIcon />
-          <span className="lbl">Settings</span>
-        </Link>
+          <Link
+            className={"navi" + (isCurrent(INTEGRATIONS_HREF) ? " on" : "")}
+            href={INTEGRATIONS_HREF}
+            aria-current={isCurrent(INTEGRATIONS_HREF) ? "page" : undefined}
+          >
+            <IntegrationsIcon />
+            <span className="lbl">Integrations</span>
+          </Link>
+
+          <Link
+            className={"navi" + (isCurrent(SETTINGS_HREF) ? " on" : "")}
+            href={SETTINGS_HREF}
+            aria-current={isCurrent(SETTINGS_HREF) ? "page" : undefined}
+          >
+            <SettingsIcon />
+            <span className="lbl">Settings</span>
+          </Link>
+        </nav>
 
         <div className="me">
           <span className="av" style={{ background: tint, color: ink }}>
@@ -279,10 +285,24 @@ function SignOutButton() {
   );
 }
 
-/** The scrolling column to the right of the rail. */
-export function Screen({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * The scrolling column to the right of the rail.
+ *
+ * `className` lands on the column itself, so a screen can re-theme its own
+ * tokens — Configuration passes `cfg` to wear the marketing site's akkari skin
+ * without touching the rail or any other screen.
+ */
+export function Screen({
+  title,
+  className = "",
+  children,
+}: {
+  title: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="main">
+    <div className={"main" + (className ? " " + className : "")}>
       <TopBar title={title} />
       <div className="scroll">
         <div className="page">{children}</div>
@@ -298,17 +318,14 @@ export function Screen({ title, children }: { title: string; children: React.Rea
  */
 function TabBar({ pathname, isCurrent }: { pathname: string; isCurrent: (href: string) => boolean }) {
   const router = useRouter();
-  const ref = useRef<HTMLElement>(null);
-  const thumb = useThumb(ref, "button.on", [pathname]);
   return (
     <nav
       className="tabbar"
       aria-label="Sections"
-      ref={ref}
       // The bar splits evenly across however many sections the nav carries.
       style={{ "--tabs": DASHBOARD_NAV.length } as React.CSSProperties}
     >
-      {thumb && <span className="tabthumb" style={{ transform: `translateX(${thumb.a}px)`, width: thumb.s }} />}
+      <Thumb deps={[pathname]} variant="tabthumb" />
       {DASHBOARD_NAV.map((item) => {
         const Icon = ICONS[item.icon];
         const on = isCurrent(item.href);
