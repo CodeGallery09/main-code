@@ -319,3 +319,41 @@ export type Badges = {
   /** Blocking setup issues on the Configuration screen. */
   config: number;
 };
+
+/**
+ * The three cross-channel Configuration tabs that persist: Variables, Sending rules and
+ * Compliance. `lib/data/validate.ts` owns the shape/range rules enforced on write;
+ * `lib/app/configuration.ts#defaultWorkspaceSettings()` owns what a new workspace starts with.
+ * Nothing here is enforced by a sender yet — see `SENDING_ENABLED` in `lib/capabilities.ts`.
+ */
+export type WorkspaceSettings = {
+  /** `{token}` → fallback text, or null for "blank if missing". */
+  variableFallbacks: Record<string, string | null>;
+  sendingRules: {
+    days: string[];
+    from: string;
+    to: string;
+    /** `lead` sends in each lead's own time zone; `workspace` in the workspace's. */
+    timezone: "lead" | "workspace";
+    holidays: string[];
+    limitOn: boolean;
+    perDay: number;
+    perWeek: number;
+    cooloff: number;
+    /** Keyed by the stop-rule id shown in the UI. */
+    stops: Record<string, boolean>;
+    /** Keyed by the audience-rule id shown in the UI. */
+    audience: Record<string, boolean>;
+    bounceRate: number;
+    acceptance: number;
+    slowWhatsApp: boolean;
+  };
+  compliance: {
+    domains: string[];
+    /** Keyed by `ChannelKey`; the chosen consent-basis index for that channel. */
+    consent: Record<string, number>;
+    /** Keyed by the regional-rule id shown in the UI. */
+    regional: Record<string, boolean>;
+    retention: string;
+  };
+};

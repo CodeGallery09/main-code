@@ -16,6 +16,7 @@ import {
   type FounderSubmitResponse,
 } from "@/lib/demoRequest";
 import { pipSay } from "@/lib/pip";
+import { FOUNDER_CALENDLY_URL } from "@/lib/site";
 import { Reveal } from "./Reveal";
 
 /** Months ahead the visitor can browse. */
@@ -198,7 +199,8 @@ export function FounderBooker() {
             Speak with our <em>founders.</em>
           </h2>
           <p className="mx-auto mt-5 max-w-lg text-[18px] leading-relaxed text-ink-2">
-            Thirty minutes, no slide deck. Suggest a time and tell us what&rsquo;s slowing your outbound down.
+            Thirty minutes, no slide deck. Pick a time on our calendar, or suggest one and tell us what&rsquo;s
+            slowing your outbound down.
           </p>
         </Reveal>
 
@@ -231,9 +233,22 @@ export function FounderBooker() {
                   {timeZone || "Your time zone"}
                 </li>
               </ul>
-              <p className="mt-auto pt-8 text-[12.5px] leading-relaxed text-muted">
-                Times are your preference, not a confirmed booking. A founder replies by email to confirm.
-              </p>
+              <div className="mt-auto pt-8">
+                <a
+                  href={FOUNDER_CALENDLY_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-primary w-full"
+                  onClick={() => pipSay("Calendly opens in a new tab \u2014 pick any slot that suits you.")}
+                >
+                  Book on Calendly
+                  <ArrowRight size={16} aria-hidden="true" />
+                </a>
+                <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
+                  Calendly books the call outright. The times on the right are a preference instead: a founder
+                  replies by email to confirm, and nothing is booked until then.
+                </p>
+              </div>
             </aside>
 
             {/* ---- right: pick, then details ---- */}

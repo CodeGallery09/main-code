@@ -1,6 +1,13 @@
 // Dedicated demo-request page (app/book-demo). Delivery is configured server-side — see .env.example.
 export const DEMO_HREF = "/book-demo";
 
+/**
+ * The founders' own booking page. The landing page's "Speak with our founders" section links
+ * here for a real, confirmed booking; the preferred-time form beside it stays as the path for
+ * anyone who would rather send a time and be emailed back.
+ */
+export const FOUNDER_CALENDLY_URL = "https://calendly.com/founders0910/30min";
+
 export const NAV_LINKS = [
   { label: "Customer journey", href: "/#journey" },
   { label: "Why Flightpath", href: "/#why" },

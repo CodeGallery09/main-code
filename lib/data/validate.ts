@@ -383,3 +383,242 @@ export function validateCampaignIds(input: unknown): Validation<string[]> {
   if (ids.size > 200) return { ok: false, errors: { campaignIds: "Too many campaigns." } };
   return { ok: true, data: [...ids] };
 }
+
+/* --------------------------------------------------------- workspace settings -- */
+
+const MAX_TOGGLES = 24;
+const MAX_LIST = 20;
+const MAX_TOKEN_LEN = 40;
+const FALLBACK_MAX = 60;
+const WEEKDAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const DOMAIN_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
+
+/** A bounded list of short strings, deduplicated; null on anything that doesn't fit. */
+function stringList(value: unknown, maxItems: number, maxLen: number): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: string[] = [];
+  for (const entry of value) {
+    const item = text(entry);
+    if (!item || item.length > maxLen) return null;
+    if (!out.includes(item)) out.push(item);
+  }
+  return out.length <= maxItems ? out : null;
+}
+
+/** A bounded map of short keys to booleans — the shape every toggle-row group above takes. */
+function toggleMap(value: unknown, maxEntries = MAX_TOGGLES): Record<string, boolean> | null {
+  if (!isObject(value)) return null;
+  const out: Record<string, boolean> = {};
+  let n = 0;
+  for (const [key, v] of Object.entries(value)) {
+    if (++n > maxEntries || !key || key.length > MAX_TOKEN_LEN || typeof v !== "boolean") return null;
+    out[key] = v;
+  }
+  return out;
+}
+
+const inRange = (value: unknown, min: number, max: number): number | null => {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n >= min && n <= max ? Math.round(n) : null;
+};
+
+/**
+ * `{token}` → fallback text, or null for "blank if missing". Shape only — which tokens exist is
+ * the Variables tab's own catalogue (`lib/app/configuration.ts`), not something this layer knows.
+ */
+export type VariableFallbacksPatch = Record<string, string | null>;
+
+export function validateVariableFallbacks(input: unknown): Validation<VariableFallbacksPatch> {
+  if (!isObject(input)) return { ok: false, errors: { _: "Expected an object." } };
+  const out: VariableFallbacksPatch = {};
+  let n = 0;
+  for (const [token, value] of Object.entries(input)) {
+    if (!/^\{[a-z_]{1,30}\}$/.test(token)) {
+      return { ok: false, errors: { _: "That is not a variable token." } };
+    }
+    if (value === null) {
+      out[token] = null;
+    } else if (typeof value === "string" && value.length <= FALLBACK_MAX) {
+      out[token] = text(value);
+    } else {
+      return { ok: false, errors: { [token]: `Keep a fallback to ${FALLBACK_MAX} characters.` } };
+    }
+    if (++n > 40) return { ok: false, errors: { _: "Too many variables." } };
+  }
+  return { ok: true, data: out };
+}
+
+export type SendingRulesInput = {
+  days: string[];
+  from: string;
+  to: string;
+  timezone: "lead" | "workspace";
+  holidays: string[];
+  limitOn: boolean;
+  perDay: number;
+  perWeek: number;
+  cooloff: number;
+  /** Keyed by stop-rule id — see `STOP_RULES` in `lib/app/configuration.ts`. */
+  stops: Record<string, boolean>;
+  /** Keyed by audience-rule id — see `AUDIENCE_RULES`. */
+  audience: Record<string, boolean>;
+  bounceRate: number;
+  acceptance: number;
+  slowWhatsApp: boolean;
+};
+
+export type SendingRulesPatch = Partial<SendingRulesInput>;
+
+/** A PATCH body: only the keys actually present are validated and applied. */
+export function validateSendingRulesPatch(input: unknown): Validation<SendingRulesPatch> {
+  if (!isObject(input)) return { ok: false, errors: { _: "Expected an object." } };
+  const errors: ValidationErrors = {};
+  const out: SendingRulesPatch = {};
+  const has = (key: string) => input[key] !== undefined;
+
+  if (has("days")) {
+    const raw = input.days;
+    if (!Array.isArray(raw) || !raw.every((d) => typeof d === "string" && WEEKDAY_ABBR.includes(d))) {
+      errors.days = "Pick valid days.";
+    } else {
+      out.days = [...new Set(raw as string[])];
+    }
+  }
+  if (has("from")) {
+    if (typeof input.from !== "string" || !TIME_RE.test(input.from)) errors.from = "Enter a valid time.";
+    else out.from = input.from;
+  }
+  if (has("to")) {
+    if (typeof input.to !== "string" || !TIME_RE.test(input.to)) errors.to = "Enter a valid time.";
+    else out.to = input.to;
+  }
+  if (has("timezone")) {
+    const tz = oneOf(input.timezone, ["lead", "workspace"] as const);
+    if (!tz) errors.timezone = "Pick a valid time zone.";
+    else out.timezone = tz;
+  }
+  if (has("holidays")) {
+    const holidays = stringList(input.holidays, MAX_LIST, MAX_TOKEN_LEN);
+    if (!holidays) errors.holidays = "Pick valid countries.";
+    else out.holidays = holidays;
+  }
+  if (has("limitOn")) {
+    if (typeof input.limitOn !== "boolean") errors.limitOn = "Must be on or off.";
+    else out.limitOn = input.limitOn;
+  }
+  if (has("perDay")) {
+    const v = inRange(input.perDay, 1, 10);
+    if (v === null) errors.perDay = "Per day must be between 1 and 10.";
+    else out.perDay = v;
+  }
+  if (has("perWeek")) {
+    const v = inRange(input.perWeek, 1, 30);
+    if (v === null) errors.perWeek = "Per week must be between 1 and 30.";
+    else out.perWeek = v;
+  }
+  if (has("cooloff")) {
+    const v = inRange(input.cooloff, 0, 365);
+    if (v === null) errors.cooloff = "Cool-off must be between 0 and 365 days.";
+    else out.cooloff = v;
+  }
+  if (has("stops")) {
+    const stops = toggleMap(input.stops);
+    if (!stops) errors.stops = "Invalid stop rules.";
+    else out.stops = stops;
+  }
+  if (has("audience")) {
+    const audience = toggleMap(input.audience);
+    if (!audience) errors.audience = "Invalid audience rules.";
+    else out.audience = audience;
+  }
+  if (has("bounceRate")) {
+    const v = inRange(input.bounceRate, 1, 20);
+    if (v === null) errors.bounceRate = "Bounce rate must be between 1 and 20%.";
+    else out.bounceRate = v;
+  }
+  if (has("acceptance")) {
+    const v = inRange(input.acceptance, 5, 60);
+    if (v === null) errors.acceptance = "Acceptance must be between 5 and 60%.";
+    else out.acceptance = v;
+  }
+  if (has("slowWhatsApp")) {
+    if (typeof input.slowWhatsApp !== "boolean") errors.slowWhatsApp = "Must be on or off.";
+    else out.slowWhatsApp = input.slowWhatsApp;
+  }
+
+  if (Object.keys(errors).length) return { ok: false, errors };
+  if (Object.keys(out).length === 0) return { ok: false, errors: { _: "Send at least one setting to change." } };
+  return { ok: true, data: out };
+}
+
+export const RETENTION_CHOICES = ["12 months", "24 months", "36 months", "Never"] as const;
+
+export type CompliancePatch = Partial<{
+  domains: string[];
+  /** Keyed by `ChannelKey`; the chosen consent-basis index for that channel. */
+  consent: Record<string, number>;
+  /** Keyed by regional-rule id — see `REGIONAL_RULES`. */
+  regional: Record<string, boolean>;
+  retention: (typeof RETENTION_CHOICES)[number];
+}>;
+
+export function validateCompliancePatch(input: unknown): Validation<CompliancePatch> {
+  if (!isObject(input)) return { ok: false, errors: { _: "Expected an object." } };
+  const errors: ValidationErrors = {};
+  const out: CompliancePatch = {};
+  const has = (key: string) => input[key] !== undefined;
+
+  if (has("domains")) {
+    const raw = input.domains;
+    if (!Array.isArray(raw)) {
+      errors.domains = "Domains must be a list.";
+    } else {
+      const domains: string[] = [];
+      let bad = false;
+      for (const entry of raw) {
+        const d = text(entry).toLowerCase();
+        if (!d || d.length > 253 || !DOMAIN_RE.test(d)) {
+          bad = true;
+          break;
+        }
+        if (!domains.includes(d)) domains.push(d);
+      }
+      if (bad) errors.domains = "Enter a valid domain.";
+      else if (domains.length > 50) errors.domains = "Too many domains.";
+      else out.domains = domains;
+    }
+  }
+  if (has("consent")) {
+    if (!isObject(input.consent)) {
+      errors.consent = "Invalid consent choices.";
+    } else {
+      const consent: Record<string, number> = {};
+      let bad = false;
+      let n = 0;
+      for (const [k, v] of Object.entries(input.consent)) {
+        if (++n > 10 || !k || k.length > 16 || typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 5) {
+          bad = true;
+          break;
+        }
+        consent[k] = v;
+      }
+      if (bad) errors.consent = "Invalid consent choices.";
+      else out.consent = consent;
+    }
+  }
+  if (has("regional")) {
+    const regional = toggleMap(input.regional);
+    if (!regional) errors.regional = "Invalid regional rules.";
+    else out.regional = regional;
+  }
+  if (has("retention")) {
+    const retention = oneOf(input.retention, RETENTION_CHOICES);
+    if (!retention) errors.retention = "Pick a valid retention period.";
+    else out.retention = retention;
+  }
+
+  if (Object.keys(errors).length) return { ok: false, errors };
+  if (Object.keys(out).length === 0) return { ok: false, errors: { _: "Send at least one setting to change." } };
+  return { ok: true, data: out };
+}

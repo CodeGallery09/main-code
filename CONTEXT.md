@@ -92,7 +92,7 @@ route. Never put figures, names, accounts or campaigns in a component or in `lib
 ### Database — `lib/db/`
 | File | L | Purpose |
 |---|---|---|
-| `schema.ts` | 592 | 21 tables. `campaigns.is_sample` / `leads.is_sample` mark invented rows (migration `0002_sample_flag`). Drizzle definitions + Postgres enums. |
+| `schema.ts` | 592 | 22 tables. `campaigns.is_sample` / `leads.is_sample` mark invented rows (migration `0002_sample_flag`). Drizzle definitions + Postgres enums. |
 | `client.ts` | 60 | The one `pg` Pool, cached on `globalThis`. **Needs a pooled connection string.** |
 | `../lib/password.ts` | 48 | scrypt hash/verify. Imports only `node:crypto`, so the seed and tests can load it. |
 | `../drizzle/*.sql` | — | Generated migrations, committed. Never `db:push` at a deployed DB. |
@@ -105,6 +105,7 @@ Tables, grouped:
 - **domain** `leads` `campaigns` `workflows` `threads` `messages` `tasks`
 - **quota/metrics** `channel_quotas` `daily_rollups` `events`
 - **engine (not yet written to)** `workflow_runs` `step_jobs`
+- **cross-channel settings** `workspace_settings` (one row per workspace, three jsonb blobs: Variables/Sending rules/Compliance — see Configuration below)
 
 `workspace_id` is on every tenant-scoped table. `step_jobs.run_at` + `FOR UPDATE SKIP LOCKED`
 is the job queue — no Redis or SQS needed.
@@ -127,6 +128,7 @@ directly.
 | `/api/accounts/[id]` | PATCH | the dials only (LinkedIn daily caps; mailbox cap + rotate). Identity/state/health are never accepted |
 | `/api/accounts/[id]/campaigns` | PUT | `{ campaignIds }` replaces the campaigns sending from an account; a foreign campaign id is a 422 |
 | `/api/badges` | GET | `{ tasks, inbox, config }`: the rail counts, fetched on every navigation |
+| `/api/settings` | GET, PATCH | the Configuration screen's Variables/Sending rules/Compliance tabs (`workspace_settings`). PATCH body carries only the section(s) changed (`{ variableFallbacks? \| sendingRules? \| compliance? }`); shape/range checked in `validate.ts`, merged into the stored row by the repository. Always real for the signed-in workspace, but `SENDING_ENABLED` stays false so nothing acts on it — see Configuration below |
 | `/api/leads/uploads`, `…/[id]/validate`, `/api/leads/segments` | POST, GET | parked file → per-channel reach + **in-journey warning** → saved segment. Max 4 MB (Vercel's body cap) |
 | `/api/workspace/sample` | DELETE | removes the sample campaign (its workflow cascades) + sample leads; idempotent |
 | `/api/threads`, `/api/threads/[id]`, `/api/threads/[id]/messages` | GET, POST | |
@@ -271,15 +273,28 @@ many for BOTH channels — a mailbox is no longer exclusive to one campaign) sav
 so and the Connect button is disabled: **connecting a LinkedIn account or mailbox is not built**.
 
 The Overview's checks come from `lib/data/setup.ts` (real state), not from a constant.
-**WhatsApp, Calls and SMS** show only the planned note. **Variables, Sending rules, Compliance and
-the "All accounts" / Tracking rule switches** show the defaults a workspace starts with in
-`lib/app/configuration.ts`; edits last for the visit only (`<DemoNote>` says so) and nothing enforces
-them, because nothing sends. Persisting them needs a settings store (§7).
+**WhatsApp, Calls and SMS** show only the planned note, because there is no account/number concept
+for them yet — nothing to configure, so nothing scaffolded.
+
+**Variables, Sending rules and Compliance now persist** through `/api/settings` →
+`workspace_settings` (one row per workspace, three jsonb blobs). `RuleTabs.tsx`'s
+`useSavedSection` hook loads a section on mount and saves it (debounced, like `ChannelTabs.tsx`'s
+`useSavedSetting`) on every edit; `<SavedNote>` in `parts.tsx` says the values are saved but
+nothing enforces them, because nothing sends. `lib/app/configuration.ts#defaultWorkspaceSettings()`
+is the single source of the starting values (also what `MemoryRepository` seeds in demo mode) —
+the rule tables in that file (`STOP_RULES`, `AUDIENCE_RULES`, `REGIONAL_RULES`, `CONSENT`, …) still
+own each row's *label and hint*; only the on/off/chosen state moved to the store. Three controls on
+these tabs are still genuinely unbuilt, not because saving is fake but because there is nowhere to
+save them to yet — they keep their own inline "not available yet" text: "Add variable" (a new
+token), snippets, and the do-not-contact CSV upload. The **"All accounts" / Tracking rule
+switches** on the channel tabs (`ChannelTabs.tsx`) are unrelated and still in-component defaults —
+see §7.
 
 ### Presentation helpers — `lib/app/`
 `channels.ts` (the short channel keys and their colours) · `leads.ts` (stage colours, score band,
 phone mask, tag colours, avatar tints) · `campaigns.ts` (status pill wording) · `configuration.ts`
-(tab list + rule defaults) · `integrations.ts` (provider catalogue + `providerView`) ·
+(tab list + rule catalogue + `defaultWorkspaceSettings()`, the one function that is a
+`WorkspaceSettings` — see Workspace data below) · `integrations.ts` (provider catalogue + `providerView`) ·
 `workflow.ts` (the graph model, templates, validation) · `workflowLibrary.ts` · `segments.ts` (a
 tiny event so the builder refreshes when a segment is saved) · **`adapt.ts` bridges to `lib/data`**
 and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and stage round-trip.
@@ -289,7 +304,12 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 ### Marketing — `components/` + `app/`
 `Hero.tsx` (321L, pinned scroll-driven card merge) · `Journey.tsx` (383L) ·
 `WorkflowLibrary.tsx` (440L) · `UntangleFlow.tsx` (212L, rAF-driven untangle) ·
-`WhyFlightpath.tsx` · `FounderBooker.tsx` (468L, preferred-time request, **not** availability) ·
+`WhyFlightpath.tsx` · `Pipeline.tsx` (~230L, "How it works": leads/channels/signals strands
+converging on one node as the section scrolls through view — unpinned scroll-linked progress from
+`section.getBoundingClientRect()`, `pathLength`/`stroke-dasharray` draw-in, `.js`-gated so the
+no-JS and reduced-motion states both show the finished diagram) ·
+`FounderBooker.tsx` (preferred-time request **and** a `FOUNDER_CALENDLY_URL` link that books
+outright, both on the same section — `lib/site.ts`) ·
 `demo/DemoForm.tsx` (304L) · `Navbar.tsx` `Footer.tsx` `Reveal.tsx` `SiteGlass.tsx`.
 `lib/demoRequest.ts` (186L) is the shared validation contract — import-free, tested.
 `components/pip/` (677L) is the site mascot: one rAF engine, perches keyed by
@@ -324,7 +344,7 @@ namespaces, no parameter properties).
 | Add a setup check | `lib/data/setup.ts` (and its test). It is derived from `AccountsSnapshot`; do not hardcode |
 | Change how uploaded people are matched | `lib/leads/merge.ts` (`mergeLeads` + `findInJourney`) and `tests/leadsMerge`/`leadsJourney` |
 | Add a builder step kind | `STEPS` + `defaults()` + `stepLabel()` in `lib/app/workflow.ts`; tests pin the five seeded graphs |
-| Add a Configuration setting | the data in `lib/app/configuration.ts`, then the tab in `components/app/configuration/`. Rows are `<Row>`/`<ToggleRowView>` from `parts.tsx` — don't hand-roll one. |
+| Add a Configuration setting | the catalogue entry in `lib/app/configuration.ts` (and its default in `defaultWorkspaceSettings()` if it's one of Variables/Sending rules/Compliance), a field on `WorkspaceSettings` in `lib/data/types.ts`, a check in the matching `validate*Patch` function in `lib/data/validate.ts`, then the tab in `components/app/configuration/`. Rows are `<Row>`/`<ToggleRowView>` from `parts.tsx` — don't hand-roll one. |
 | Re-skin a single workspace screen | there is no scope mechanism for this any more (the old `.cfg` scope was removed once its palette became the dashboard-wide default — see §5). A screen that must differ needs its own new token scope, the same shape `.cfg` used to be. |
 
 ---
@@ -349,6 +369,15 @@ namespaces, no parameter properties).
   precision loss). `num()` in `pg.ts` is the only place that converts.
 - Paged queries need a **second unique sort key** (`ORDER BY score DESC, id ASC`). Without it,
   rows with equal scores swap between pages and one gets shown twice or skipped.
+- **`--hl` is overloaded on the marketing page.** `:root` sets it to a warm hex for Pip's beak and
+  feet, but the liquid-glass skin also registers `--hl` as a `@property` 0-to-1 opacity that fades
+  the pointer highlight in on hover (see CLAUDE.md), redefined on `.card:hover` and friends. Any
+  component nested in a `.card` that reads `var(--hl)` as a color gets that number instead and the
+  stroke silently disappears — pick a literal hex or a differently-named token instead.
+- **`app/globals.css` is loaded app-wide, including on `/dashboard`.** Only `app.css` is scoped to
+  the workspace routes, not the other way round, so a workspace class name that also exists on the
+  marketing page inherits its rules — check a new workspace class name against `globals.css`
+  before using it.
 - Analytics reads `daily_rollups`, so **today has no row until the rollup job runs** — a 30-day
   range legitimately returns 29 points the day after a seed. Not a bug.
 - **Drizzle wraps driver errors.** A Postgres unique violation arrives as a `DrizzleQueryError`
@@ -499,9 +528,10 @@ Roughly in the order they should be closed.
 3. **LinkedIn and email connection are not built.** `channel_accounts` / `sending_domains` are
    ready and the UI reads them, but a real workspace has none (only the sample's). A new workspace
    therefore shows two blocking setup checks, which is true.
-4. **Configuration rules are not stored.** Variables, sending rules, compliance, tracking and the
-   "All accounts" switches are in-component defaults. Needs a `workspace_settings` store and the
-   engine to enforce them.
+4. **Configuration rules are stored but not enforced.** Variables, sending rules and compliance now
+   persist in `workspace_settings` (`/api/settings`), but nothing reads that table yet — enforcing
+   it needs the execution engine (§2) and `SENDING_ENABLED` to flip. The channel tabs' "All
+   accounts" / Tracking switches are a separate, still-unstored thing (`ChannelTabs.tsx`).
 5. **`campaigns.channels` is not derived from the workflow's steps.** Both are stored; editing the
    workflow does not update the campaign's channel list.
 6. **Nothing writes `events`, and no job builds `daily_rollups`.** Only the sample's rollups exist,

@@ -44,8 +44,16 @@ import type {
   User,
   WorkflowRecord,
   Workspace,
+  WorkspaceSettings,
 } from "@/lib/data/types";
-import type { AccountSettingsPatch, CampaignPatch, LeadPatch } from "@/lib/data/validate";
+import type {
+  AccountSettingsPatch,
+  CampaignPatch,
+  CompliancePatch,
+  LeadPatch,
+  SendingRulesPatch,
+  VariableFallbacksPatch,
+} from "@/lib/data/validate";
 import type { WorkflowGraph } from "@/lib/app/workflow";
 
 /**
@@ -63,6 +71,13 @@ export type CampaignQuery = {
   type?: CampaignType | "all";
   channel?: Channel | "all";
   range?: RangeKey;
+};
+
+/** A PATCH body for `/api/settings`: only the sections actually present are applied. */
+export type SettingsPatch = {
+  variableFallbacks?: VariableFallbacksPatch;
+  sendingRules?: SendingRulesPatch;
+  compliance?: CompliancePatch;
 };
 
 export type ThreadQuery = {
@@ -103,6 +118,15 @@ export interface Repository {
   getThread(ctx: Ctx, id: string): Promise<{ thread: Thread; messages: Message[] } | null>;
 
   getAnalytics(ctx: Ctx, range: RangeKey, channels: Channel[] | null): Promise<Analytics>;
+
+  /**
+   * The three cross-channel Configuration tabs (Variables, Sending rules, Compliance). Always
+   * returns a full row — a workspace that has never saved gets
+   * `lib/app/configuration.ts#defaultWorkspaceSettings()`.
+   */
+  getSettings(ctx: Ctx): Promise<WorkspaceSettings>;
+  /** Merges the given sections into the stored settings; a section left out is untouched. */
+  updateSettings(ctx: Ctx, patch: SettingsPatch): Promise<WorkspaceSettings>;
 
   /* -------------------------------------------------------------- writes -- */
 

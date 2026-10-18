@@ -320,6 +320,26 @@ export const segmentLeads = pgTable(
   (t) => [primaryKey({ columns: [t.segmentId, t.leadId] }), index("segment_leads_lead_idx").on(t.leadId)],
 );
 
+/**
+ * The three cross-channel Configuration tabs that aren't per-account: Variables (fallback text
+ * overrides), Sending rules and Compliance. One row per workspace, created on first write —
+ * `lib/app/configuration.ts#defaultWorkspaceSettings()` is what a workspace reads before that row
+ * exists. Each column is a jsonb blob rather than a wide set of typed columns on purpose: the
+ * shape is owned by `lib/data/validate.ts` (checked there, not by the database), and these
+ * settings are not yet read by anything that sends — see `SENDING_ENABLED` in
+ * `lib/capabilities.ts` — so a migration for every new toggle would be premature.
+ */
+export const workspaceSettings = pgTable("workspace_settings", {
+  workspaceId: text("workspace_id")
+    .primaryKey()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  /** `{token}` → fallback text, or null for "blank if missing". */
+  variableFallbacks: jsonb("variable_fallbacks").notNull().default({}),
+  sendingRules: jsonb("sending_rules").notNull().default({}),
+  compliance: jsonb("compliance").notNull().default({}),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /* ------------------------------------------- org-level channel accounts -- */
 
 /**

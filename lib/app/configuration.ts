@@ -5,15 +5,17 @@
  *
  * **Nothing here describes a particular workspace.** Accounts, domains, campaigns and the setup
  * checks come from the database (`lib/data/setup.ts`, `/api/accounts`); this file only says what
- * can be configured and what each setting defaults to. The rule switches hold their edits in
- * component state for the length of the visit and say so — there is no settings store behind them
- * yet, so they are not enforced by anything.
+ * can be configured and what each setting defaults to. Variables, Sending rules and Compliance do
+ * have a real settings store behind them now (`workspace_settings`, via `/api/settings` —
+ * see `defaultWorkspaceSettings()` below) — but nothing enforces them yet, because
+ * `SENDING_ENABLED` in `lib/capabilities.ts` stays false until a real sender exists.
  *
- * Only `lib/app/channels` is imported, so this can be read from a server component, a client
- * component or a test alike.
+ * Only `lib/app/channels` and (as a type only, fully erased) `lib/data/types` are imported, so
+ * this can still be read from a server component, a client component or a test alike.
  */
 
 import type { ChannelKey } from "@/lib/app/channels";
+import type { WorkspaceSettings } from "@/lib/data/types";
 
 /* ---------- the tabs ------------------------------------------------------ */
 
@@ -269,3 +271,40 @@ export const REGIONAL_RULES: ToggleRow[] = [
 ];
 
 export const RETENTION_OPTIONS = ["12 months", "24 months", "36 months", "Never"];
+
+/* ---------- defaults for the real settings store --------------------------- */
+
+/**
+ * What a workspace reads from `/api/settings` before it has ever saved anything (and what
+ * `MemoryRepository` seeds). Single source of truth: built from the same tables the UI shows, so
+ * the starting values the Configuration screen displays and the row a save merges into never
+ * drift apart.
+ */
+export function defaultWorkspaceSettings(): WorkspaceSettings {
+  return {
+    variableFallbacks: Object.fromEntries(VARIABLES.map((v) => [v.token, v.fallback])),
+    sendingRules: {
+      days: [...SENDING_RULES.days],
+      from: SENDING_RULES.from,
+      to: SENDING_RULES.to,
+      timezone: SENDING_RULES.timezone,
+      holidays: [...SENDING_RULES.holidays],
+      limitOn: true,
+      perDay: SENDING_RULES.perDay,
+      perWeek: SENDING_RULES.perWeek,
+      cooloff: SENDING_RULES.cooloff,
+      stops: Object.fromEntries(STOP_RULES.map((r) => [r.id, r.on])),
+      audience: Object.fromEntries(AUDIENCE_RULES.map((r) => [r.id, r.on])),
+      bounceRate: GUARDRAILS.bounceRate,
+      acceptance: GUARDRAILS.acceptance,
+      slowWhatsApp: GUARDRAILS.slowWhatsApp,
+    },
+    compliance: {
+      domains: [],
+      consent: Object.fromEntries(CONSENT.map((c) => [c.k, c.chosen ?? 0])),
+      regional: Object.fromEntries(REGIONAL_RULES.map((r) => [r.id, r.on])),
+      retention: RETENTION_OPTIONS[1],
+    },
+  };
+}
+

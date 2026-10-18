@@ -227,6 +227,19 @@ export function DemoNote({ what = "settings" }: { what?: string }) {
 }
 
 /**
+ * The note on the tabs whose settings genuinely save (Variables, Sending rules, Compliance —
+ * `/api/settings`). Distinct from `DemoNote`: these edits persist for the workspace, they just
+ * aren't acted on by anything yet, because nothing sends — see `SENDING_ENABLED`.
+ */
+export function SavedNote({ what = "settings" }: { what?: string }) {
+  return (
+    <p className="cf-nocontent">
+      The {what} are saved to your workspace. Nothing enforces them yet because nothing sends.
+    </p>
+  );
+}
+
+/**
  * The channels the product does not run yet. Integrations lists WhatsApp,
  * Twilio and the CRMs as planned, so these tabs preview their settings and say
  * plainly that nothing is connected — the UI never offers a connection the
