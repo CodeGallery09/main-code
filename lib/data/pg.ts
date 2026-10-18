@@ -42,12 +42,11 @@ import {
   workspaces,
   workspaceSettings as workspaceSettingsTable,
 } from "@/lib/db/schema";
-import { daysBetween, deltaPercent, rangeDays, shiftDay, trendOf } from "@/lib/data/query";
+import { deltaPercent, rangeDays, trendOf } from "@/lib/data/query";
 import type {
   CampaignQuery,
   CampaignTotals,
   Ctx,
-  OverviewQuery,
   Repository,
   SendMessageInput,
   SettingsPatch,
@@ -66,7 +65,6 @@ import type { Table } from "@/lib/leads/table";
 import type { AccountSettingsPatch, CampaignPatch, LeadPatch } from "@/lib/data/validate";
 import type {
   AccountsSnapshot,
-  ActivityWindow,
   Analytics,
   Badges,
   Campaign,
@@ -155,16 +153,6 @@ type RollupRow = {
 };
 
 /** Collapses per-channel rows into one point per day, oldest first. */
-/** Sums a set of rollup rows into one window total. */
-function totalsOf(rows: RollupRow[]): ActivityWindow {
-  return {
-    reached: rows.reduce((sum, r) => sum + r.reached, 0),
-    engaged: rows.reduce((sum, r) => sum + r.engaged, 0),
-    replied: rows.reduce((sum, r) => sum + r.replied, 0),
-    meetings: rows.reduce((sum, r) => sum + r.meetings, 0),
-  };
-}
-
 function byDay(rows: RollupRow[]): TrendPoint[] {
   const map = new Map<string, TrendPoint>();
   for (const row of rows) {
@@ -305,83 +293,18 @@ export class PgRepository implements Repository {
 
   /* ------------------------------------------------------------ overview -- */
 
-  async getOverview(ctx: Ctx, query: OverviewQuery): Promise<Overview | null> {
+  async getOverview(ctx: Ctx, range: RangeKey): Promise<Overview | null> {
     const user = await this.getUser(ctx);
     if (!user) return null;
 
-    const span = daysBetween(query.from, query.to);
-    const [metrics, tasks, live, quotas, series, activeLeads] = await Promise.all([
-      this.headlineMetrics(ctx, span > 0 ? span : 30),
+    const [metrics, tasks, live, quotas] = await Promise.all([
+      this.headlineMetrics(ctx, range),
       this.listTasks(ctx, { kind: "all" }),
       this.listCampaigns(ctx, { status: "live" }),
       this.channelQuotas(ctx),
-      // One read covers both the chart and the headline tiles: the window the caller asked for,
-      // plus the day before it so "today vs yesterday" has something to compare against.
-      this.rollups(ctx, shiftDay(query.from, -1), query.to, query.campaignId),
-      this.activeLeadCount(ctx),
     ]);
 
-    const trend = byDay(series).filter((p) => p.date >= query.from);
-    const days = [...new Set(series.map((r) => r.day))].sort();
-    const latest = days.length ? days[days.length - 1] : null;
-    const before = latest ? shiftDay(latest, -1) : null;
-
-    return {
-      user,
-      metrics,
-      tasks,
-      campaigns: live.items.slice(0, 5),
-      quotas,
-      today: {
-        date: latest,
-        current: totalsOf(series.filter((r) => r.day === latest)),
-        previous: totalsOf(series.filter((r) => r.day === before)),
-        byChannel: ALL_CHANNELS.map((channel) => ({
-          channel,
-          ...totalsOf(series.filter((r) => r.day === latest && r.channel === channel)),
-        })),
-      },
-      trend,
-      activeLeads,
-      window: { from: query.from, to: query.to },
-    };
-  }
-
-  /** Leads still in play, workspace-wide. */
-  private async activeLeadCount(ctx: Ctx): Promise<number> {
-    const [{ value = 0 } = { value: 0 }] = await this.db
-      .select({ value: count() })
-      .from(leadsTable)
-      .where(and(this.ws(leadsTable.workspaceId, ctx), sql`${leadsTable.stage} <> 'closed'`));
-    return Number(value);
-  }
-
-  /** Raw rollup rows for an inclusive day window, optionally narrowed to one campaign. */
-  private async rollups(
-    ctx: Ctx,
-    from: string,
-    to: string,
-    campaignId: string | null,
-  ): Promise<RollupRow[]> {
-    const where = [
-      eq(dailyRollups.workspaceId, ctx.workspaceId),
-      gte(dailyRollups.day, from),
-      lte(dailyRollups.day, to),
-    ];
-    if (campaignId) where.push(eq(dailyRollups.campaignId, campaignId));
-
-    return (await this.db
-      .select({
-        day: dailyRollups.day,
-        channel: dailyRollups.channel,
-        reached: dailyRollups.reached,
-        engaged: dailyRollups.engaged,
-        replied: dailyRollups.replied,
-        positive: dailyRollups.positive,
-        meetings: dailyRollups.meetings,
-      })
-      .from(dailyRollups)
-      .where(and(...where))) as RollupRow[];
+    return { user, metrics, tasks, campaigns: live.items.slice(0, 5), quotas };
   }
 
   /** Current window vs the previous window of the same length, read off the rollups. */
@@ -419,7 +342,8 @@ export class PgRepository implements Repository {
     };
   }
 
-  private async headlineMetrics(ctx: Ctx, days: number): Promise<Metric[]> {
+  private async headlineMetrics(ctx: Ctx, range: RangeKey): Promise<Metric[]> {
+    const days = rangeDays(range);
     const { current, previous } = await this.windows(ctx, days, null);
 
     const [{ value: activeLeads = 0 } = { value: 0 }] = await this.db

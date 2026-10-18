@@ -73,17 +73,6 @@ export type CampaignQuery = {
   range?: RangeKey;
 };
 
-/**
- * What the Home screen is asking for: the window the trend chart covers, and the campaign to
- * narrow every figure to ("all strategies" when null). The headline tiles are always the latest
- * day, whatever the window.
- */
-export type OverviewQuery = {
-  from: string;
-  to: string;
-  campaignId: string | null;
-};
-
 /** A PATCH body for `/api/settings`: only the sections actually present are applied. */
 export type SettingsPatch = {
   variableFallbacks?: VariableFallbacksPatch;
@@ -114,7 +103,7 @@ export interface Repository {
   getWorkspace(ctx: Ctx): Promise<Workspace | null>;
 
   /** Everything the dashboard home screen needs, in one round trip. */
-  getOverview(ctx: Ctx, query: OverviewQuery): Promise<Overview | null>;
+  getOverview(ctx: Ctx, range: RangeKey): Promise<Overview | null>;
 
   listTasks(ctx: Ctx, query: TaskQuery): Promise<Task[]>;
   completeTask(ctx: Ctx, id: string): Promise<Task | null>;

@@ -46,14 +46,11 @@ export function Switch({
   onChange,
   disabled,
   label,
-  title,
 }: {
   on: boolean;
   onChange?: (next: boolean) => void;
   disabled?: boolean;
   label: string;
-  /** Why it is disabled, for the hover explanation a disabled control otherwise cannot give. */
-  title?: string;
 }) {
   return (
     <button
@@ -63,7 +60,6 @@ export function Switch({
       aria-label={label}
       className={"sw" + (on ? " on" : "")}
       disabled={disabled}
-      title={title}
       onClick={(e) => {
         e.stopPropagation();
         onChange?.(!on);

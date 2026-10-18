@@ -1,5 +1,5 @@
 {
-  "id": "ce631045-af38-4183-bbb3-850aded81c2e",
+  "id": "57bc6fcf-3404-430e-b06e-c4f16d810237",
   "prevId": "308996b4-cf48-47aa-b891-9ddc784abf9a",
   "version": "7",
   "dialect": "postgresql",
@@ -490,13 +490,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "campaign_id": {
-          "name": "campaign_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
         "reached": {
           "name": "reached",
           "type": "integer",
@@ -561,33 +554,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "daily_rollups_campaign_idx": {
-          "name": "daily_rollups_campaign_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "campaign_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "day",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -606,13 +572,12 @@
         }
       },
       "compositePrimaryKeys": {
-        "daily_rollups_workspace_id_day_channel_campaign_id_is_sample_pk": {
-          "name": "daily_rollups_workspace_id_day_channel_campaign_id_is_sample_pk",
+        "daily_rollups_workspace_id_day_channel_is_sample_pk": {
+          "name": "daily_rollups_workspace_id_day_channel_is_sample_pk",
           "columns": [
             "workspace_id",
             "day",
             "channel",
-            "campaign_id",
             "is_sample"
           ]
         }
@@ -2645,6 +2610,67 @@
           "tableTo": "campaigns",
           "columnsFrom": [
             "campaign_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workspace_settings": {
+      "name": "workspace_settings",
+      "schema": "",
+      "columns": {
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "variable_fallbacks": {
+          "name": "variable_fallbacks",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "sending_rules": {
+          "name": "sending_rules",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "compliance": {
+          "name": "compliance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "workspace_settings_workspace_id_workspaces_id_fk": {
+          "name": "workspace_settings_workspace_id_workspaces_id_fk",
+          "tableFrom": "workspace_settings",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
           ],
           "columnsTo": [
             "id"

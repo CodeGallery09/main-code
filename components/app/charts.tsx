@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 /**
  * Small SVG chart set for the workspace. Everything is drawn straight to paths —
  * no chart library — so the marks inherit the app's type and colour tokens.
@@ -105,18 +103,10 @@ export function TrendChart({
   series,
   labels,
   hidden = [],
-  tooltip,
-  title = "Campaign trend",
 }: {
   series: Series[];
   labels: { at: number; text: string }[];
   hidden?: string[];
-  /**
-   * What to show beside the pointer, for the day under it. Passing nothing leaves the chart
-   * static — the Analytics screen reads its detail from the funnel card instead.
-   */
-  tooltip?: (index: number) => React.ReactNode;
-  title?: string;
 }) {
   const W = 1126;
   const H = 300;
@@ -125,7 +115,6 @@ export function TrendChart({
   const padT = 14;
   const padB = 28;
 
-  const [hover, setHover] = useState<number | null>(null);
   const shown = series.filter((s) => !hidden.includes(s.key));
   const count = series[0]?.values.length ?? 0;
   const step = axisStep(Math.max(1, ...shown.flatMap((s) => s.values)), 4);
@@ -137,31 +126,9 @@ export function TrendChart({
   const ticks = [0, 1, 2, 3, 4].map((i) => i * step);
   const clipId = "trend-clip";
 
-  // The pointer is read off the SVG's own box rather than the day's pixel position, so the
-  // nearest day is picked the same way whatever the chart has been scaled to.
-  const at = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!tooltip || count < 1) return;
-    const box = e.currentTarget.getBoundingClientRect();
-    const px = ((e.clientX - box.left) / box.width) * W;
-    const i = Math.round(((px - padL) / (W - padL - padR)) * (count - 1));
-    setHover(Math.max(0, Math.min(count - 1, i)));
-  };
-
   return (
-    <div className="chart" onMouseLeave={() => setHover(null)}>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        role="img"
-        aria-label={title}
-        tabIndex={0}
-        onMouseMove={at}
-        onBlur={() => setHover(null)}
-        onKeyDown={(e) => {
-          if (!tooltip) return;
-          if (e.key === "ArrowRight") setHover((i) => Math.min(count - 1, (i ?? -1) + 1));
-          if (e.key === "ArrowLeft") setHover((i) => Math.max(0, (i ?? count) - 1));
-        }}
-      >
+    <div className="chart">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Campaign trend" tabIndex={0}>
         <defs>
           <clipPath id={clipId}>
             <rect x="0" y="0" width={W} height={H} />
@@ -214,48 +181,7 @@ export function TrendChart({
             </text>
           );
         })}
-
-        {hover != null && tooltip && (
-          <g pointerEvents="none">
-            <line
-              x1={x(hover)}
-              x2={x(hover)}
-              y1={padT}
-              y2={H - padB}
-              stroke="var(--ink)"
-              strokeWidth="1"
-              strokeDasharray="3 3"
-              opacity=".45"
-            />
-            {shown.map((s) => (
-              <circle
-                key={s.key}
-                cx={x(hover)}
-                cy={y(s.values[hover] ?? 0)}
-                r="4.5"
-                fill="var(--surface)"
-                stroke={s.color}
-                strokeWidth="2"
-              />
-            ))}
-          </g>
-        )}
       </svg>
-
-      {hover != null && tooltip && (
-        <div
-          className="tip"
-          style={
-            // Flip to the left of the crosshair once it is past the middle, so the readout never
-            // hangs off the card.
-            (x(hover) / W) * 100 > 62
-              ? { top: 6, right: `calc(${100 - (x(hover) / W) * 100}% + 14px)` }
-              : { top: 6, left: `calc(${(x(hover) / W) * 100}% + 14px)` }
-          }
-        >
-          {tooltip(hover)}
-        </div>
-      )}
     </div>
   );
 }

@@ -516,12 +516,6 @@ export const dailyRollups = pgTable(
     /** Calendar date, not a timestamp: the grain is the day. */
     day: text("day").notNull(),
     channel: channelEnum("channel").notNull(),
-    /**
-     * The campaign these counts belong to, so Home and Analytics can be narrowed to one strategy.
-     * Empty string, not null, for activity that belongs to no campaign: it is part of the primary
-     * key, and a key column cannot be null. No foreign key for the same reason — "" is not a row.
-     */
-    campaignId: text("campaign_id").notNull().default(""),
     reached: integer("reached").notNull().default(0),
     engaged: integer("engaged").notNull().default(0),
     replied: integer("replied").notNull().default(0),
@@ -534,9 +528,8 @@ export const dailyRollups = pgTable(
     isSample: boolean("is_sample").notNull().default(false),
   },
   (t) => [
-    primaryKey({ columns: [t.workspaceId, t.day, t.channel, t.campaignId, t.isSample] }),
+    primaryKey({ columns: [t.workspaceId, t.day, t.channel, t.isSample] }),
     index("daily_rollups_workspace_day_idx").on(t.workspaceId, t.day),
-    index("daily_rollups_campaign_idx").on(t.workspaceId, t.campaignId, t.day),
   ],
 );
 

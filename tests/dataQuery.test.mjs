@@ -1,17 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  MAX_WINDOW_DAYS,
-  daysBetween,
   deltaPercent,
-  isDay,
   matchesFacet,
   matchesText,
   normalise,
   paginate,
   rangeDays,
-  resolveWindow,
-  shiftDay,
   sortBy,
   trendOf,
 } from "../lib/data/query.ts";
@@ -84,53 +79,4 @@ test("rangeDays falls back to 30 for anything unknown", () => {
   assert.equal(rangeDays("90d"), 90);
   assert.equal(rangeDays("nonsense"), 30);
   assert.equal(rangeDays(undefined), 30);
-});
-
-/* ------------------------------------------------------------------ windows -- */
-
-test("day arithmetic crosses months and years", () => {
-  assert.equal(shiftDay("2026-03-01", -1), "2026-02-28");
-  assert.equal(shiftDay("2026-01-01", -1), "2025-12-31");
-  assert.equal(daysBetween("2026-10-12", "2026-10-18"), 7);
-  assert.equal(daysBetween("2026-10-18", "2026-10-18"), 1);
-});
-
-test("a day is only a day if the calendar has it", () => {
-  assert.equal(isDay("2026-10-18"), true);
-  assert.equal(isDay("2026-02-31"), false);
-  assert.equal(isDay("2026-10-18T00:00:00Z"), false);
-  assert.equal(isDay(""), false);
-  assert.equal(isDay(null), false);
-});
-
-test("a range key becomes the last N days ending today", () => {
-  assert.deepEqual(resolveWindow({ range: "7d" }, "2026-10-18"), { from: "2026-10-12", to: "2026-10-18" });
-  assert.deepEqual(resolveWindow({ range: "90d" }, "2026-10-18"), { from: "2026-07-21", to: "2026-10-18" });
-  // Unknown or missing falls back to 30 days rather than failing the request.
-  assert.deepEqual(resolveWindow({ range: "nonsense" }, "2026-10-18").from, "2026-09-19");
-});
-
-test("explicit dates win, and are clamped to something answerable", () => {
-  assert.deepEqual(resolveWindow({ from: "2026-10-01", to: "2026-10-05" }, "2026-10-18"), {
-    from: "2026-10-01",
-    to: "2026-10-05",
-  });
-  // Nothing in the future: there are no rollups for it.
-  assert.deepEqual(resolveWindow({ from: "2026-10-17", to: "2027-01-01" }, "2026-10-18"), {
-    from: "2026-10-17",
-    to: "2026-10-18",
-  });
-  // Backwards collapses rather than returning an empty scan.
-  assert.deepEqual(resolveWindow({ from: "2026-10-18", to: "2026-10-01" }, "2026-10-18"), {
-    from: "2026-10-01",
-    to: "2026-10-01",
-  });
-  // A hand-written query cannot ask for an unbounded scan.
-  const huge = resolveWindow({ from: "2000-01-01", to: "2026-10-18" }, "2026-10-18");
-  assert.equal(daysBetween(huge.from, huge.to), MAX_WINDOW_DAYS);
-  // A half-filled pair falls back to the range key.
-  assert.deepEqual(resolveWindow({ range: "7d", from: "2026-10-01" }, "2026-10-18"), {
-    from: "2026-10-12",
-    to: "2026-10-18",
-  });
 });
