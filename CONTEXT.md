@@ -291,7 +291,12 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 ### Marketing — `components/` + `app/`
 `Hero.tsx` (321L, pinned scroll-driven card merge) · `Journey.tsx` (383L) ·
 `WorkflowLibrary.tsx` (440L) · `UntangleFlow.tsx` (212L, rAF-driven untangle) ·
-`WhyFlightpath.tsx` · `FounderBooker.tsx` (468L, preferred-time request, **not** availability) ·
+`WhyFlightpath.tsx` · `Pipeline.tsx` (~230L, "How it works": leads/channels/signals strands
+converging on one node as the section scrolls through view — unpinned scroll-linked progress from
+`section.getBoundingClientRect()`, `pathLength`/`stroke-dasharray` draw-in, `.js`-gated so the
+no-JS and reduced-motion states both show the finished diagram) ·
+`FounderBooker.tsx` (preferred-time request **and** a `FOUNDER_CALENDLY_URL` link that books
+outright, both on the same section — `lib/site.ts`) ·
 `demo/DemoForm.tsx` (304L) · `Navbar.tsx` `Footer.tsx` `Reveal.tsx` `SiteGlass.tsx`.
 `lib/demoRequest.ts` (186L) is the shared validation contract — import-free, tested.
 `components/pip/` (677L) is the site mascot: one rAF engine, perches keyed by
@@ -351,6 +356,11 @@ namespaces, no parameter properties).
   precision loss). `num()` in `pg.ts` is the only place that converts.
 - Paged queries need a **second unique sort key** (`ORDER BY score DESC, id ASC`). Without it,
   rows with equal scores swap between pages and one gets shown twice or skipped.
+- **`--hl` is overloaded on the marketing page.** `:root` sets it to a warm hex for Pip's beak and
+  feet, but the liquid-glass skin also registers `--hl` as a `@property` 0-to-1 opacity that fades
+  the pointer highlight in on hover (see CLAUDE.md), redefined on `.card:hover` and friends. Any
+  component nested in a `.card` that reads `var(--hl)` as a color gets that number instead and the
+  stroke silently disappears — pick a literal hex or a differently-named token instead.
 - **`app/globals.css` is loaded app-wide, including on `/dashboard`.** Only `app.css` is scoped to
   the workspace routes, not the other way round, so a workspace class name that also exists on the
   marketing page inherits its rules: `.stat.hero` silently picked up `.js .hero { height: 250vh }`
