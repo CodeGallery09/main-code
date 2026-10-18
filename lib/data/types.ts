@@ -186,13 +186,54 @@ export type Analytics = {
   funnel: FunnelStage[];
 };
 
+/**
+ * One channel's counts for one window. The Home screen's headline tile breaks today's reachouts
+ * down by channel from this, so the figure and its split can never disagree.
+ */
+export type ChannelActivity = {
+  channel: Channel;
+  reached: number;
+  engaged: number;
+  replied: number;
+  meetings: number;
+};
+
+/** The totals for a day (or any window), with the equivalent window before it for the delta. */
+export type ActivityWindow = {
+  reached: number;
+  engaged: number;
+  replied: number;
+  meetings: number;
+};
+
 export type Overview = {
   user: User;
   metrics: Metric[];
   tasks: Task[];
   campaigns: Campaign[];
   quotas: ChannelQuota[];
+  /**
+   * The latest day in the workspace's own series, the day before it, and the latest day split by
+   * channel. The Home screen's tiles are "today" figures, so they are counted separately from the
+   * selected window, which drives the trend chart only.
+   */
+  today: {
+    /** The day these figures are for (`YYYY-MM-DD`), so the screen never claims a day it has no row for. */
+    date: string | null;
+    current: ActivityWindow;
+    previous: ActivityWindow;
+    byChannel: ChannelActivity[];
+  };
+  /** Daily series for the window the caller asked for, oldest first. Drives the trend chart. */
+  trend: TrendPoint[];
+  /** Leads not yet closed, workspace-wide. Not affected by the window or the campaign filter. */
+  activeLeads: number;
+  /** The window actually served, after clamping. */
+  window: DayWindow;
 };
+
+/** An inclusive window of calendar days, `YYYY-MM-DD` in UTC — the grain of `daily_rollups`. */
+export type DayWindow = { from: string; to: string };
 
 export type Workspace = {
   /** The org id (`org_…`): the tenant key every row in the workspace carries. */

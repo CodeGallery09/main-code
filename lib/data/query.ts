@@ -66,3 +66,49 @@ export function rangeDays(range: string | undefined): number {
   if (range === "90d") return 90;
   return 30;
 }
+
+/* ---------------------------------------------------------------- windows -- */
+
+/** `YYYY-MM-DD` in UTC — the grain of `daily_rollups.day`. */
+export function dayOf(at: Date | number): string {
+  return new Date(at).toISOString().slice(0, 10);
+}
+
+/** `days` back from `day`, inclusive of both ends, as `YYYY-MM-DD`. */
+export function shiftDay(day: string, days: number): string {
+  return dayOf(Date.parse(`${day}T00:00:00.000Z`) + days * 86_400_000);
+}
+
+/** Whole days from `from` to `to`, inclusive. 1 for a single day. */
+export function daysBetween(from: string, to: string): number {
+  return Math.floor((Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / 86_400_000) + 1;
+}
+
+/** True for a well-formed, real calendar date. `2026-02-31` is rejected. */
+export function isDay(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const at = Date.parse(`${value}T00:00:00.000Z`);
+  return Number.isFinite(at) && dayOf(at) === value;
+}
+
+/**
+ * The window a request asked for, clamped to something a workspace can answer.
+ *
+ * A window is either a range key (the last N days ending today) or an explicit `from`/`to` pair
+ * from the date picker. Explicit dates are clamped so a hand-written query cannot ask for a
+ * thousand-day scan or a window that runs backwards; an unusable pair falls back to the range key.
+ */
+export const MAX_WINDOW_DAYS = 366;
+
+export function resolveWindow(
+  input: { range?: string | null; from?: string | null; to?: string | null },
+  today = dayOf(Date.now()),
+): { from: string; to: string } {
+  if (isDay(input.from) && isDay(input.to)) {
+    const to = input.to > today ? today : input.to;
+    let from = input.from > to ? to : input.from;
+    if (daysBetween(from, to) > MAX_WINDOW_DAYS) from = shiftDay(to, -(MAX_WINDOW_DAYS - 1));
+    return { from, to };
+  }
+  return { from: shiftDay(today, -(rangeDays(input.range ?? undefined) - 1)), to: today };
+}

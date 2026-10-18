@@ -103,7 +103,7 @@ Tables, grouped:
 - **org-level channel accounts** `channel_accounts` `campaign_accounts` (many to many) `sending_domains`
 - **uploads** `uploads` (parked parsed files, swept after 1 h) `segments` `segment_leads`
 - **domain** `leads` `campaigns` `workflows` `threads` `messages` `tasks`
-- **quota/metrics** `channel_quotas` `daily_rollups` `events`
+- **quota/metrics** `channel_quotas` `daily_rollups` (keyed by workspace + day + channel + **campaign** + is_sample) `events`
 - **engine (not yet written to)** `workflow_runs` `step_jobs`
 
 `workspace_id` is on every tenant-scoped table. `step_jobs.run_at` + `FOR UPDATE SKIP LOCKED`
@@ -117,7 +117,8 @@ directly.
 
 | Endpoint | Methods | Notes |
 |---|---|---|
-| `/api/me`, `/api/workspace`, `/api/overview` | GET | |
+| `/api/me`, `/api/workspace` | GET | |
+| `/api/overview` | GET | `?range=7d\|30d\|90d` **or** `?from=&to=` (inclusive UTC days, clamped by `resolveWindow`), plus `?campaignId=` to narrow every figure to one strategy |
 | `/api/tasks`, `/api/tasks/[id]/complete` | GET, POST | |
 | `/api/leads`, `/api/leads/[id]` | GET POST PATCH DELETE | full CRUD |
 | `/api/campaigns`, `/api/campaigns/[id]` | GET POST PATCH DELETE | full CRUD. A multichannel campaign needs ≥ 2 channels (validate.ts). |
@@ -185,7 +186,8 @@ leads the upload *creates*. It never changes an existing lead's consent.
 | File | L | Reads from | Notes |
 |---|---|---|---|
 | `AppShell.tsx` | 407 | `/api/badges` | rail, top bar, mobile tab bar, sign-out. Badges refetch on every navigation |
-| `HomeScreen.tsx` | 292 | `/api/overview`, `/api/campaigns` | stats, to-dos (completable), campaigns, daily quotas |
+| `HomeScreen.tsx` | ~430 | `/api/overview`, `/api/campaigns` | today's tiles (+ per-channel split), Performance trend chart with a hover funnel readout, to-dos (completable), strategies (live/paused switch), daily quotas. The strategy select narrows every figure; the date range drives the chart only, because the tiles are explicitly "today" |
+| `DateRange.tsx` | 212 | — | the `.drp` window picker: presets plus a month calendar, reporting an inclusive UTC `from`/`to` pair (the grain `daily_rollups` is stored at) |
 | `InboxScreen.tsx` | 315 | `/api/threads` | read-only: the composer is disabled while `!SENDING_ENABLED` |
 | `LeadsScreen.tsx` + `LeadEditor.tsx` | 592 + 269 | `/api/leads` | full CRUD, server-side filter/sort/page |
 | `CampaignsScreen.tsx` + `CampaignEditor.tsx` | 405 + 192 | `/api/campaigns` | full CRUD |
@@ -195,7 +197,7 @@ leads the upload *creates*. It never changes an existing lead's consent.
 | `IntegrationsScreen.tsx` | 296 | `/api/accounts` | one card of collapsible sections (`.intg*` CSS at the end of `app.css`); provider state is *derived* (`providerView`) |
 | `SettingsScreen.tsx` | 227 | `/api/workspace`, `/api/accounts` | channels, domains, members, plan |
 | `SampleBanner.tsx` | 60 | `/api/workspace` | "this workspace includes sample data" + Remove button; renders on every data screen |
-| `ui.tsx` `charts.tsx` `icons.tsx` | 628 | — | shared controls, SVG charts, 24px icons |
+| `ui.tsx` `charts.tsx` `icons.tsx` | ~700 | — | shared controls, SVG charts, 24px icons. `TrendChart` takes an optional `tooltip(index)` and then draws a crosshair, dots and a `.tip` readout; without it the chart stays static |
 | `glass.ts` | ~230 | — | refraction + specular runtime, **marketing-only now** (see §5) |
 
 ### Workflow builder — `components/app/builder/` (~2000L)
@@ -349,6 +351,11 @@ namespaces, no parameter properties).
   precision loss). `num()` in `pg.ts` is the only place that converts.
 - Paged queries need a **second unique sort key** (`ORDER BY score DESC, id ASC`). Without it,
   rows with equal scores swap between pages and one gets shown twice or skipped.
+- **`app/globals.css` is loaded app-wide, including on `/dashboard`.** Only `app.css` is scoped to
+  the workspace routes, not the other way round, so a workspace class name that also exists on the
+  marketing page inherits its rules: `.stat.hero` silently picked up `.js .hero { height: 250vh }`
+  and blew every tile to 2500px. The Home tile is `.stat.lead` for that reason. Check a new
+  workspace class name against `globals.css` before using it.
 - Analytics reads `daily_rollups`, so **today has no row until the rollup job runs** — a 30-day
   range legitimately returns 29 points the day after a seed. Not a bug.
 - **Drizzle wraps driver errors.** A Postgres unique violation arrives as a `DrizzleQueryError`

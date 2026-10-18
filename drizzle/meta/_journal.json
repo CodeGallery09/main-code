@@ -29,6 +29,13 @@
       "when": 1792062864266,
       "tag": "0003_workspace_data_model",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792347672057,
+      "tag": "0004_rollup_campaign",
+      "breakpoints": true
     }
   ]
 }

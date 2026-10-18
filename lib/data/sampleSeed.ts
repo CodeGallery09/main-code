@@ -166,6 +166,9 @@ export async function seedSampleWorkspace(tx: Tx, workspaceId: string, ownerId: 
       workspaceId,
       day: dayKey(now - row.daysAgo * DAY),
       channel: row.channel,
+      // Every sample figure belongs to the one sample campaign, so narrowing Home to it shows
+      // the same numbers as "All strategies" in a workspace that has nothing else.
+      campaignId,
       reached: row.reached,
       engaged: row.engaged,
       replied: row.replied,

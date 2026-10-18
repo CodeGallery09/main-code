@@ -92,7 +92,8 @@ export const api = {
 
   workspace: () => request<{ workspace: Workspace }>("/api/workspace"),
 
-  overview: (range = "30d") => request<Overview>(`/api/overview${qs({ range })}`),
+  overview: (params: { range?: string; from?: string; to?: string; campaignId?: string } = {}) =>
+    request<Overview>(`/api/overview${qs({ range: "30d", ...params })}`),
 
   tasks: (kind = "all") => request<{ tasks: Task[] }>(`/api/tasks${qs({ kind })}`),
 

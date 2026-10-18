@@ -8,6 +8,7 @@
  */
 
 import {
+  daysBetween,
   deltaPercent,
   matchesFacet,
   matchesText,
@@ -33,6 +34,7 @@ import type {
   CampaignQuery,
   CampaignTotals,
   Ctx,
+  OverviewQuery,
   Repository,
   SendMessageInput,
   TaskQuery,
@@ -61,6 +63,7 @@ import type {
   LeadQuery,
   Message,
   Metric,
+  ActivityWindow,
   Overview,
   Paged,
   RangeKey,
@@ -94,7 +97,28 @@ const campaigns: Campaign[] = CAMPAIGNS.map((c) => ({ ...c }));
 const messages: Message[] = MESSAGES.map((m) => ({ ...m }));
 const threads: Thread[] = THREADS.map((t) => ({ ...t }));
 const leadRows: Lead[] = LEADS.map((l) => ({ ...l }));
-const trend: TrendPoint[] = buildTrend(90);
+// Ends today, not on the seed's fixed date: Home reports "today", and a demo whose series stopped
+// months ago would show an empty chart and zeroed tiles. The shape is still deterministic.
+const trend: TrendPoint[] = buildTrend(90, new Date().toISOString());
+
+/**
+ * The demo store has no per-channel or per-campaign rollups, so both splits are fixed shares of
+ * the one series. A real workspace groups its own rows (`PgRepository`); this only has to add up.
+ */
+const CHANNEL_MIX: Record<Channel, number> = {
+  linkedin: 0.34,
+  email: 0.41,
+  whatsapp: 0.12,
+  call: 0.08,
+  sms: 0.05,
+};
+
+/** Narrowing the demo figures to one campaign gives it an even share of the live ones. */
+function campaignShare(campaignId: string | null): number {
+  if (!campaignId) return 1;
+  const live = CAMPAIGNS.filter((c) => c.status === "live").length;
+  return live ? 1 / live : 0;
+}
 const accounts: ChannelAccount[] = ACCOUNTS.map((a) => structuredClone(a));
 const domains = DOMAINS.map((d) => ({ ...d }));
 
@@ -219,9 +243,8 @@ function metric(
   return { id, label, value, format, decimals, delta, deltaUnit, trend: trendOf(delta), spark };
 }
 
-function headlineMetrics(range: RangeKey): Metric[] {
-  const days = rangeDays(range);
-  const { current, previous, sum } = windows(days);
+function headlineMetrics(days: number): Metric[] {
+  const { current, previous, sum } = windows(days > 0 ? days : 30);
   const reached = sum(current, "reached");
   const reachedPrev = sum(previous, "reached");
   const replied = sum(current, "replied");
@@ -264,18 +287,51 @@ export class MemoryRepository implements Repository {
     return { ...WORKSPACE, quotas: QUOTAS.map((q) => ({ ...q })) };
   }
 
-  async getOverview(ctx: Ctx, range: RangeKey): Promise<Overview> {
+  async getOverview(ctx: Ctx, query: OverviewQuery): Promise<Overview> {
     const [user, open, live] = await Promise.all([
       this.getUser(ctx),
       this.listTasks(ctx, { kind: "all" }),
       this.listCampaigns(ctx, { status: "live" }),
     ]);
+
+    // The demo series is fixed and ends before today, so "today" here is the last day it holds.
+    // A real workspace reads its own rollups; this store only has to be self-consistent.
+    const scale = campaignShare(query.campaignId);
+    const inWindow = trend.filter((p) => p.date >= query.from && p.date <= query.to);
+    const latest = trend[trend.length - 1] ?? null;
+    const before = trend[trend.length - 2] ?? null;
+    const totals = (point: TrendPoint | null, share = 1): ActivityWindow => ({
+      reached: Math.round((point?.reached ?? 0) * share),
+      engaged: Math.round((point?.engaged ?? 0) * share),
+      replied: Math.round((point?.replied ?? 0) * share),
+      meetings: Math.round((point?.meetings ?? 0) * share),
+    });
+
     return {
       user,
-      metrics: headlineMetrics(range),
+      metrics: headlineMetrics(daysBetween(query.from, query.to)),
       tasks: open,
       campaigns: live.items.slice(0, 5),
       quotas: QUOTAS.map((q) => ({ ...q })),
+      today: {
+        date: latest?.date ?? null,
+        current: totals(latest, scale),
+        previous: totals(before, scale),
+        byChannel: (Object.keys(CHANNEL_MIX) as Channel[]).map((channel) => ({
+          channel,
+          ...totals(latest, scale * CHANNEL_MIX[channel]),
+        })),
+      },
+      trend: inWindow.map((p) => ({
+        date: p.date,
+        reached: Math.round(p.reached * scale),
+        engaged: Math.round(p.engaged * scale),
+        replied: Math.round(p.replied * scale),
+        positive: Math.round(p.positive * scale),
+        meetings: Math.round(p.meetings * scale),
+      })),
+      activeLeads: leadRows.filter((l) => l.stage !== "closed").length,
+      window: { from: query.from, to: query.to },
     };
   }
 
