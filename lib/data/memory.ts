@@ -37,11 +37,13 @@ import type {
   OverviewQuery,
   Repository,
   SendMessageInput,
+  SettingsPatch,
   TaskQuery,
   ThreadQuery,
   WriteError,
 } from "@/lib/data/repository";
 import { AUDIENCE_CAMPAIGN, WORKFLOWS, toGraph, type WorkflowGraph } from "@/lib/app/workflow";
+import { defaultWorkspaceSettings } from "@/lib/app/configuration";
 import type { AccountSettingsPatch, CampaignPatch, LeadPatch } from "@/lib/data/validate";
 import { findInJourney, mergeLeads, type InJourneyRow, type LeadProfile } from "@/lib/leads/merge";
 import { leadIdentity } from "@/lib/leads/profile";
@@ -73,6 +75,7 @@ import type {
   User,
   Workspace,
   WorkflowRecord,
+  WorkspaceSettings,
 } from "@/lib/data/types";
 
 /**
@@ -121,6 +124,10 @@ function campaignShare(campaignId: string | null): number {
 }
 const accounts: ChannelAccount[] = ACCOUNTS.map((a) => structuredClone(a));
 const domains = DOMAINS.map((d) => ({ ...d }));
+
+/** The demo workspace's Configuration settings (Variables, Sending rules, Compliance). Module
+ * state like everything else here: a save lasts until the server restarts. */
+let workspaceSettingsRow: WorkspaceSettings = defaultWorkspaceSettings();
 
 /** Monotonic ids for prototype creates, so two leads made in the same millisecond differ. */
 /** Workflows saved in this process, by campaign id. Seed campaigns fall back to the demo graphs. */
@@ -519,6 +526,21 @@ export class MemoryRepository implements Repository {
     if (!found) return null;
     Object.assign(found.settings, patch);
     return this.account(found);
+  }
+
+  /* ------------------------------------------------- workspace settings -- */
+
+  async getSettings(_ctx: Ctx): Promise<WorkspaceSettings> {
+    return structuredClone(workspaceSettingsRow);
+  }
+
+  async updateSettings(_ctx: Ctx, patch: SettingsPatch): Promise<WorkspaceSettings> {
+    workspaceSettingsRow = {
+      variableFallbacks: { ...workspaceSettingsRow.variableFallbacks, ...(patch.variableFallbacks ?? {}) },
+      sendingRules: { ...workspaceSettingsRow.sendingRules, ...(patch.sendingRules ?? {}) },
+      compliance: { ...workspaceSettingsRow.compliance, ...(patch.compliance ?? {}) },
+    };
+    return structuredClone(workspaceSettingsRow);
   }
 
   async setAccountCampaigns(_ctx: Ctx, id: string, campaignIds: string[]): Promise<ChannelAccount | WriteError | null> {

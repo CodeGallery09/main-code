@@ -40,6 +40,7 @@ import {
   users,
   workflows as workflowsTable,
   workspaces,
+  workspaceSettings as workspaceSettingsTable,
 } from "@/lib/db/schema";
 import { daysBetween, deltaPercent, rangeDays, shiftDay, trendOf } from "@/lib/data/query";
 import type {
@@ -49,11 +50,13 @@ import type {
   OverviewQuery,
   Repository,
   SendMessageInput,
+  SettingsPatch,
   TaskQuery,
   ThreadQuery,
   WriteError,
 } from "@/lib/data/repository";
 import type { WorkflowGraph } from "@/lib/app/workflow";
+import { defaultWorkspaceSettings } from "@/lib/app/configuration";
 import { setupChecks, blockingCount } from "@/lib/data/setup";
 import { findInJourney, mergeLeads, type InJourneyRow, type LeadProfile } from "@/lib/leads/merge";
 import { leadIdentity } from "@/lib/leads/profile";
@@ -88,6 +91,7 @@ import type {
   User,
   Workspace,
   WorkflowRecord,
+  WorkspaceSettings,
 } from "@/lib/data/types";
 
 /* ------------------------------------------------------------- utilities -- */
@@ -861,6 +865,54 @@ export class PgRepository implements Repository {
       }
     });
     return this.accountById(ctx, id);
+  }
+
+  /* ------------------------------------------------- workspace settings -- */
+
+  async getSettings(ctx: Ctx): Promise<WorkspaceSettings> {
+    const [row] = await this.db
+      .select()
+      .from(workspaceSettingsTable)
+      .where(eq(workspaceSettingsTable.workspaceId, ctx.workspaceId))
+      .limit(1);
+    const defaults = defaultWorkspaceSettings();
+    if (!row) return defaults;
+    return {
+      variableFallbacks: {
+        ...defaults.variableFallbacks,
+        ...(row.variableFallbacks as WorkspaceSettings["variableFallbacks"]),
+      },
+      sendingRules: { ...defaults.sendingRules, ...(row.sendingRules as Partial<WorkspaceSettings["sendingRules"]>) },
+      compliance: { ...defaults.compliance, ...(row.compliance as Partial<WorkspaceSettings["compliance"]>) },
+    };
+  }
+
+  async updateSettings(ctx: Ctx, patch: SettingsPatch): Promise<WorkspaceSettings> {
+    const current = await this.getSettings(ctx);
+    const next: WorkspaceSettings = {
+      variableFallbacks: { ...current.variableFallbacks, ...(patch.variableFallbacks ?? {}) },
+      sendingRules: { ...current.sendingRules, ...(patch.sendingRules ?? {}) },
+      compliance: { ...current.compliance, ...(patch.compliance ?? {}) },
+    };
+    await this.db
+      .insert(workspaceSettingsTable)
+      .values({
+        workspaceId: ctx.workspaceId,
+        variableFallbacks: next.variableFallbacks,
+        sendingRules: next.sendingRules,
+        compliance: next.compliance,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: workspaceSettingsTable.workspaceId,
+        set: {
+          variableFallbacks: next.variableFallbacks,
+          sendingRules: next.sendingRules,
+          compliance: next.compliance,
+          updatedAt: new Date(),
+        },
+      });
+    return next;
   }
 
   async getBadges(ctx: Ctx): Promise<Badges> {

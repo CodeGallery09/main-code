@@ -166,3 +166,46 @@ test("email check is permissive but catches the obvious cases", () => {
   assert.equal(looksLikeEmail("spaces @example.com"), false);
   assert.equal(looksLikeEmail("no-tld@example"), false);
 });
+
+/* ------------------------------------------------- workspace settings -- */
+
+import {
+  validateCompliancePatch,
+  validateSendingRulesPatch,
+  validateVariableFallbacks,
+} from "../lib/data/validate.ts";
+
+test("a variable fallback must be a real token", () => {
+  assert.equal(validateVariableFallbacks({ "{first_name}": "there" }).ok, true);
+  assert.equal(validateVariableFallbacks({ first_name: "there" }).ok, false, "missing braces");
+  assert.equal(validateVariableFallbacks({ "{first_name}": "x".repeat(61) }).ok, false, "too long");
+  assert.deepEqual(validateVariableFallbacks({ "{city}": null }).data, { "{city}": null });
+});
+
+test("sending-window settings are validated", () => {
+  const result = validateSendingRulesPatch({ days: ["Mon", "Wed"], from: "09:00", to: "18:00" });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.data, { days: ["Mon", "Wed"], from: "09:00", to: "18:00" });
+
+  assert.equal(validateSendingRulesPatch({ days: ["Someday"] }).ok, false);
+  assert.equal(validateSendingRulesPatch({ from: "9am" }).ok, false);
+  assert.equal(validateSendingRulesPatch({ perDay: 0 }).ok, false, "below range");
+  assert.equal(validateSendingRulesPatch({ perDay: 11 }).ok, false, "above range");
+  assert.equal(validateSendingRulesPatch({ perDay: 5 }).ok, true);
+  assert.equal(validateSendingRulesPatch({ stops: { reply: true } }).ok, true);
+  assert.equal(validateSendingRulesPatch({ stops: { reply: "yes" } }).ok, false, "not a boolean");
+});
+
+test("missing settings are refused", () => {
+  assert.equal(validateSendingRulesPatch({}).ok, false);
+  assert.equal(validateCompliancePatch({}).ok, false);
+});
+
+test("compliance domains and retention are checked", () => {
+  assert.equal(validateCompliancePatch({ domains: ["Acme.com"] }).data.domains[0], "acme.com");
+  assert.equal(validateCompliancePatch({ domains: ["not a domain"] }).ok, false);
+  assert.equal(validateCompliancePatch({ retention: "24 months" }).ok, true);
+  assert.equal(validateCompliancePatch({ retention: "forever" }).ok, false);
+  assert.equal(validateCompliancePatch({ consent: { mail: 1 } }).ok, true);
+  assert.equal(validateCompliancePatch({ consent: { mail: 2.5 } }).ok, false, "not an integer");
+});

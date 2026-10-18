@@ -21,8 +21,9 @@ import type {
   User,
   Workspace,
   WorkflowRecord,
+  WorkspaceSettings,
 } from "@/lib/data/types";
-import type { CampaignTotals } from "@/lib/data/repository";
+import type { CampaignTotals, SettingsPatch } from "@/lib/data/repository";
 import type { WorkflowGraph } from "@/lib/app/workflow";
 import type { AccountSettingsPatch, CampaignPatch, LeadPatch } from "@/lib/data/validate";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
@@ -157,6 +158,16 @@ export const api = {
     }),
 
   badges: () => request<Badges>("/api/badges"),
+
+  /** The Configuration screen's Variables, Sending rules and Compliance tabs. */
+  getSettings: () => request<{ settings: WorkspaceSettings }>("/api/settings"),
+
+  /** Only the sections present in `patch` are changed; the rest of the stored row is left alone. */
+  updateSettings: (patch: SettingsPatch) =>
+    request<{ settings: WorkspaceSettings }>("/api/settings", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
 
   leads: (
     params: {
