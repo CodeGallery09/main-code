@@ -33,9 +33,6 @@ const SECTIONS: Section[] = [
     { sel: '[data-why="today"]', kind: "top", at: 0.85, line: "Today: five tools, five clocks, twelve tabs. Does your Monday look like this?" },
     { sel: '[data-why="flightpath"]', kind: "top", at: 0.85, line: "With Flightpath they collapse into one workflow with one clock. Deep breath." },
   ] },
-  { id: "flow", el: sec("flow"), items: [
-    { sel: ".pl-node", kind: "top", at: 0.9, line: "Leads, channels and signals, all routed to one place. That's the whole pipeline." },
-  ] },
   { id: "how", el: sec("how"), items: [
     { sel: "#wf-canvas", kind: "top", at: 0.92, line: "The workflow library. Pick a template and I'll run it, node by node." },
     { sel: "[data-wf-step]", idx: 3, kind: "top", at: 0.5, line: "The IF node routes by behaviour, not by a timer. That's the whole trick." },
