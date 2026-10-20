@@ -467,61 +467,6 @@ body::before {
 .why-ants { stroke-dasharray: 4 5; animation: ants 1.4s linear infinite; }
 @keyframes ants { to { stroke-dashoffset: -18; } }
 
-/* =====================================================================
-   PIPELINE: leads / channels / signals converging on one node, scroll-linked
-   ===================================================================== */
-.pl-area { position: relative; height: 260px; }
-@media (min-width: 640px) { .pl-area { height: 340px; } }
-.pl-strand { transition: none; }
-/* Without JS the paths and labels stay at their plain, fully-visible defaults (solid lines, full
-   opacity) — only `.js` arms the hidden start state that the scroll handler then animates from. */
-.js .pl-strand { stroke-dashoffset: 1; }
-.pl-tick {
-  position: absolute; width: 5px; height: 5px; border-radius: 50%;
-  translate: -50% -50%; opacity: .85;
-}
-.pl-group {
-  position: absolute; translate: -100% -50%; text-align: right;
-  padding-right: 14px; width: 160px;
-}
-.js .pl-group { opacity: 0; }
-.pl-group b { display: block; font-size: 13.5px; font-weight: 700; color: var(--ink); }
-.pl-group span { display: block; margin-top: 2px; font-size: 11.5px; line-height: 1.35; color: var(--muted); }
-.pl-word {
-  position: absolute; translate: -50% -50%; text-align: center; width: 230px;
-  pointer-events: none; margin-top: 34px;
-}
-.js .pl-word { opacity: 0; }
-.pl-word .serif { display: block; font-size: 2.1rem; color: var(--ink); line-height: 1; }
-.pl-word small { display: block; margin-top: 8px; font-size: 12.5px; line-height: 1.4; color: var(--ink-2); }
-.pl-node {
-  position: absolute; translate: 0 -50%; display: flex; align-items: center; gap: 9px;
-  white-space: nowrap;
-}
-.pl-dot {
-  width: 13px; height: 13px; border-radius: 50%; background: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-soft);
-  transition: box-shadow .4s var(--ease);
-}
-.js .pl-dot { opacity: 0; transform: scale(0.7); }
-.pl-node b { font-size: 13px; font-weight: 700; color: var(--ink); white-space: nowrap; }
-.is-routed .pl-dot { box-shadow: 0 0 0 4px var(--accent-soft), 0 0 0 9px transparent; animation: pl-pulse 1.4s var(--ease-out) 1; }
-@keyframes pl-pulse { 0% { box-shadow: 0 0 0 4px var(--accent-soft), 0 0 0 4px var(--accent-soft); } 100% { box-shadow: 0 0 0 4px var(--accent-soft), 0 0 0 14px transparent; } }
-@media (max-width: 640px) {
-  /* A label to the left of its row needs room this narrow doesn't have, so it moves above the
-     row instead, anchored at the same x as its tick rather than measured from a fixed width. */
-  .pl-group {
-    translate: 0 -135%; text-align: left; width: auto; max-width: 120px; padding-right: 0;
-  }
-  .pl-group b { font-size: 11.5px; }
-  .pl-group span { display: none; }
-  .pl-word { width: 150px; margin-top: 0; }
-  .pl-word .serif { font-size: 1.4rem; }
-  .pl-word small { display: none; }
-  .pl-node { flex-direction: column; align-items: flex-start; gap: 4px; translate: -50% -150%; }
-  .pl-node b { font-size: 11.5px; }
-}
-
 
 /* =====================================================================
    WORKFLOW LIBRARY: n8n-style node canvas
@@ -576,9 +521,6 @@ body::before {
   .live-dot::after, .why-ants, .jr-token::after, .jr-avatar::after { animation: none !important; }
   .jr-token::after, .jr-avatar::after { opacity: 0; }
   .js .jr-card { opacity: 1; transform: none; }
-  .pl-strand { stroke-dashoffset: 0 !important; }
-  .pl-group, .pl-word, .pl-dot { opacity: 1 !important; transform: none !important; }
-  .pl-dot { animation: none !important; }
 }
 
 /* =====================================================================
