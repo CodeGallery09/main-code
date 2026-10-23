@@ -44,7 +44,8 @@ import { AUDIENCE_CAMPAIGN, WORKFLOWS, toGraph, type WorkflowGraph } from "@/lib
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
 import type { AccountSettingsPatch, CampaignPatch, LeadPatch } from "@/lib/data/validate";
 import { findInJourney, mergeLeads, type InJourneyRow, type LeadProfile } from "@/lib/leads/merge";
-import { leadIdentity } from "@/lib/leads/profile";
+import { identityFill, leadIdentity, splitFileFields } from "@/lib/leads/profile";
+import { buildProspect } from "@/lib/leads/prospect";
 import { blockingCount, setupChecks } from "@/lib/data/setup";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
 import { suggestMapping, type Mapping, type ParsedLead } from "@/lib/leads/validation";
@@ -65,6 +66,7 @@ import type {
   Metric,
   Overview,
   Paged,
+  ProspectProfile,
   RangeKey,
   Task,
   Thread,
@@ -76,15 +78,32 @@ import type {
 } from "@/lib/data/types";
 
 /**
+ * Every piece of mutable state below lives on `globalThis`, not in this module. Next bundles each
+ * route handler separately, so a module-level array is a different copy in `/api/leads` than in
+ * `/api/leads/[id]`: an upload parked by one route was "no longer available" in the next, and a
+ * starred lead looked unstarred in the list. One process, one store — the same fix as the cached
+ * pool in lib/db/client.ts. (Serverless instances still don't share it; demo writes are scratch.)
+ */
+const globalForMemory = globalThis as unknown as { __fpMemory?: Record<string, unknown> };
+const memo = (globalForMemory.__fpMemory ??= {});
+function shared<T>(key: string, init: () => T): T {
+  if (!(key in memo)) memo[key] = init();
+  return memo[key] as T;
+}
+
+/**
  * Uploaded files and saved segments. Module state, so they last until the server restarts, like
  * every other write in this store. Uploaded rows merge into `leadRows`, the same lead list the
  * Leads screen shows, so memory mode behaves like the database.
  */
-const uploads = new Map<string, { fileName: string; fileSize: number; table: Table; at: number }>();
-const segments: Segment[] = [];
-const segmentMembers = new Map<string, Set<string>>();
-let segmentSeq = 1;
-let uploadSeq = 1;
+const uploads = shared("uploads", () => new Map<string, { fileName: string; fileSize: number; table: Table; at: number }>());
+const segments = shared<Segment[]>("segments", () => []);
+const segmentMembers = shared("segmentMembers", () => new Map<string, Set<string>>());
+/** What the `Lead` shape has no field for: the kept file columns and the creation time. Seed leads
+ *  have neither, so their profiles say so rather than invent one. */
+const leadExtra = shared("leadExtra", () => new Map<string, Record<string, string>>());
+const leadCreatedAt = shared("leadCreatedAt", () => new Map<string, string>());
+const seq = shared("seq", () => ({ segment: 1, upload: 1 }));
 
 /** Parsed files are scratch space; drop anything older than an hour. */
 function sweepUploads() {
@@ -93,23 +112,23 @@ function sweepUploads() {
 }
 
 // Mutable copies, so prototype writes are visible on the next read.
-const campaigns: Campaign[] = CAMPAIGNS.map((c) => ({ ...c }));
-const messages: Message[] = MESSAGES.map((m) => ({ ...m }));
-const threads: Thread[] = THREADS.map((t) => ({ ...t }));
-const leadRows: Lead[] = LEADS.map((l) => ({ ...l }));
-const trend: TrendPoint[] = buildTrend(90);
-const accounts: ChannelAccount[] = ACCOUNTS.map((a) => structuredClone(a));
-const domains = DOMAINS.map((d) => ({ ...d }));
+const campaigns = shared<Campaign[]>("campaigns", () => CAMPAIGNS.map((c) => ({ ...c })));
+const messages = shared<Message[]>("messages", () => MESSAGES.map((m) => ({ ...m })));
+const threads = shared<Thread[]>("threads", () => THREADS.map((t) => ({ ...t })));
+const leadRows = shared<Lead[]>("leadRows", () => LEADS.map((l) => ({ ...l })));
+const trend = shared<TrendPoint[]>("trend", () => buildTrend(90));
+const accounts = shared<ChannelAccount[]>("accounts", () => ACCOUNTS.map((a) => structuredClone(a)));
+const domains = shared("domains", () => DOMAINS.map((d) => ({ ...d })));
 
 /** The demo workspace's Configuration settings (Variables, Sending rules, Compliance). Module
  * state like everything else here: a save lasts until the server restarts. */
-let workspaceSettingsRow: WorkspaceSettings = defaultWorkspaceSettings();
+const settings = shared("settings", () => ({ row: defaultWorkspaceSettings() as WorkspaceSettings }));
 
 /** Monotonic ids for prototype creates, so two leads made in the same millisecond differ. */
 /** Workflows saved in this process, by campaign id. Seed campaigns fall back to the demo graphs. */
-const workflowRows = new Map<string, WorkflowRecord>();
+const workflowRows = shared("workflowRows", () => new Map<string, WorkflowRecord>());
 
-const counters: Record<string, number> = {};
+const counters = shared<Record<string, number>>("counters", () => ({}));
 const nextId = (kind: string) => `${Date.now().toString(36)}${(counters[kind] = (counters[kind] ?? 0) + 1)}`;
 
 /** "Aarav Kapoor" -> "AK". The avatar needs it and the UI never derives it itself. */
@@ -121,7 +140,7 @@ function initialsOf(name: string): string {
   return (first + last).toUpperCase();
 }
 
-const tasks: Task[] = [
+const tasks = shared<Task[]>("tasks", () => [
   {
     id: "tk_omar",
     kind: "reply",
@@ -200,7 +219,7 @@ const tasks: Task[] = [
     channel: "linkedin",
     done: false,
   },
-];
+]);
 
 /** Totals for a window of the daily series, plus the window before it, for the delta. */
 function windows(days: number) {
@@ -475,16 +494,16 @@ export class MemoryRepository implements Repository {
   /* ------------------------------------------------- workspace settings -- */
 
   async getSettings(_ctx: Ctx): Promise<WorkspaceSettings> {
-    return structuredClone(workspaceSettingsRow);
+    return structuredClone(settings.row);
   }
 
   async updateSettings(_ctx: Ctx, patch: SettingsPatch): Promise<WorkspaceSettings> {
-    workspaceSettingsRow = {
-      variableFallbacks: { ...workspaceSettingsRow.variableFallbacks, ...(patch.variableFallbacks ?? {}) },
-      sendingRules: { ...workspaceSettingsRow.sendingRules, ...(patch.sendingRules ?? {}) },
-      compliance: { ...workspaceSettingsRow.compliance, ...(patch.compliance ?? {}) },
+    settings.row = {
+      variableFallbacks: { ...settings.row.variableFallbacks, ...(patch.variableFallbacks ?? {}) },
+      sendingRules: { ...settings.row.sendingRules, ...(patch.sendingRules ?? {}) },
+      compliance: { ...settings.row.compliance, ...(patch.compliance ?? {}) },
     };
-    return structuredClone(workspaceSettingsRow);
+    return structuredClone(settings.row);
   }
 
   async setAccountCampaigns(_ctx: Ctx, id: string, campaignIds: string[]): Promise<ChannelAccount | WriteError | null> {
@@ -506,12 +525,15 @@ export class MemoryRepository implements Repository {
   }
 
   async listLeads(_ctx: Ctx, query: LeadQuery): Promise<Paged<Lead>> {
+    const audience =
+      query.segmentId && query.segmentId !== "all" ? (segmentMembers.get(query.segmentId) ?? new Set<string>()) : null;
     const filtered = leadRows.filter(
       (lead) =>
-        matchesText([lead.name, lead.company, ...lead.tags], query.q) &&
+        matchesText([lead.name, lead.company, lead.title, lead.email ?? "", ...lead.tags], query.q) &&
         matchesFacet(lead.stage, query.stage) &&
         matchesFacet(lead.ownerId, query.ownerId) &&
-        matchesFacet(lead.campaignId, query.campaignId),
+        matchesFacet(lead.campaignId, query.campaignId) &&
+        (!audience || audience.has(lead.id)),
     );
     const key = query.sort ?? "score";
     const dir = query.dir ?? (key === "name" ? "asc" : "desc");
@@ -529,6 +551,52 @@ export class MemoryRepository implements Repository {
     return found ? { ...found } : null;
   }
 
+  async getProspect(_ctx: Ctx, id: string): Promise<ProspectProfile | null> {
+    const lead = leadRows.find((l) => l.id === id);
+    if (!lead) return null;
+
+    const campaign = lead.campaignId ? campaigns.find((c) => c.id === lead.campaignId) : undefined;
+    const own = threads.filter((t) => t.leadId === id);
+    const ownIds = new Set(own.map((t) => t.id));
+    const company = lead.company.trim().toLowerCase();
+    const colleagues = company
+      ? leadRows.filter((l) => l.id !== id && l.company.trim().toLowerCase() === company)
+      : [];
+    const fields = splitFileFields(leadExtra.get(id) ?? {});
+
+    return buildProspect({
+      lead: { ...lead },
+      createdAt: leadCreatedAt.get(id) ?? null,
+      companyFields: fields.company,
+      otherFields: fields.other,
+      campaign: campaign ? { id: campaign.id, name: campaign.name, status: campaign.status, type: campaign.type } : null,
+      // The demo store has no execution engine, so no run has ever been recorded.
+      run: null,
+      audiences: segments
+        .filter((s) => segmentMembers.get(s.id)?.has(id))
+        .map((s) => ({ id: s.id, name: s.name, fileName: s.fileName, importedAt: s.createdAt })),
+      threads: own.map((t) => ({
+        id: t.id,
+        channel: t.channel,
+        intent: t.intent,
+        needsReply: t.needsReply,
+        lastAt: t.lastAt,
+        signals: t.signals,
+      })),
+      messages: messages
+        .filter((m) => ownIds.has(m.threadId))
+        .map((m) => ({ id: m.id, threadId: m.threadId, from: m.from, channel: m.channel, body: m.body, sentAt: m.sentAt })),
+      events: [],
+      tasks: tasks
+        .filter((t) => t.leadId === id)
+        .map((t) => ({ id: t.id, kind: t.kind, summary: t.summary, channel: t.channel, done: t.done, when: t.when, createdAt: null })),
+      colleagues: sortBy(colleagues, (l) => l.name, "asc")
+        .slice(0, 8)
+        .map((l) => ({ id: l.id, name: l.name, title: l.title })),
+      colleagueCount: colleagues.length,
+    });
+  }
+
   async createLead(_ctx: Ctx, input: LeadPatch): Promise<Lead | WriteError> {
     if (input.campaignId && !campaigns.some((c) => c.id === input.campaignId)) {
       return { error: { field: "campaignId", message: "That campaign does not exist." } };
@@ -543,7 +611,8 @@ export class MemoryRepository implements Repository {
       initials: initialsOf(name),
       phone: input.phone ?? null,
       email: input.email ?? null,
-      stage: input.stage ?? "reaching",
+      linkedin: input.linkedin ?? null,
+      stage: input.stage ?? "new",
       score: input.score ?? 0,
       source: input.source ?? "form",
       tags: input.tags ?? [],
@@ -559,6 +628,7 @@ export class MemoryRepository implements Repository {
       updatedAt: new Date().toISOString(),
     };
     leadRows.unshift(row);
+    leadCreatedAt.set(row.id, row.updatedAt);
     return { ...row };
   }
 
@@ -576,6 +646,7 @@ export class MemoryRepository implements Repository {
     if (patch.title !== undefined) found.title = patch.title;
     if (patch.email !== undefined) found.email = patch.email;
     if (patch.phone !== undefined) found.phone = patch.phone;
+    if (patch.linkedin !== undefined) found.linkedin = patch.linkedin;
     if (patch.stage !== undefined) found.stage = patch.stage;
     if (patch.score !== undefined) found.score = patch.score;
     if (patch.source !== undefined) found.source = patch.source;
@@ -599,6 +670,10 @@ export class MemoryRepository implements Repository {
     const at = leadRows.findIndex((lead) => lead.id === id);
     if (at < 0) return false;
     leadRows.splice(at, 1);
+    // Mirrors the database's cascade: a deleted prospect leaves every audience.
+    for (const members of segmentMembers.values()) members.delete(id);
+    leadExtra.delete(id);
+    leadCreatedAt.delete(id);
     return true;
   }
 
@@ -716,7 +791,7 @@ export class MemoryRepository implements Repository {
     input: { fileName: string; fileSize: number; table: Table },
   ): Promise<UploadPreview> {
     sweepUploads();
-    const uploadId = "up_" + uploadSeq++;
+    const uploadId = "up_" + seq.upload++;
     uploads.set(uploadId, { ...input, at: Date.now() });
     return {
       uploadId,
@@ -755,13 +830,31 @@ export class MemoryRepository implements Repository {
     return { hits, campaignNames };
   }
 
+  async listLeadKeys(_ctx: Ctx) {
+    return leadRows.map((l) => ({
+      id: l.id,
+      name: l.name,
+      email: l.email,
+      mobile: l.phone,
+      whatsapp: l.whatsapp ?? null,
+      linkedin: l.linkedin ?? null,
+    }));
+  }
+
+  /** Counted against the live lead list, so a prospect removed by any path drops out. */
+  private withCount(segment: Segment): Segment {
+    const members = segmentMembers.get(segment.id);
+    const leadCount = members ? leadRows.filter((l) => members.has(l.id)).length : 0;
+    return { ...segment, leadCount };
+  }
+
   async listSegments(_ctx: Ctx): Promise<Segment[]> {
-    return segments.map((s) => ({ ...s })).reverse();
+    return segments.map((s) => this.withCount(s)).reverse();
   }
 
   async getSegment(_ctx: Ctx, id: string): Promise<Segment | null> {
     const found = segments.find((s) => s.id === id);
-    return found ? { ...found } : null;
+    return found ? this.withCount(found) : null;
   }
 
   async createSegment(
@@ -779,11 +872,13 @@ export class MemoryRepository implements Repository {
     const upload = uploads.get(input.uploadId);
     if (!upload) return null;
 
-    const id = "seg_" + segmentSeq++;
+    const id = "seg_" + seq.segment++;
     const now = new Date().toISOString();
     const { hits } = await this.findInJourney(ctx, input.leads);
     const out = new Set(hits.map((h) => h.row));
     const incoming = input.leads.filter((lead) => !out.has(lead.row));
+    // The review already took its exclusions out of `input.leads`; record those plus any found now.
+    const excluded = input.report.journey.excluded + out.size;
 
     const existing: LeadProfile[] = leadRows.map((l) => ({
       id: l.id,
@@ -792,7 +887,7 @@ export class MemoryRepository implements Repository {
       whatsapp: l.whatsapp ?? null,
       linkedin: l.linkedin ?? null,
       segmentIds: [],
-      extra: {},
+      extra: { ...(leadExtra.get(l.id) ?? {}) },
       createdAt: l.updatedAt,
       updatedAt: l.updatedAt,
     }));
@@ -834,15 +929,19 @@ export class MemoryRepository implements Repository {
           starred: false,
           updatedAt: now,
         });
+        leadExtra.set(profile.id, profile.extra);
+        leadCreatedAt.set(profile.id, now);
         members.add(profile.id);
       } else if (profile.segmentIds.includes(id)) {
         const lead = leadRows.find((l) => l.id === profile.id);
         if (lead) {
+          Object.assign(lead, identityFill(lead, profile));
           lead.email = profile.email;
           lead.phone = profile.mobile;
           lead.whatsapp = profile.whatsapp;
           lead.linkedin = profile.linkedin;
           lead.updatedAt = now;
+          leadExtra.set(profile.id, profile.extra);
         }
         members.add(profile.id);
       }
@@ -859,16 +958,17 @@ export class MemoryRepository implements Repository {
       reachableRows: input.report.reachableRows,
       channels: input.report.channels,
       profilesCreated: merge.created,
-      profilesMerged: merge.merged,
-      excludedInJourney: out.size,
+      profilesMerged: merge.matchedExisting,
+      excludedInJourney: excluded,
       errorCount: input.report.errorCount,
       createdAt: now,
       createdBy: ctx.userId,
+      leadCount: members.size,
     };
     segments.push(segment);
     segmentMembers.set(id, members);
     uploads.delete(input.uploadId);
 
-    return { segment, profilesCreated: merge.created, profilesMerged: merge.merged, excluded: out.size };
+    return { segment: { ...segment }, profilesCreated: merge.created, profilesMerged: merge.matchedExisting, excluded };
   }
 }

@@ -40,6 +40,8 @@ export type Segment = {
   errorCount: number;
   createdAt: string;
   createdBy: string;
+  /** Prospects linked to the audience right now (deleting a lead drops it), counted on read. */
+  leadCount: number;
 };
 
 /** What the preview step shows after the file has been read on the server. */
@@ -72,6 +74,46 @@ export type MappingReport = {
   errorCount: number;
   /** Rows that will be left out, and why. Counts above already exclude them. */
   journey: JourneyWarning;
+  /** What saving would do, worked out by the same merge the save step runs. */
+  plan: ImportPreview;
+};
+
+/** One row of the file as it would be imported, for the review table. */
+export type ReviewRow = {
+  row: number;
+  name: string;
+  /** False when the file has no name column for this row and the name was made from the contact. */
+  nameFromFile: boolean;
+  company: string;
+  title: string;
+  email: string | null;
+  mobile: string | null;
+  whatsapp: string | null;
+  linkedin: string | null;
+  outcome: "new" | "existing" | "duplicate";
+  /** For `existing`: the prospect it matches. */
+  matchName: string | null;
+  /** For `duplicate`: the earlier row it repeats. */
+  duplicateOf: number | null;
+};
+
+export type ImportPreview = {
+  /** Prospects the import creates. */
+  created: number;
+  /** Prospects the workspace already has that the file matches: linked and enriched, never copied. */
+  existing: number;
+  /** Rows repeating a person earlier in the same file; collapsed into one prospect. */
+  duplicates: number;
+  /** Rows with no valid email, number or LinkedIn on any mapped column; not imported. */
+  unreachable: number;
+  /** Distinct people the audience will hold: `created + existing`. */
+  people: number;
+  /** Among the prospects this import creates, how many the file gives no name/company/title for. */
+  /** `any` counts prospects missing at least one of the three. */
+  missing: { name: number; company: number; title: number; any: number };
+  /** Every importable row, capped for transport; `rowCount` is the real total. */
+  rows: ReviewRow[];
+  rowCount: number;
 };
 
 /** Reachable count for a channel, which is what a channel node sends to. */

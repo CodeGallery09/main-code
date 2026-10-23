@@ -226,7 +226,7 @@ function LeadsNav({ href, onUpload, children }: { href: string; onUpload: () => 
           onUpload();
         }}
       >
-        Upload leads
+        Import audience
       </button>
     </div>
   );

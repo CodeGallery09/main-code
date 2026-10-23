@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { leadIdentity } from "../lib/leads/profile.ts";
+import { identityFill, leadIdentity } from "../lib/leads/profile.ts";
 
 const base = { email: null, mobile: null, whatsapp: null, linkedin: null, extra: {} };
 
@@ -50,4 +50,12 @@ test("company and title stay empty when the file has no such column", () => {
   const who = leadIdentity({ ...base, email: "a@b.example" });
   assert.equal(who.company, "");
   assert.equal(who.title, "");
+});
+
+test("an import fills a matched lead's blank company and title, and never overwrites them", () => {
+  const row = { email: "maya@acme.example", mobile: null, whatsapp: null, linkedin: null, extra: { Company: "Acme", "Job Title": "VP Ops" } };
+  assert.deepEqual(identityFill({ company: "", title: "" }, row), { company: "Acme", title: "VP Ops" });
+  assert.deepEqual(identityFill({ company: "Kitebox", title: "" }, row), { title: "VP Ops" });
+  assert.deepEqual(identityFill({ company: "Kitebox", title: "CTO" }, row), {});
+  assert.deepEqual(identityFill({ company: "", title: "" }, { ...row, extra: {} }), {}, "no column, nothing invented");
 });

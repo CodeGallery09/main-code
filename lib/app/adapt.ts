@@ -151,12 +151,6 @@ export function toAppLead(lead: Lead): AppLead {
   // Seeded leads already carry this tag; pushing it again gave the table two identical React keys.
   if (lead.title && !tags.includes(titleTag)) tags.push(titleTag);
 
-  const slug = lead.name
-    .toLowerCase()
-    .replace(/[^a-z ]/g, "")
-    .trim()
-    .replace(/\s+/g, "-");
-
   return {
     id: lead.id,
     n: lead.name,
@@ -180,7 +174,9 @@ export function toAppLead(lead: Lead): AppLead {
     consent: lead.consent,
     fav: lead.starred,
     email: lead.email ?? "",
-    li: `linkedin.com/in/${slug}`,
+    // The stored profile URL only. This used to be a slug made up from the name, which showed a
+    // LinkedIn address nobody had given us.
+    li: lead.linkedin ?? "",
     campaignId: lead.campaignId,
     ownerId: lead.ownerId,
     source: lead.source,

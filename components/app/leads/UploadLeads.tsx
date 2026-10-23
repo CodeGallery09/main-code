@@ -1,18 +1,20 @@
 "use client";
 
 /**
- * The Upload leads modal, opened from the Leads dropdown in the rail.
+ * The Import an audience modal, opened from the Leads screen.
  *
  * Three steps, in the order the product describes them:
- *   1. File     — segment name, description (300 characters) and the file itself.
+ *   1. File     — audience name, description (300 characters) and the file itself.
  *                 The file is sent straight to the server, which parses it and
  *                 returns the headers and the first five rows.
  *   2. Mapping  — the user points each system attribute at a column. Column
  *                 names are only ever a guess; the rules run on row content.
- *   3. Summary  — reachable leads per channel and the row-by-row error log,
- *                 a warning for anyone already in a journey in another campaign
- *                 (they are left out), then Submit, which saves the segment and
- *                 merges the rows into the workspace's leads.
+ *   3. Review   — `ImportReview`: totals (rows, valid, duplicates, missing
+ *                 details, will be imported), every importable row with what
+ *                 will happen to it, the error log and a warning for anyone
+ *                 already in a journey in another campaign (they are left out).
+ *                 Import saves the audience (a segment) and merges the rows into
+ *                 the workspace's leads. It never starts outreach.
  *
  * Nothing is kept in the browser but the upload id: every count on screen was
  * worked out on the server, and the server works them out again on submit.
@@ -25,13 +27,14 @@ import { ACCEPTED_EXTENSIONS, MAX_UPLOAD_MB } from "@/lib/leads/limits";
 import { ATTRIBUTES, type Mapping } from "@/lib/leads/validation";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
 import { CheckIcon } from "../icons";
+import { ImportReview } from "./ImportReview";
 
 type Step = "file" | "map" | "summary";
 
 const STEP_LABEL: [Step, string][] = [
   ["file", "File"],
   ["map", "Mapping"],
-  ["summary", "Reachable leads"],
+  ["summary", "Review & import"],
 ];
 
 const kb = (bytes: number) =>
@@ -93,7 +96,7 @@ export function UploadLeads({ onClose, onSaved }: { onClose: () => void; onSaved
   const submit = async () => {
     if (!preview) return;
     if (!name.trim()) {
-      setError("Give the segment a name.");
+      setError("Give the audience a name.");
       setStep("file");
       return;
     }
@@ -110,7 +113,7 @@ export function UploadLeads({ onClose, onSaved }: { onClose: () => void; onSaved
       onSaved(saved.segment);
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "That segment could not be saved.");
+      setError(e instanceof ApiError ? e.message : "That audience could not be saved.");
     } finally {
       setBusy("");
     }
@@ -121,11 +124,11 @@ export function UploadLeads({ onClose, onSaved }: { onClose: () => void; onSaved
   return (
     <>
       <div className="scrim" onClick={onClose} />
-      <div className="modal wide upmodal" role="dialog" aria-modal="true" aria-label="Upload leads">
+      <div className="modal wide upmodal" role="dialog" aria-modal="true" aria-label="Import an audience">
         <div className="m-h">
           <div>
-            <h2>Upload leads</h2>
-            <p>One file is one segment. The file is read on the server; only a preview comes back.</p>
+            <h2>Import an audience</h2>
+            <p>One file is one audience. It is read on the server, and nothing is saved until you confirm the review.</p>
           </div>
           <button className="ib" aria-label="Close" onClick={onClose}>
             ✕
@@ -151,7 +154,7 @@ export function UploadLeads({ onClose, onSaved }: { onClose: () => void; onSaved
           {step === "file" && (
             <>
               <div className="fld">
-                <label htmlFor="seg-name">Segment name</label>
+                <label htmlFor="seg-name">Audience name</label>
                 <input
                   id="seg-name"
                   className="inp"
@@ -161,7 +164,9 @@ export function UploadLeads({ onClose, onSaved }: { onClose: () => void; onSaved
                 />
               </div>
               <div className="fld">
-                <label htmlFor="seg-desc">Segment description</label>
+                <label htmlFor="seg-desc">
+                  Description <span className="hint">(optional)</span>
+                </label>
                 <textarea
                   id="seg-desc"
                   className="ta"
@@ -274,105 +279,7 @@ export function UploadLeads({ onClose, onSaved }: { onClose: () => void; onSaved
           )}
 
           {step === "summary" && report && (
-            <>
-              <div className="reachrow">
-                {report.channels
-                  .filter((c) => c.column)
-                  .map((c) => {
-                    const meta = ATTRIBUTES.find((a) => a.key === c.attribute);
-                    return (
-                      <div className="reach" key={c.attribute}>
-                        <span className="eyebrow">{meta ? meta.label : c.attribute}</span>
-                        <b>
-                          {report.totalRows.toLocaleString("en-US")} uploaded,{" "}
-                          {c.reachable.toLocaleString("en-US")} reachable
-                        </b>
-                        <small>
-                          from “{c.column}” · {c.invalid.toLocaleString("en-US")} invalid ·{" "}
-                          {c.blank.toLocaleString("en-US")} blank
-                        </small>
-                      </div>
-                    );
-                  })}
-              </div>
-              {report.journey.excluded > 0 && (
-                <div className="warnbox" role="alert">
-                  <b>
-                    {report.journey.excluded.toLocaleString("en-US")}{" "}
-                    {report.journey.excluded === 1 ? "lead" : "leads"} will be excluded
-                  </b>
-                  <span>
-                    {report.journey.excluded === 1 ? "This person is" : "These people are"} already in a journey in
-                    another campaign (
-                    {report.journey.byCampaign
-                      .map((c) => `${c.name}: ${c.count.toLocaleString("en-US")}`)
-                      .join(", ")}
-                    ), so they are left out rather than added to a second sequence. The counts below don’t include
-                    them.
-                  </span>
-                </div>
-              )}
-              <p className="uprow">
-                <b>
-                  {report.reachableRows.toLocaleString("en-US")} of {report.totalRows.toLocaleString("en-US")} rows
-                  will be added, reachable on at least one channel
-                </b>
-                <span className="hint">
-                  {report.errorCount.toLocaleString("en-US")} entries could not be used
-                  {report.errorCount > report.errors.length
-                    ? `, showing the first ${report.errors.length.toLocaleString("en-US")}`
-                    : ""}
-                  .
-                </span>
-              </p>
-
-              {report.errors.length > 0 && (
-                <div className="tblw errlog">
-                  <table className="tbl">
-                    <thead>
-                      <tr>
-                        <th>Row</th>
-                        <th>Attribute</th>
-                        <th>Entry</th>
-                        <th>Why it is unreachable</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.errors.map((e, i) => (
-                        <tr key={`${e.row}-${e.attribute}-${i}`}>
-                          <td className="num">{e.row}</td>
-                          <td>{ATTRIBUTES.find((a) => a.key === e.attribute)?.label || e.attribute}</td>
-                          <td className="num">{e.value || "—"}</td>
-                          <td>{e.reason}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              <label className="uprow" style={{ alignItems: "flex-start", gap: 8, display: "flex" }}>
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(e) => setConsent(e.target.checked)}
-                  style={{ marginTop: 3 }}
-                />
-                <span>
-                  <b>These people have agreed to be contacted, or I have a lawful basis to contact them.</b>
-                  <span className="hint" style={{ display: "block" }}>
-                    Leads this file adds are marked with that consent. Without it they are saved, but they are
-                    flagged and won’t be contacted.
-                  </span>
-                </span>
-              </label>
-
-              <p className="hint">
-                On submit, rows that match a lead you already have (same email, mobile, WhatsApp or LinkedIn) are
-                merged into that lead, and anything it was missing is filled in. An existing lead’s consent is never
-                changed by an upload.
-              </p>
-            </>
+            <ImportReview report={report} consent={consent} onConsent={setConsent} />
           )}
         </div>
 
@@ -393,16 +300,18 @@ export function UploadLeads({ onClose, onSaved }: { onClose: () => void; onSaved
           </button>
           {step === "map" && (
             <button className="btn pri" onClick={() => void check()} disabled={!mappedCount || busy === "checking"}>
-              {busy === "checking" ? "Checking…" : "Check reachable leads"}
+              {busy === "checking" ? "Checking…" : "Review import"}
             </button>
           )}
           {step === "summary" && (
             <button
               className="btn pri"
               onClick={() => void submit()}
-              disabled={busy === "saving" || !report || report.reachableRows === 0}
+              disabled={busy === "saving" || !report || report.plan.people === 0}
             >
-              {busy === "saving" ? "Saving…" : "Submit segment"}
+              {busy === "saving"
+                ? "Importing…"
+                : `Import ${(report?.plan.people ?? 0).toLocaleString("en-US")} ${report?.plan.people === 1 ? "prospect" : "prospects"}`}
             </button>
           )}
         </div>

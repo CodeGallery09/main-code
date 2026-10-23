@@ -7,39 +7,14 @@ import { Avatar } from "./ui";
 import { LeadEditor, type LeadDraft } from "./LeadEditor";
 import { SampleBanner } from "./SampleBanner";
 import { UploadLeads } from "./leads/UploadLeads";
+import { ProspectDrawer } from "./leads/ProspectDrawer";
 import { api, fieldErrorsOf } from "@/lib/api";
 import { onSegmentSaved, segmentSaved } from "@/lib/app/segments";
 import { ATTRIBUTES } from "@/lib/leads/validation";
 import type { Segment } from "@/lib/leads/segments";
-import { toAppLead, toStage, type AppLead } from "@/lib/app/adapt";
-import { maskPhone, scoreBand, STAGE_COLOR, tagColors, type Stage } from "@/lib/app/leads";
+import { toAppLead, type AppLead } from "@/lib/app/adapt";
+import { maskPhone, scoreBand } from "@/lib/app/leads";
 import type { Campaign, Workspace } from "@/lib/data/types";
-
-const STAGES: [Stage | "any", string][] = [
-  ["any", "Any status"],
-  ["Hot", "Hot"],
-  ["Meeting", "Meeting"],
-  ["Engaged", "Engaged"],
-  ["Reaching", "Reaching"],
-  ["New", "New"],
-  ["Nurture", "Nurture"],
-  ["Paused", "Paused"],
-  ["Closed", "Closed"],
-  ["Stopped", "Not interested"],
-];
-
-/** Pill tint per stage; the text colour comes from STAGE_COLOR. */
-const STAGE_TINT: Record<Stage, string> = {
-  Hot: "rgba(178,78,38,.14)",
-  Meeting: "rgba(79,107,69,.16)",
-  Engaged: "rgba(201,146,46,.18)",
-  Reaching: "rgba(24,26,30,.07)",
-  New: "rgba(24,26,30,.07)",
-  Nurture: "rgba(185,162,124,.22)",
-  Paused: "rgba(24,26,30,.07)",
-  Stopped: "rgba(24,26,30,.07)",
-  Closed: "rgba(79,107,69,.16)",
-};
 
 /** Columns the database can sort on. `avgCall` and `msgs` are not indexed sorts, so they stay
  *  client-side over the current page — the header makes no promise about the whole set. */
@@ -53,7 +28,6 @@ export function LeadsScreen() {
   const [query, setQuery] = useState("");
   const [campaign, setCampaign] = useState("any");
   const [owner, setOwner] = useState("any");
-  const [stage, setStage] = useState<Stage | "any">("any");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: -1 });
   const [page, setPage] = useState(1);
 
@@ -71,17 +45,29 @@ export function LeadsScreen() {
 
   const [segments, setSegments] = useState<Segment[] | null>(null);
   const [uploading, setUploading] = useState(false);
+  /** The audience (uploaded segment) the table is narrowed to, or "any". */
+  const [audience, setAudience] = useState("any");
+  /** The prospect whose profile drawer is open. */
+  const [viewing, setViewing] = useState<string | null>(null);
 
-  // Segments come from the API, so an upload made anywhere in the app shows up here.
+  // Segments come from the API, so an upload made anywhere in the app (the rail's Import audience
+  // too) shows up here, and the import lands the user on the new audience.
   const loadSegments = useCallback(() => {
     api
       .segments()
-      .then((r) => setSegments(r.segments))
+      .then((r) => {
+        setSegments(r.segments);
+        // An audience that no longer exists can't stay selected.
+        setAudience((current) => (current === "any" || r.segments.some((s) => s.id === current) ? current : "any"));
+      })
       .catch(() => setSegments([]));
   }, []);
   useEffect(() => {
     loadSegments();
-    return onSegmentSaved(() => loadSegments());
+    return onSegmentSaved((segment) => {
+      loadSegments();
+      setAudience(segment.id);
+    });
   }, [loadSegments]);
 
   // Debounced so typing in the search box does not fire a request per keystroke.
@@ -92,7 +78,7 @@ export function LeadsScreen() {
   }, [query]);
 
   // Any filter change puts us back on page 1; staying on page 4 of a narrower set shows nothing.
-  useEffect(() => setPage(1), [debouncedQuery, campaign, owner, stage, sort.key, sort.dir]);
+  useEffect(() => setPage(1), [debouncedQuery, campaign, owner, audience, sort.key, sort.dir]);
 
   /** Guards against an out-of-order response overwriting a newer one. */
   const requestId = useRef(0);
@@ -104,9 +90,9 @@ export function LeadsScreen() {
       const serverSort: ServerSort = SERVER_SORTS.includes(sort.key) ? (sort.key as ServerSort) : "score";
       const result = await api.leads({
         q: debouncedQuery || undefined,
-        stage: stage === "any" ? undefined : toStage(stage),
         ownerId: owner === "any" ? undefined : owner,
         campaignId: campaign === "any" ? undefined : campaign,
+        segmentId: audience === "any" ? undefined : audience,
         sort: serverSort,
         dir: sort.dir === 1 ? "asc" : "desc",
         page,
@@ -122,7 +108,7 @@ export function LeadsScreen() {
     } finally {
       if (id === requestId.current) setLoading(false);
     }
-  }, [debouncedQuery, stage, owner, campaign, sort, page]);
+  }, [debouncedQuery, owner, campaign, audience, sort, page]);
 
   useEffect(() => {
     void load();
@@ -153,6 +139,7 @@ export function LeadsScreen() {
 
   const arrow = (key: SortKey) => (sort.key === key ? (sort.dir === 1 ? "↑" : "↓") : "↕");
 
+  const current = audience === "any" ? null : (segments?.find((s) => s.id === audience) ?? null);
   const allPicked = picked.length === sorted.length && sorted.length > 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -186,20 +173,14 @@ export function LeadsScreen() {
   }
 
   async function save(draft: LeadDraft) {
+    // Only what the form asks for. The server fills the rest on a create (stage `new`, source
+    // `form`, owned by whoever added it) and an edit leaves everything else as it was.
     const payload = {
       name: draft.name,
-      company: draft.company,
-      title: draft.title,
       email: draft.email || null,
       phone: draft.phone || null,
-      stage: toStage(draft.stage),
-      score: draft.score,
-      source: draft.source,
-      tags: draft.tags,
+      linkedin: draft.linkedin || null,
       consent: draft.consent,
-      nextStep: draft.nextStep,
-      campaignId: draft.campaignId || null,
-      ownerId: draft.ownerId || undefined,
     };
     try {
       if (draft.id) await api.updateLead(draft.id, payload);
@@ -221,8 +202,8 @@ export function LeadsScreen() {
           <SearchIcon />
           <input
             type="search"
-            placeholder="Search leads, companies, tags"
-            aria-label="Search leads"
+            placeholder="Search name, company or email"
+            aria-label="Search prospects"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -251,24 +232,11 @@ export function LeadsScreen() {
           ))}
         </select>
 
-        <select
-          className="sel pill hide-m"
-          aria-label="Status"
-          value={stage}
-          onChange={(e) => setStage(e.target.value as Stage | "any")}
-        >
-          {STAGES.map(([k, label]) => (
-            <option key={k} value={k}>
-              {label}
-            </option>
-          ))}
-        </select>
-
         <button className="ib more" aria-label="More actions">
           ⋯
         </button>
         <button className="btn line" onClick={() => setUploading(true)}>
-          Upload leads
+          Import audience
         </button>
         <button className="btn pri" onClick={() => setEditing({ ...EMPTY_DRAFT })}>
           New lead
@@ -284,7 +252,26 @@ export function LeadsScreen() {
         </p>
       )}
 
-      <SegmentList segments={segments} onUpload={() => setUploading(true)} />
+      <AudienceList
+        segments={segments}
+        selected={audience}
+        onSelect={setAudience}
+        onUpload={() => setUploading(true)}
+      />
+
+      {current && (
+        <p className="aud-cur" role="status">
+          <span>
+            {loading
+              ? "Loading prospects in "
+              : `${total.toLocaleString("en-US")} ${total === 1 ? "prospect" : "prospects"} in `}
+            <b>{current.name}</b>
+          </span>
+          <button className="sortb" onClick={() => setAudience("any")}>
+            Show all prospects
+          </button>
+        </p>
+      )}
 
       <div className="card ltable" aria-busy={loading}>
         <div className="tblw">
@@ -305,14 +292,13 @@ export function LeadsScreen() {
                     </button>
                   </span>
                 </th>
-                <th>Status</th>
                 <th>
                   <button className={"sortb" + (sort.key === "score" ? " on" : "")} onClick={() => toggleSort("score")}>
                     Score<span className="arr">{arrow("score")}</span>
                   </button>
                 </th>
-                <th className="c-src">Source</th>
-                <th className="c-tags">Tags</th>
+                <th>Email</th>
+                <th>LinkedIn</th>
                 <th className="c-mid c-cons">Consent</th>
                 <th className="c-mid">
                   <button
@@ -327,25 +313,29 @@ export function LeadsScreen() {
                     Follow-ups<span className="arr">{arrow("msgs")}</span>
                   </button>
                 </th>
-                <th className="c-next">Next step</th>
                 <th className="c-act" aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
               {sorted.map((lead) => {
-                const visible = lead.tags.slice(0, 2);
-                const extra = lead.tags.length - visible.length;
                 return (
-                  <tr className="click" key={lead.id} aria-busy={busyId === lead.id}>
+                  <tr
+                    className="click"
+                    key={lead.id}
+                    aria-busy={busyId === lead.id}
+                    onClick={(e) => {
+                      // The row's own controls (select, star, edit, delete) keep their meaning.
+                      if ((e.target as HTMLElement).closest("button, a, input")) return;
+                      setViewing(lead.id);
+                    }}
+                  >
                     <td className="c-n">
                       <div className="lname">
                         <button
                           className={"cb" + (picked.includes(lead.id) ? " on" : "")}
                           aria-label={`Select ${lead.n}`}
                           onClick={() =>
-                            setPicked((p) =>
-                              p.includes(lead.id) ? p.filter((id) => id !== lead.id) : [...p, lead.id],
-                            )
+                            setPicked((p) => (p.includes(lead.id) ? p.filter((id) => id !== lead.id) : [...p, lead.id]))
                           }
                         >
                           <CheckIcon />
@@ -353,8 +343,20 @@ export function LeadsScreen() {
                         <Avatar name={lead.n} />
                         <div className="nm">
                           <span className="row1">
-                            <b title={lead.t ? `${lead.n} · ${lead.t}` : lead.n}>{lead.n}</b>
-                            {lead.isSample && <span className="tag" style={{ marginLeft: 6 }}>Sample</span>}
+                            <button
+                              type="button"
+                              className="pf-open"
+                              title={lead.t ? `${lead.n} · ${lead.t}` : lead.n}
+                              aria-label={`Open ${lead.n}'s profile`}
+                              onClick={() => setViewing(lead.id)}
+                            >
+                              <b>{lead.n}</b>
+                            </button>
+                            {lead.isSample && (
+                              <span className="tag" style={{ marginLeft: 6 }}>
+                                Sample
+                              </span>
+                            )}
                             <button
                               className="star"
                               aria-label={lead.fav ? `Unstar ${lead.n}` : `Star ${lead.n}`}
@@ -370,36 +372,31 @@ export function LeadsScreen() {
                       </div>
                     </td>
                     <td>
-                      <button className="pillbtn" aria-label={`Status: ${lead.stage}`}>
-                        <span
-                          className="spill"
-                          style={{ background: STAGE_TINT[lead.stage], color: STAGE_COLOR[lead.stage] }}
-                        >
-                          {lead.stage}
-                        </span>
-                        <span className="chev">⌄</span>
-                      </button>
-                    </td>
-                    <td>
                       <span className={"scoren " + scoreBand(lead.score)}>{lead.score}</span>
                     </td>
-                    <td className="c-src">
-                      <span className="src">{lead.src}</span>
+                    <td>
+                      {lead.email ? (
+                        <span className="lcontact" title={lead.email}>
+                          {lead.email}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </td>
-                    <td className="c-tags">
-                      <div className="tagcell">
-                        <div className="tagstack">
-                          {visible.map((tag) => {
-                            const [bg, fg] = tagColors(tag);
-                            return (
-                              <span className="ltag" title={tag} key={tag} style={{ background: bg, color: fg }}>
-                                {tag}
-                              </span>
-                            );
-                          })}
-                        </div>
-                        {extra > 0 && <button className="more-n">+{extra}</button>}
-                      </div>
+                    <td>
+                      {lead.li ? (
+                        <a
+                          className="lcontact"
+                          href={linkedinHref(lead.li)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={lead.li}
+                        >
+                          {lead.li.replace(/^https?:\/\/(www\.)?/i, "")}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="c-mid c-cons">{lead.consent ? "Yes" : "No"}</td>
                     <td className="c-mid num">{lead.avgCall ? `${lead.avgCall}s` : "—"}</td>
@@ -413,7 +410,6 @@ export function LeadsScreen() {
                         </span>
                       </span>
                     </td>
-                    <td className="c-next">{lead.next}</td>
                     <td className="c-act">
                       <span className="fu">
                         <button
@@ -440,15 +436,47 @@ export function LeadsScreen() {
           </table>
         </div>
 
+        {/* Phones: the stylesheet hides the table below 820px and shows this list instead. */}
+        <ul className="lcards" aria-label="Prospects">
+          {sorted.map((lead) => (
+            <li key={lead.id}>
+              <button type="button" className="lc-btn" onClick={() => setViewing(lead.id)}>
+                <Avatar name={lead.n} />
+                <span className="lc-m">
+                  <b>
+                    {lead.n}
+                    {lead.isSample && (
+                      <span className="tag" style={{ marginLeft: 6 }}>
+                        Sample
+                      </span>
+                    )}
+                  </b>
+                  <small>{[lead.t, lead.c].filter(Boolean).join(" · ") || lead.email || "—"}</small>
+                </span>
+                <span className="lc-r">
+                  <span className={"scoren " + scoreBand(lead.score)}>{lead.score}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+
         {/* A failed load is not an empty list, and an empty workspace is not a filter that matched
             nothing. The error banner above covers the first, so say nothing here. */}
-        {sorted.length === 0 && !loading && !error &&
-          (stage !== "any" || owner !== "any" || campaign !== "any" || debouncedQuery ? (
-            <p className="empty">No leads match those filters.</p>
+        {sorted.length === 0 &&
+          !loading &&
+          !error &&
+          (owner !== "any" || campaign !== "any" || debouncedQuery ? (
+            <p className="empty">No prospects match those filters.</p>
+          ) : audience !== "any" ? (
+            <p className="empty">
+              <b>No prospects left in this audience</b>
+              <span>Everyone it imported has since been deleted.</span>
+            </p>
           ) : (
             <p className="empty">
-              <b>No leads yet</b>
-              <span>Add a lead with New lead, or upload a .csv or .xlsx file.</span>
+              <b>No prospects yet</b>
+              <span>Import an audience from a .csv or .xlsx file, or add one with New lead.</span>
             </p>
           ))}
         {loading && sorted.length === 0 && <p className="empty">Loading leads…</p>}
@@ -479,11 +507,21 @@ export function LeadsScreen() {
         />
       )}
 
+      {viewing && (
+        <ProspectDrawer
+          leadId={viewing}
+          onClose={() => setViewing(null)}
+          onOpen={setViewing}
+          onEdit={(lead) => {
+            setViewing(null);
+            setEditing(draftOf(toAppLead(lead)));
+          }}
+        />
+      )}
+
       {editing && (
         <LeadEditor
           draft={editing}
-          campaigns={campaigns}
-          members={members}
           onCancel={() => setEditing(null)}
           onSave={save}
         />
@@ -495,18 +533,10 @@ export function LeadsScreen() {
 const EMPTY_DRAFT: LeadDraft = {
   id: null,
   name: "",
-  company: "",
-  title: "",
   email: "",
   phone: "",
-  stage: "New",
-  score: 0,
-  source: "form",
-  tags: [],
+  linkedin: "",
   consent: false,
-  nextStep: "",
-  campaignId: "",
-  ownerId: "",
 };
 
 /** The editor edits a flat draft, so a row is flattened on the way in. */
@@ -514,61 +544,86 @@ function draftOf(lead: AppLead): LeadDraft {
   return {
     id: lead.id,
     name: lead.n,
-    company: lead.c,
-    title: lead.t,
     email: lead.email,
     phone: lead.ph ?? "",
-    stage: lead.stage,
-    score: lead.score,
-    source: lead.source,
-    // The derived "Title: …" chip is display-only; it must not be saved back as a real tag.
-    tags: lead.tags.filter((tag) => !tag.startsWith("Title:")),
+    linkedin: lead.li,
     consent: lead.consent,
-    nextStep: lead.next === "—" ? "" : lead.next,
-    campaignId: lead.campaignId ?? "",
-    ownerId: lead.ownerId,
   };
 }
+
+/** Stored URLs carry a scheme; an older row typed without one still has to open as a link. */
+const linkedinHref = (url: string) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
 
 const kb = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
+const shortDate = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
 /**
- * Segments uploaded from a file. The counts are the ones the upload summary
- * showed: reachable leads per channel, never the raw row count.
+ * The workspace's audiences: one per imported file. Picking one narrows the prospect table to the
+ * people it holds. `leadCount` is the live membership (deleted prospects drop out); the per-channel
+ * figures are what the import's review showed.
  */
-function SegmentList({ segments, onUpload }: { segments: Segment[] | null; onUpload: () => void }) {
+function AudienceList({
+  segments,
+  selected,
+  onSelect,
+  onUpload,
+}: {
+  segments: Segment[] | null;
+  selected: string;
+  onSelect: (id: string) => void;
+  onUpload: () => void;
+}) {
   if (segments === null) return null;
 
   return (
     <div className="card segs">
       <div className="segs-h">
         <div>
-          <span className="eyebrow">File segments</span>
-          <p className="hint">Uploaded lists, with the leads each one can actually reach.</p>
+          <span className="eyebrow">Audiences</span>
+          <p className="hint">Each imported file is an audience. Pick one to see its prospects.</p>
         </div>
         <button className="btn line sm" onClick={onUpload}>
-          Upload leads
+          Import audience
         </button>
       </div>
 
       {segments.length === 0 ? (
         <p className="empty">
-          <b>No segments yet</b>
-          <span>Upload a .csv or .xlsx file and map its columns to start one.</span>
+          <b>No audiences yet</b>
+          <span>Import a .csv or .xlsx file. You’ll review every row before anything is saved.</span>
         </p>
       ) : (
         <div className="seglist">
+          <button
+            type="button"
+            className={"segcard aud-card aud-all" + (selected === "any" ? " on" : "")}
+            aria-pressed={selected === "any"}
+            onClick={() => onSelect("any")}
+          >
+            <span className="seg-t">
+              <b>All prospects</b>
+            </span>
+            <span className="hint">Everyone in the workspace, from every audience and added by hand.</span>
+          </button>
           {segments.map((segment) => (
-            <div className="segcard" key={segment.id}>
-              <div className="seg-t">
+            <button
+              type="button"
+              className={"segcard aud-card" + (selected === segment.id ? " on" : "")}
+              aria-pressed={selected === segment.id}
+              key={segment.id}
+              onClick={() => onSelect(segment.id)}
+            >
+              <span className="seg-t">
                 <b>{segment.name}</b>
                 <span className="spill segpill">
-                  {segment.reachableRows.toLocaleString("en-US")} reachable
+                  {segment.leadCount.toLocaleString("en-US")} {segment.leadCount === 1 ? "prospect" : "prospects"}
                 </span>
-              </div>
-              {segment.description && <p className="hint">{segment.description}</p>}
-              <div className="segmeta">
+              </span>
+              {segment.description && <span className="hint">{segment.description}</span>}
+              <span className="segmeta">
                 {segment.channels
                   .filter((c) => c.column)
                   .map((c) => (
@@ -577,13 +632,16 @@ function SegmentList({ segments, onUpload }: { segments: Segment[] | null; onUpl
                       <b>{c.reachable.toLocaleString("en-US")}</b>
                     </span>
                   ))}
-              </div>
+              </span>
               <small className="hint">
-                {segment.fileName} · {kb(segment.fileSize)} · {segment.totalRows.toLocaleString("en-US")} rows ·{" "}
-                {segment.profilesCreated.toLocaleString("en-US")} new profiles,{" "}
-                {segment.profilesMerged.toLocaleString("en-US")} merged into existing leads
+                {segment.fileName} · {kb(segment.fileSize)} · imported {shortDate(segment.createdAt)} ·{" "}
+                {segment.profilesCreated.toLocaleString("en-US")} new, {segment.profilesMerged.toLocaleString("en-US")}{" "}
+                matched existing
+                {segment.excludedInJourney
+                  ? `, ${segment.excludedInJourney.toLocaleString("en-US")} left out (already in a campaign)`
+                  : ""}
               </small>
-            </div>
+            </button>
           ))}
         </div>
       )}

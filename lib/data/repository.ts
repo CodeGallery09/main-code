@@ -37,6 +37,7 @@ import type {
   Message,
   Overview,
   Paged,
+  ProspectProfile,
   RangeKey,
   Task,
   TaskKind,
@@ -113,6 +114,13 @@ export interface Repository {
 
   listLeads(ctx: Ctx, query: LeadQuery): Promise<Paged<Lead>>;
   getLead(ctx: Ctx, id: string): Promise<Lead | null>;
+
+  /**
+   * One prospect with everything recorded about them: company, journey (campaign and workflow
+   * run), audiences, conversations, events, to-dos, and the timeline built from those rows by
+   * `buildProspect` (lib/leads/prospect.ts). `null` when the lead is not in this workspace.
+   */
+  getProspect(ctx: Ctx, id: string): Promise<ProspectProfile | null>;
 
   listThreads(ctx: Ctx, query: ThreadQuery): Promise<Thread[]>;
   getThread(ctx: Ctx, id: string): Promise<{ thread: Thread; messages: Message[] } | null>;
@@ -213,6 +221,13 @@ export interface Repository {
     leads: ParsedLead[],
   ): Promise<{ hits: InJourneyRow[]; campaignNames: Record<string, string> }>;
 
+  /**
+   * Every lead's name and contact keys, so the upload preview can say which rows match a prospect
+   * the workspace already has — the same comparison `createSegment` makes when it saves.
+   */
+  listLeadKeys(ctx: Ctx): Promise<{ id: string; name: string; email: string | null; mobile: string | null; whatsapp: string | null; linkedin: string | null }[]>;
+
+  /** Newest first, each with its live `leadCount`. */
   listSegments(ctx: Ctx): Promise<Segment[]>;
   getSegment(ctx: Ctx, id: string): Promise<Segment | null>;
 

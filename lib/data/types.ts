@@ -219,6 +219,8 @@ export type LeadQuery = {
   stage?: LeadStage | "all";
   ownerId?: string | "all";
   campaignId?: string | "all";
+  /** Only prospects in this audience (an uploaded segment). */
+  segmentId?: string | "all";
   sort?: "score" | "name" | "updated";
   dir?: "asc" | "desc";
   page?: number;
@@ -241,6 +243,63 @@ export type WorkflowRecord = {
   name: string;
   graph: WorkflowGraph;
   updatedAt: string;
+};
+
+/* ---------------------------------------------------- prospect profile -- */
+
+/**
+ * One touchpoint on a prospect's history. Every entry is a stored fact — a row in `messages`,
+ * `events` or `tasks`, the lead's own creation, or the upload that brought it in. Nothing here
+ * is inferred or simulated.
+ */
+export type ProspectTouch = {
+  id: string;
+  /** ISO time. */
+  at: string;
+  kind: "created" | "imported" | "message_out" | "message_in" | "event" | "task";
+  channel: Channel | null;
+  label: string;
+  detail: string;
+};
+
+export type ProspectProfile = {
+  lead: Lead;
+  /** When the prospect was added; null where the store does not know (demo seed). */
+  createdAt: string | null;
+  company: {
+    name: string;
+    /** From the work email; null for a personal mailbox or no email. */
+    domain: string | null;
+    /** Company columns from an uploaded file (industry, website, size, …), as given. */
+    facts: { label: string; value: string }[];
+    /** Other prospects in this workspace at the same company. */
+    colleagues: { id: string; name: string; title: string }[];
+    colleagueCount: number;
+  };
+  /** Every other column an upload carried for this person. */
+  fileFields: { label: string; value: string }[];
+  journey: {
+    campaign: { id: string; name: string; status: CampaignStatus; type: CampaignType } | null;
+    /** The workflow run for this person, when the engine has started one. */
+    run: { state: "active" | "completed" | "stopped" | "failed"; stepId: string | null; startedAt: string; finishedAt: string | null } | null;
+  };
+  /** Audiences (uploaded segments) this person belongs to, newest first. */
+  audiences: { id: string; name: string; fileName: string; importedAt: string }[];
+  engagement: {
+    sent: number;
+    received: number;
+    lastReplyAt: string | null;
+    lastTouchAt: string | null;
+    byChannel: { channel: Channel; sent: number; received: number }[];
+    /** Counts per recorded event kind ("opened", "clicked", …). */
+    events: { kind: string; count: number }[];
+    conversations: { id: string; channel: Channel; intent: Thread["intent"]; needsReply: boolean; lastAt: string }[];
+    /** Signals stored on this person's conversations. */
+    signals: { label: string; points: number }[];
+  };
+  /** Newest first. */
+  timeline: ProspectTouch[];
+  tasks: { id: string; kind: TaskKind; summary: string; channel: Channel; done: boolean; when: string }[];
 };
 
 /* ------------------------------------------------------ channel accounts -- */

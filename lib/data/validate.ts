@@ -31,6 +31,7 @@ export const TAGS_MAX = 10;
 export const TAG_MAX = 32;
 export const NEXT_STEP_MAX = 200;
 export const MESSAGE_MAX = 5000;
+export const URL_MAX = 500;
 
 export type ValidationErrors = Record<string, string>;
 export type Validation<T> = { ok: true; data: T } | { ok: false; errors: ValidationErrors };
@@ -60,6 +61,18 @@ export function normalisePhone(raw: string): string | null {
   const digits = kept.replace(/\D/g, "");
   if (digits.length < 7 || digits.length > 15) return null;
   return kept.startsWith("+") ? `+${digits}` : digits;
+}
+
+/**
+ * A web URL, with `https://` added when it was typed without a scheme — the same rule the upload
+ * applies to a LinkedIn column (`checkUrl` in lib/leads/validation.ts), so a profile added by hand
+ * and one imported from a file are stored, and matched, the same way.
+ */
+export function normaliseUrl(raw: string): string | null {
+  const value = raw.trim();
+  if (!value || /\s/.test(value)) return null;
+  const withScheme = /^https?:\/\//i.test(value) ? value : "https://" + value;
+  return /^https?:\/\/(?:[a-z0-9-]+\.)+[a-z]{2,}(?:[/?#][^\s]*)?$/i.test(withScheme) ? withScheme : null;
 }
 
 function cleanTags(value: unknown, errors: ValidationErrors): string[] {
@@ -93,6 +106,7 @@ export type LeadInput = {
   title: string;
   email: string | null;
   phone: string | null;
+  linkedin: string | null;
   stage: (typeof LEAD_STAGES)[number];
   score: number;
   source: (typeof LEAD_SOURCES)[number];
@@ -162,8 +176,21 @@ export function validateLead(input: unknown, partial = false): Validation<LeadPa
     out.phone = null;
   }
 
+  if (has("linkedin")) {
+    const raw = text(input.linkedin);
+    if (!raw) out.linkedin = null;
+    else {
+      const url = normaliseUrl(raw);
+      if (!url || url.length > URL_MAX) errors.linkedin = "Enter a LinkedIn profile URL.";
+      else out.linkedin = url;
+    }
+  } else if (!partial) {
+    out.linkedin = null;
+  }
+
+  // A lead added by hand has not been contacted yet, so it starts at "new", like an imported one.
   if (has("stage") || !partial) {
-    const stage = oneOf(input.stage ?? "reaching", LEAD_STAGES);
+    const stage = oneOf(input.stage ?? "new", LEAD_STAGES);
     if (!stage) errors.stage = "Pick a valid stage.";
     else out.stage = stage;
   }

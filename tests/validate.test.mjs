@@ -27,7 +27,8 @@ test("a create fills defaults for everything optional", () => {
     title: "",
     email: null,
     phone: null,
-    stage: "reaching",
+    linkedin: null,
+    stage: "new",
     source: "form",
     score: 0,
     tags: [],
@@ -51,6 +52,21 @@ test("email is lowercased, and a bad one is rejected", () => {
   assert.equal(validateLead({ name: "A", email: "not-an-email" }).ok, false);
   // An explicitly empty string means "clear it", not "invalid".
   assert.equal(validateLead({ name: "A", email: "" }).data.email, null);
+});
+
+test("a LinkedIn URL is stored with a scheme, the way an upload stores one", () => {
+  assert.equal(
+    validateLead({ name: "A", linkedin: " linkedin.com/in/maya-reyes " }).data.linkedin,
+    "https://linkedin.com/in/maya-reyes",
+  );
+  assert.equal(
+    validateLead({ name: "A", linkedin: "https://www.linkedin.com/in/maya/" }).data.linkedin,
+    "https://www.linkedin.com/in/maya/",
+  );
+  assert.equal(validateLead({ name: "A", linkedin: "maya reyes" }).ok, false);
+  assert.equal(validateLead({ name: "A", linkedin: "maya" }).ok, false);
+  assert.equal(validateLead({ name: "A", linkedin: "" }).data.linkedin, null);
+  assert.equal(validateLead({ linkedin: "" }, true).data.linkedin, null, "a PATCH can clear it");
 });
 
 test("stage accepts the widened vocabulary and rejects anything else", () => {

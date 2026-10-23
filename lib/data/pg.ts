@@ -30,6 +30,7 @@ import {
   dailyRollups,
   leads as leadsTable,
   memberships,
+  events as eventsTable,
   messages as messagesTable,
   segmentLeads,
   segments as segmentsTable,
@@ -38,6 +39,7 @@ import {
   threads as threadsTable,
   uploads as uploadsTable,
   users,
+  workflowRuns,
   workflows as workflowsTable,
   workspaces,
   workspaceSettings as workspaceSettingsTable,
@@ -58,7 +60,8 @@ import type { WorkflowGraph } from "@/lib/app/workflow";
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
 import { setupChecks, blockingCount } from "@/lib/data/setup";
 import { findInJourney, mergeLeads, type InJourneyRow, type LeadProfile } from "@/lib/leads/merge";
-import { leadIdentity } from "@/lib/leads/profile";
+import { identityFill, leadIdentity, splitFileFields } from "@/lib/leads/profile";
+import { buildProspect } from "@/lib/leads/prospect";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
 import { suggestMapping, type Mapping, type ParsedLead } from "@/lib/leads/validation";
 import type { Table } from "@/lib/leads/table";
@@ -82,6 +85,7 @@ import type {
   Metric,
   Overview,
   Paged,
+  ProspectProfile,
   RangeKey,
   Task,
   Thread,
@@ -869,6 +873,8 @@ export class PgRepository implements Repository {
         or(
           ilike(leadsTable.name, term),
           ilike(leadsTable.company, term),
+          ilike(leadsTable.title, term),
+          ilike(leadsTable.email, term),
           sql`EXISTS (SELECT 1 FROM unnest(${leadsTable.tags}) AS tag WHERE tag ILIKE ${term})`,
         )!,
       );
@@ -877,6 +883,13 @@ export class PgRepository implements Repository {
     if (query.ownerId && query.ownerId !== "all") where.push(eq(leadsTable.ownerId, query.ownerId));
     if (query.campaignId && query.campaignId !== "all") {
       where.push(eq(leadsTable.campaignId, query.campaignId));
+    }
+    if (query.segmentId && query.segmentId !== "all") {
+      // The link row carries the workspace too, so another workspace's segment id matches nothing.
+      where.push(
+        sql`EXISTS (SELECT 1 FROM ${segmentLeads} WHERE ${segmentLeads.leadId} = ${leadsTable.id}
+            AND ${segmentLeads.segmentId} = ${query.segmentId} AND ${segmentLeads.workspaceId} = ${ctx.workspaceId})`,
+      );
     }
     const predicate = and(...where);
 
@@ -957,6 +970,167 @@ export class PgRepository implements Repository {
   }
 
   /**
+   * Every read is scoped to the workspace — including the child tables (messages, events, runs),
+   * which carry their own `workspace_id`, so a lead id from another workspace returns nothing.
+   */
+  async getProspect(ctx: Ctx, id: string): Promise<ProspectProfile | null> {
+    const [row] = await this.db
+      .select({ lead: leadsTable, ownerName: users.name })
+      .from(leadsTable)
+      .leftJoin(users, eq(users.id, leadsTable.ownerId))
+      .where(and(eq(leadsTable.id, id), this.ws(leadsTable.workspaceId, ctx)))
+      .limit(1);
+    if (!row) return null;
+    const lead = this.toLead(row.lead, row.ownerName);
+
+    const company = row.lead.company.trim();
+    const [campaign, runs, audiences, threads, tasks, events, colleagues, colleagueTotal] = await Promise.all([
+      row.lead.campaignId
+        ? this.db
+            .select({
+              id: campaignsTable.id,
+              name: campaignsTable.name,
+              status: campaignsTable.status,
+              type: campaignsTable.type,
+            })
+            .from(campaignsTable)
+            .where(and(eq(campaignsTable.id, row.lead.campaignId), this.ws(campaignsTable.workspaceId, ctx)))
+            .limit(1)
+        : Promise.resolve([]),
+      this.db
+        .select()
+        .from(workflowRuns)
+        .where(and(eq(workflowRuns.leadId, id), this.ws(workflowRuns.workspaceId, ctx)))
+        .orderBy(desc(workflowRuns.startedAt))
+        .limit(1),
+      this.db
+        .select({
+          id: segmentsTable.id,
+          name: segmentsTable.name,
+          fileName: segmentsTable.fileName,
+          createdAt: segmentsTable.createdAt,
+        })
+        .from(segmentLeads)
+        .innerJoin(segmentsTable, eq(segmentsTable.id, segmentLeads.segmentId))
+        .where(
+          and(
+            eq(segmentLeads.leadId, id),
+            this.ws(segmentLeads.workspaceId, ctx),
+            this.ws(segmentsTable.workspaceId, ctx),
+          ),
+        ),
+      this.db
+        .select()
+        .from(threadsTable)
+        .where(and(eq(threadsTable.leadId, id), this.ws(threadsTable.workspaceId, ctx))),
+      this.db
+        .select()
+        .from(tasksTable)
+        .where(and(eq(tasksTable.leadId, id), this.ws(tasksTable.workspaceId, ctx)))
+        .orderBy(desc(tasksTable.createdAt)),
+      this.db
+        .select({
+          id: eventsTable.id,
+          kind: eventsTable.kind,
+          channel: eventsTable.channel,
+          occurredAt: eventsTable.occurredAt,
+        })
+        .from(eventsTable)
+        .where(and(eq(eventsTable.leadId, id), this.ws(eventsTable.workspaceId, ctx)))
+        .orderBy(desc(eventsTable.occurredAt))
+        .limit(500),
+      company
+        ? this.db
+            .select({ id: leadsTable.id, name: leadsTable.name, title: leadsTable.title })
+            .from(leadsTable)
+            .where(
+              and(
+                this.ws(leadsTable.workspaceId, ctx),
+                sql`lower(${leadsTable.company}) = lower(${company})`,
+                sql`${leadsTable.id} <> ${id}`,
+              ),
+            )
+            .orderBy(asc(leadsTable.name), asc(leadsTable.id))
+            .limit(8)
+        : Promise.resolve([]),
+      company
+        ? this.db
+            .select({ value: count() })
+            .from(leadsTable)
+            .where(
+              and(
+                this.ws(leadsTable.workspaceId, ctx),
+                sql`lower(${leadsTable.company}) = lower(${company})`,
+                sql`${leadsTable.id} <> ${id}`,
+              ),
+            )
+        : Promise.resolve([{ value: 0 }]),
+    ]);
+
+    const threadIds = threads.map((t) => t.id);
+    const messages = threadIds.length
+      ? await this.db
+          .select()
+          .from(messagesTable)
+          .where(and(inArray(messagesTable.threadId, threadIds), this.ws(messagesTable.workspaceId, ctx)))
+          .orderBy(desc(messagesTable.sentAt))
+          .limit(500)
+      : [];
+
+    const run = runs[0];
+    const fields = splitFileFields((row.lead.extra ?? {}) as Record<string, string>);
+    return buildProspect({
+      lead,
+      createdAt: iso(row.lead.createdAt),
+      companyFields: fields.company,
+      otherFields: fields.other,
+      campaign: campaign[0] ?? null,
+      run: run
+        ? {
+            state: run.state,
+            stepId: run.currentStepId,
+            startedAt: iso(run.startedAt),
+            finishedAt: run.finishedAt ? iso(run.finishedAt) : null,
+          }
+        : null,
+      audiences: audiences.map((a) => ({ id: a.id, name: a.name, fileName: a.fileName, importedAt: iso(a.createdAt) })),
+      threads: threads.map((t) => ({
+        id: t.id,
+        channel: t.channel as Channel,
+        intent: t.intent,
+        needsReply: t.needsReply,
+        lastAt: iso(t.lastAt),
+        signals: (t.signals as { label: string; points: number }[]) ?? [],
+      })),
+      messages: messages.map((m) => ({
+        id: m.id,
+        threadId: m.threadId,
+        from: m.from,
+        channel: m.channel as Channel,
+        body: m.body,
+        sentAt: iso(m.sentAt),
+      })),
+      events: events.map((e) => ({
+        id: e.id,
+        kind: e.kind,
+        channel: (e.channel as Channel | null) ?? null,
+        occurredAt: iso(e.occurredAt),
+      })),
+      tasks: tasks.map((t) => ({
+        id: t.id,
+        kind: t.kind,
+        summary: t.summary,
+        channel: t.channel as Channel,
+        done: t.done,
+        when: t.whenLabel,
+        createdAt: iso(t.createdAt),
+      })),
+      colleagues: colleagues.map((c) => ({ id: c.id, name: c.name, title: c.title })),
+      colleagueCount: Number(colleagueTotal[0]?.value ?? 0),
+    });
+  }
+
+  /**
    * Checks a reference belongs to this workspace before it is written. Returning a `WriteError`
    * rather than nulling the field means the caller is told the reference was rejected instead of
    * quietly getting a lead with no campaign.
@@ -999,6 +1173,7 @@ export class PgRepository implements Repository {
         title: input.title ?? "",
         phone: input.phone ?? null,
         email: input.email ?? null,
+        linkedin: input.linkedin ?? null,
         stage: input.stage ?? "new",
         score: input.score ?? 0,
         source: input.source ?? "form",
@@ -1032,6 +1207,7 @@ export class PgRepository implements Repository {
     if (patch.title !== undefined) set.title = patch.title;
     if (patch.email !== undefined) set.email = patch.email;
     if (patch.phone !== undefined) set.phone = patch.phone;
+    if (patch.linkedin !== undefined) set.linkedin = patch.linkedin;
     if (patch.stage !== undefined) set.stage = patch.stage;
     if (patch.score !== undefined) set.score = patch.score;
     if (patch.source !== undefined) set.source = patch.source;
@@ -1343,7 +1519,33 @@ export class PgRepository implements Repository {
     return { hits, campaignNames };
   }
 
-  private toSegment(row: typeof segmentsTable.$inferSelect): Segment {
+  async listLeadKeys(ctx: Ctx) {
+    return this.db
+      .select({
+        id: leadsTable.id,
+        name: leadsTable.name,
+        email: leadsTable.email,
+        mobile: leadsTable.phone,
+        whatsapp: leadsTable.whatsapp,
+        linkedin: leadsTable.linkedin,
+      })
+      .from(leadsTable)
+      .where(this.ws(leadsTable.workspaceId, ctx));
+  }
+
+  /** Live member counts. `segment_leads` cascades on lead delete, so a deleted prospect drops out. */
+  private async segmentCounts(ctx: Ctx, ids?: string[]): Promise<Map<string, number>> {
+    const where = [this.ws(segmentLeads.workspaceId, ctx)];
+    if (ids) where.push(inArray(segmentLeads.segmentId, ids));
+    const rows = await this.db
+      .select({ segmentId: segmentLeads.segmentId, value: count() })
+      .from(segmentLeads)
+      .where(and(...where))
+      .groupBy(segmentLeads.segmentId);
+    return new Map(rows.map((r) => [r.segmentId, Number(r.value)]));
+  }
+
+  private toSegment(row: typeof segmentsTable.$inferSelect, leadCount = 0): Segment {
     return {
       id: row.id,
       name: row.name,
@@ -1360,16 +1562,20 @@ export class PgRepository implements Repository {
       errorCount: row.errorCount,
       createdAt: iso(row.createdAt),
       createdBy: row.createdBy ?? "",
+      leadCount,
     };
   }
 
   async listSegments(ctx: Ctx): Promise<Segment[]> {
-    const rows = await this.db
-      .select()
-      .from(segmentsTable)
-      .where(this.ws(segmentsTable.workspaceId, ctx))
-      .orderBy(desc(segmentsTable.createdAt), desc(segmentsTable.id));
-    return rows.map((row) => this.toSegment(row));
+    const [rows, counts] = await Promise.all([
+      this.db
+        .select()
+        .from(segmentsTable)
+        .where(this.ws(segmentsTable.workspaceId, ctx))
+        .orderBy(desc(segmentsTable.createdAt), desc(segmentsTable.id)),
+      this.segmentCounts(ctx),
+    ]);
+    return rows.map((row) => this.toSegment(row, counts.get(row.id) ?? 0));
   }
 
   async getSegment(ctx: Ctx, id: string): Promise<Segment | null> {
@@ -1378,7 +1584,9 @@ export class PgRepository implements Repository {
       .from(segmentsTable)
       .where(and(eq(segmentsTable.id, id), this.ws(segmentsTable.workspaceId, ctx)))
       .limit(1);
-    return row ? this.toSegment(row) : null;
+    if (!row) return null;
+    const counts = await this.segmentCounts(ctx, [id]);
+    return this.toSegment(row, counts.get(id) ?? 0);
   }
 
   async createSegment(
@@ -1404,6 +1612,9 @@ export class PgRepository implements Repository {
     const { hits } = await this.findInJourney(ctx, input.leads);
     const out = new Set(hits.map((h) => h.row));
     const incoming = input.leads.filter((lead) => !out.has(lead.row));
+    // `input.leads` arrives with the review's exclusions already taken out, so the recheck above only
+    // finds people who joined a campaign since. The audience records both.
+    const excluded = input.report.journey.excluded + out.size;
 
     return this.db.transaction(async (tx) => {
       // Every lead the workspace has, as profiles, so a row can merge into the right one.
@@ -1415,11 +1626,14 @@ export class PgRepository implements Repository {
           whatsapp: leadsTable.whatsapp,
           linkedin: leadsTable.linkedin,
           extra: leadsTable.extra,
+          company: leadsTable.company,
+          title: leadsTable.title,
           createdAt: leadsTable.createdAt,
           updatedAt: leadsTable.updatedAt,
         })
         .from(leadsTable)
         .where(this.ws(leadsTable.workspaceId, ctx));
+      const identityBefore = new Map(existingRows.map((r) => [r.id, { company: r.company, title: r.title }]));
 
       const existing: LeadProfile[] = existingRows.map((r) => ({
         id: r.id,
@@ -1486,7 +1700,9 @@ export class PgRepository implements Repository {
       for (const p of touched) {
         const was = before.get(p.id);
         if (!was) continue;
+        const fill = identityFill(identityBefore.get(p.id) ?? { company: "", title: "" }, p);
         const changed =
+          Object.keys(fill).length > 0 ||
           p.email !== was.email ||
           p.mobile !== was.mobile ||
           p.whatsapp !== was.whatsapp ||
@@ -1501,6 +1717,7 @@ export class PgRepository implements Repository {
             whatsapp: p.whatsapp,
             linkedin: p.linkedin,
             extra: p.extra,
+            ...fill,
             updatedAt: now,
           })
           .where(and(eq(leadsTable.id, p.id), this.ws(leadsTable.workspaceId, ctx)));
@@ -1520,8 +1737,8 @@ export class PgRepository implements Repository {
           reachableRows: input.report.reachableRows,
           channels: input.report.channels,
           profilesCreated: merge.created,
-          profilesMerged: merge.merged,
-          excludedInJourney: out.size,
+          profilesMerged: merge.matchedExisting,
+          excludedInJourney: excluded,
           errorCount: input.report.errorCount,
           createdBy: ctx.userId,
         })
@@ -1540,10 +1757,10 @@ export class PgRepository implements Repository {
         .where(and(eq(uploadsTable.id, input.uploadId), this.ws(uploadsTable.workspaceId, ctx)));
 
       return {
-        segment: this.toSegment(segmentRow),
+        segment: this.toSegment(segmentRow, members.length),
         profilesCreated: merge.created,
-        profilesMerged: merge.merged,
-        excluded: out.size,
+        profilesMerged: merge.matchedExisting,
+        excluded,
       };
     });
   }

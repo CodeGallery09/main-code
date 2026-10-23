@@ -3,7 +3,7 @@ import { failFields, parseInt10, readJson, withUser } from "@/lib/http";
 import { validateLead } from "@/lib/data/validate";
 import type { LeadQuery, LeadStage } from "@/lib/data/types";
 
-/** GET /api/leads?q=&stage=&ownerId=&campaignId=&sort=&dir=&page=&pageSize= */
+/** GET /api/leads?q=&stage=&ownerId=&campaignId=&segmentId=&sort=&dir=&page=&pageSize= */
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const query: LeadQuery = {
@@ -11,6 +11,7 @@ export async function GET(request: Request) {
     stage: (params.get("stage") ?? "all") as LeadStage | "all",
     ownerId: params.get("ownerId") ?? "all",
     campaignId: params.get("campaignId") ?? "all",
+    segmentId: params.get("segmentId") ?? "all",
     sort: (params.get("sort") ?? "score") as LeadQuery["sort"],
     dir: (params.get("dir") ?? undefined) as LeadQuery["dir"],
     page: parseInt10(params.get("page"), 1),

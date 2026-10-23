@@ -4,7 +4,7 @@ Orientation file for agents. Read this first; it replaces grepping the tree.
 **Keep it current:** any change that adds a file, a route, a table or an architectural
 rule must update this file in the same commit. See "Maintaining this file" at the end.
 
-Last updated: 2026-10-15 · ~27k lines of source across 146 files.
+Last updated: 2026-10-23 · ~28k lines of source across 151 files.
 
 ---
 
@@ -77,17 +77,17 @@ route. Never put figures, names, accounts or campaigns in a component or in `lib
 ### Storage seam — `lib/data/` (start here for anything data-related)
 | File | L | Purpose |
 |---|---|---|
-| `types.ts` | 321 | Domain types. Import-free + erasable (loadable by `node --test`). |
-| `repository.ts` | 230 | **The interface every page and route talks to.** `Ctx` is the first arg of every method — tenancy cannot be forgotten. `WriteError` ≠ `null` ≠ throw → 422/404/500. |
+| `types.ts` | 418 | Domain types, incl. `ProspectProfile`. Import-free + erasable (loadable by `node --test`). |
+| `repository.ts` | 269 | **The interface every page and route talks to.** `Ctx` is the first arg of every method — tenancy cannot be forgotten. `WriteError` ≠ `null` ≠ throw → 422/404/500. |
 | `index.ts` | 22 | `getRepository()` factory. Returns Postgres when `DATABASE_URL` is set, memory otherwise. |
-| `memory.ts` | 852 | In-memory impl over the seed. No-config fallback; writes last until restart. Workflows: a `Map` by campaign id, falling back to the demo `WORKFLOWS` matched on campaign name, so the seed's four multichannel campaigns open a real graph. |
-| `pg.ts` | 1498 | Postgres impl via Drizzle. Filters `workspace_id` on every read *and* write (the `ws()` helper). Leads page in SQL; campaigns aggregate in JS. Uploads, segments, accounts, workflows and the sample world are all real tables now. |
+| `memory.ts` | 971 | In-memory impl over the seed. No-config fallback; writes last until restart. **All its mutable state lives on `globalThis` via `shared()`** (see §5). Workflows: a `Map` by campaign id, falling back to the demo `WORKFLOWS` matched on campaign name, so the seed's four multichannel campaigns open a real graph. |
+| `pg.ts` | 1759 | Postgres impl via Drizzle. Filters `workspace_id` on every read *and* write (the `ws()` helper). Leads page in SQL; campaigns aggregate in JS. Uploads, segments, accounts, workflows and the sample world are all real tables now. |
 | `seed.ts` | 831 | Demo dataset. The only file that goes away once real data exists. |
 | `sample.ts` | 214 | The sample content every new workspace starts with: one paused multichannel campaign + 8 leads. Import-free; `tests/sample.test.mjs` pins that every email is on the reserved `.example` domain and every phone in the fictional 555-01xx range, so a sample lead can never be a real person. |
 | `sampleSeed.ts` | 216 | Server-only. Inserts the whole sample world **inside the `signUp` transaction**: campaign + workflow, 8 leads, 4 conversations and 3 to-dos, the funnel by day, a LinkedIn account + mailbox + sending domain assigned to the campaign. All `is_sample`. |
 | `setup.ts` | 151 | `setupChecks(accounts, domains)`: what is and is not set up, **computed from the workspace's own accounts**. Drives the Configuration overview, the tab badges and the rail badge. Import-free, tested. |
 | `query.ts` | 68 | Pure filter/sort/paginate helpers shared by both impls. Import-free, tested. |
-| `validate.ts` | 385 | Write-path validation, `{ok,data}|{ok,errors}`. Import-free, erasable, tested. |
+| `validate.ts` | 651 | Write-path validation, `{ok,data}|{ok,errors}`. Import-free, erasable, tested. A lead's `linkedin` goes through `normaliseUrl` (same rule as the upload's `checkUrl`: any web URL, `https://` added); a create with no stage starts at `new`. |
 
 ### Database — `lib/db/`
 | File | L | Purpose |
@@ -120,7 +120,8 @@ directly.
 |---|---|---|
 | `/api/me`, `/api/workspace`, `/api/overview` | GET | |
 | `/api/tasks`, `/api/tasks/[id]/complete` | GET, POST | |
-| `/api/leads`, `/api/leads/[id]` | GET POST PATCH DELETE | full CRUD |
+| `/api/leads`, `/api/leads/[id]` | GET POST PATCH DELETE | full CRUD. List takes `?segmentId=` (one audience) and searches name, company, title, email and tags |
+| `/api/leads/[id]/profile` | GET | the prospect profile (`getProspect`): company, journey, audiences, engagement, timeline, to-dos. Read-only; 404 across workspaces |
 | `/api/campaigns`, `/api/campaigns/[id]` | GET POST PATCH DELETE | full CRUD. A multichannel campaign needs ≥ 2 channels (validate.ts). |
 | `/api/campaigns/[id]/workflow` | GET, PUT | the campaign's workflow. PUT takes `{ name, graph }` and **rebuilds the graph from a whitelist** (`validateWorkflowGraph`); 422 names the reason. 404 for another workspace's campaign. |
 | `/api/workflows` | GET | every workflow in the workspace, newest edit first |
@@ -129,7 +130,7 @@ directly.
 | `/api/accounts/[id]/campaigns` | PUT | `{ campaignIds }` replaces the campaigns sending from an account; a foreign campaign id is a 422 |
 | `/api/badges` | GET | `{ tasks, inbox, config }`: the rail counts, fetched on every navigation |
 | `/api/settings` | GET, PATCH | the Configuration screen's Variables/Sending rules/Compliance tabs (`workspace_settings`). PATCH body carries only the section(s) changed (`{ variableFallbacks? \| sendingRules? \| compliance? }`); shape/range checked in `validate.ts`, merged into the stored row by the repository. Always real for the signed-in workspace, but `SENDING_ENABLED` stays false so nothing acts on it — see Configuration below |
-| `/api/leads/uploads`, `…/[id]/validate`, `/api/leads/segments` | POST, GET | parked file → per-channel reach + **in-journey warning** → saved segment. Max 4 MB (Vercel's body cap) |
+| `/api/leads/uploads`, `…/[id]/validate`, `/api/leads/segments` | POST, GET | parked file → review (per-channel reach, **in-journey warning**, import plan) → saved segment. Segments carry a live `leadCount`. Max 4 MB (Vercel's body cap) |
 | `/api/workspace/sample` | DELETE | removes the sample campaign (its workflow cascades) + sample leads; idempotent |
 | `/api/threads`, `/api/threads/[id]`, `/api/threads/[id]/messages` | GET, POST | |
 | `/api/analytics` | GET | `?range=`, `?channels=` |
@@ -162,13 +163,36 @@ campaign is. Each signup gets **its own workspace** — there is no way to join 
 | `scripts/set-password.ts` | `npm run db:set-password -- <email>`, password from `NEW_PASSWORD`. Updates an existing user only, and revokes their sessions. The only recovery path (no email sending). |
 | `SignOutItem` + `SignOutButton` in `AppShell.tsx` | The labelled rail item and the top-bar icon (the rail is hidden on phones). Both use `useSignOut()`: `api.logout()` → `POST /api/logout` deletes the session row, and it navigates only after the server confirms. |
 
-### Lead uploads and segments — `lib/leads/` + `components/app/leads/`
+### Audiences, import review and prospect profiles — `lib/leads/` + `components/app/leads/`
+The UI calls an uploaded segment an **audience** and a lead a **prospect**; the code and tables keep
+`segment`/`lead`.
 `parseFile.ts` (csv/xlsx via exceljs) · `validation.ts` (`ATTRIBUTES`, column mapping, `validateUpload`,
-`withoutRows`) · `merge.ts` (merge an uploaded row into an existing lead **and** `findInJourney`:
+`withoutRows`) · `merge.ts` (merge an uploaded row into an existing lead — its `matchedExisting` is the
+distinct existing prospects matched, which is what an audience stores as `profilesMerged`; `merged` also
+counts in-file repeats — `planImport`, the dry run
+of that merge that labels each row new / existing / duplicate-in-file — **and** `findInJourney`:
 which rows are people already in another campaign) · `profile.ts` (a name/company/title for a row,
-from its columns or, failing that, its email/LinkedIn) · `analyse.ts` (server-only: the one pass the
-summary step and the save step share) · `phone.ts` `segments.ts` `table.ts` `limits.ts` `ctx.ts` ·
-`UploadLeads.tsx` is the three-step modal.
+from its columns or, failing that, its email/LinkedIn; `identityGaps` for "missing details";
+`splitFileFields` sorts kept columns into company facts vs the rest; `identityFill` gives a *matched*
+existing lead the file's company/title only where it has none — never its name, never an overwrite) · `prospect.ts` (`buildProspect`:
+both stores hand it their raw rows and it assembles the `ProspectProfile` — engagement counts,
+timeline; import-free, tested) · `analyse.ts` (server-only: the one pass the review step and the save
+step share; it adds `report.plan`, an `ImportPreview`) · `phone.ts` `segments.ts` `table.ts` `limits.ts` `ctx.ts`.
+UI: `UploadLeads.tsx` is the three-step modal (File → Mapping → Review & import) · `ImportReview.tsx`
+is its last step (totals, filterable row review, invalid-vs-blank validation log, consent) ·
+`ProspectDrawer.tsx` is the profile drawer opened from a Leads row.
+
+**The review is the save, dry-run.** `planImport` runs the same `mergeLeads` `createSegment` runs, on
+the same rows (in-journey people removed), so "N new · M existing updated" is what the save writes;
+`tests/leadsImportPlan.test.mjs` pins that the two agree. Importing never assigns a campaign or
+starts anything.
+
+**The profile shows stored facts only.** Contact fields, company (lead's company, work-email domain
+unless it is a personal mailbox, company columns from the file, other prospects at the same company),
+journey (`leads.campaign_id`, latest `workflow_runs` row), audiences (`segment_leads`), and engagement
++ timeline built from `messages`, `events`, `tasks`, the lead's creation and its imports. Nothing
+writes `events` or `workflow_runs` yet (§7), so for a real workspace engagement is empty and the
+drawer says so; the demo store has no events, runs or creation times for seed leads.
 
 **It is all in Postgres now.** A parsed file is parked in `uploads` (not process memory: serverless
 instances do not share it); saving creates a `segments` row, inserts new people as ordinary `leads`
@@ -189,7 +213,7 @@ leads the upload *creates*. It never changes an existing lead's consent.
 | `AppShell.tsx` | 407 | `/api/badges` | rail, top bar, mobile tab bar, sign-out. Badges refetch on every navigation |
 | `HomeScreen.tsx` | 292 | `/api/overview`, `/api/campaigns` | stats, to-dos (completable), campaigns, daily quotas |
 | `InboxScreen.tsx` | 315 | `/api/threads` | read-only: the composer is disabled while `!SENDING_ENABLED` |
-| `LeadsScreen.tsx` + `LeadEditor.tsx` | 592 + 269 | `/api/leads` | full CRUD, server-side filter/sort/page |
+| `LeadsScreen.tsx` + `LeadEditor.tsx` | 650 + 165 | `/api/leads`, `/api/leads/segments`, `/api/leads/[id]/profile` | full CRUD, server-side filter/sort/page; audience cards narrow the table (`segmentId`); a row (or its name) opens `ProspectDrawer`; below 820px the table is replaced by the `.lcards` list. A saved import selects its new audience. **The lead form asks only name, email, phone, LinkedIn URL (+ the consent attestation)**; the PATCH/POST sends only those, so an edit never touches imported company/title/extra and the server defaults the rest (stage `new`, source `form`, owner = creator). Status, source, tags and next step are not shown in the table, its filters or the drawer (user request: profiles get enriched later) — they still exist in the schema |
 | `CampaignsScreen.tsx` + `CampaignEditor.tsx` | 405 + 192 | `/api/campaigns` | full CRUD |
 | `AnalyticsScreen.tsx` | 526 | `/api/analytics`, `/api/campaigns` | Overview / Channels / Campaigns. No per-person or per-campaign daily data exists, so none is shown |
 | `WorkflowsScreen.tsx` | 240 | server props from the repository | library + template picker |
@@ -312,7 +336,7 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 
 ### Tests — `tests/` (Node's built-in runner, not Jest/Vitest)
 `dataQuery.test.mjs` · `demoRequest.test.mjs` · `workflow.test.mjs` · `validate.test.mjs` ·
-`adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `setup.test.mjs` · `workflowPersist.test.mjs` · `leadsValidation` `leadsMerge` `leadsJourney` `leadsProfile` `workflowSegment` — **175 tests**
+`adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `setup.test.mjs` · `workflowPersist.test.mjs` · `leadsValidation` `leadsMerge` `leadsJourney` `leadsProfile` `leadsImportPlan` `prospect` `workflowSegment` — **195 tests**
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).
@@ -337,7 +361,9 @@ namespaces, no parameter properties).
 | Add a field to a stored workflow | `WorkflowGraph` + `validateWorkflowGraph` in `lib/app/workflow.ts` (the whitelist **drops/refuses** anything not listed) + a case in `tests/workflowPersist.test.mjs` |
 | Change what a connected account can do | `lib/data/types.ts` (`LinkedInSettings`/`EmailSettings`) → `validateAccountPatch` in `validate.ts` → `pg.ts` + `memory.ts` → `ChannelTabs.tsx` |
 | Add a setup check | `lib/data/setup.ts` (and its test). It is derived from `AccountsSnapshot`; do not hardcode |
-| Change how uploaded people are matched | `lib/leads/merge.ts` (`mergeLeads` + `findInJourney`) and `tests/leadsMerge`/`leadsJourney` |
+| Change how uploaded people are matched | `lib/leads/merge.ts` (`mergeLeads` + `findInJourney`; `planImport` follows `mergeLeads` automatically) and `tests/leadsMerge`/`leadsJourney`/`leadsImportPlan` |
+| Change what the import review shows | `ImportPreview`/`ReviewRow` in `lib/leads/segments.ts` → `analyseUpload` in `lib/leads/analyse.ts` → `components/app/leads/ImportReview.tsx` |
+| Add something to the prospect profile | `ProspectProfile` in `lib/data/types.ts` → `ProspectFacts` + `buildProspect` in `lib/leads/prospect.ts` (+ `tests/prospect.test.mjs`) → `getProspect` in **both** `pg.ts` and `memory.ts` (scope every query by `workspace_id`) → `ProspectDrawer.tsx` |
 | Add a builder step kind | `STEPS` + `defaults()` + `stepLabel()` in `lib/app/workflow.ts`; tests pin the five seeded graphs |
 | Add a Configuration setting | the catalogue entry in `lib/app/configuration.ts` (and its default in `defaultWorkspaceSettings()` if it's one of Variables/Sending rules/Compliance), a field on `WorkspaceSettings` in `lib/data/types.ts`, a check in the matching `validate*Patch` function in `lib/data/validate.ts`, then the tab in `components/app/configuration/`. Rows are `<Row>`/`<ToggleRowView>` from `parts.tsx` — don't hand-roll one. |
 | Re-skin a single workspace screen | there is no scope mechanism for this any more (the old `.cfg` scope was removed once its palette became the dashboard-wide default — see §5). A screen that must differ needs its own new token scope, the same shape `.cfg` used to be. |
@@ -360,6 +386,15 @@ namespaces, no parameter properties).
 - Every repository query filters `workspace_id`, **including by-id lookups** — an id alone is a
   guessable key, so a missing predicate is an access-control hole. Verified: a session in one
   workspace gets 404 on another's rows by exact id, and list endpoints never leak them.
+- **Demo-mode state must live on `globalThis`.** Next bundles each route handler separately, so a
+  module-level array in `memory.ts` was a different copy per route: an upload parked by
+  `/api/leads/uploads` was "no longer available" in `…/validate`, and a lead starred through
+  `/api/leads/[id]` still read unstarred in `/api/leads`. `memory.ts` now keeps every mutable value
+  behind `shared(key, init)`; add new demo state the same way. (Separate serverless instances still
+  don't share it.)
+- `createSegment` receives rows with the review's in-journey people already removed, so its own
+  recheck finds only people who joined a campaign since; the audience's `excludedInJourney` is
+  `report.journey.excluded` + that recheck. (It was recorded as 0 before 2026-10-22.)
 - `numeric` columns come back from `pg` as **strings**, not numbers (deliberate, to avoid float
   precision loss). `num()` in `pg.ts` is the only place that converts.
 - Paged queries need a **second unique sort key** (`ORDER BY score DESC, id ASC`). Without it,
@@ -381,6 +416,9 @@ namespaces, no parameter properties).
   explicit `.ts` extensions that the app's tsconfig rejects. `npm run typecheck` runs both.
 
 **Forms**
+- A field the server normalises (the lead form's LinkedIn URL) must not be `type="url"`: the browser's
+  own constraint check refuses `linkedin.com/in/x` (no scheme) before `onSubmit` runs. Use a text input
+  with `inputMode="url"` and let `validate.ts` decide.
 - Every `<form>` needs `method="post"`. Without it the HTML default is GET, so a submit that
   beats hydration navigates to `?email=…&password=…` — credentials into the URL bar, history
   and server logs. Found by a browser test clicking before React attached.
@@ -412,6 +450,8 @@ namespaces, no parameter properties).
   values, same cascade rule as above), so the whole dashboard wears it by default. There is no
   per-screen scope mechanism left; a screen that must differ needs a new one, shaped like `.cfg`
   was.
+- `toAppLead`'s `li` is the stored `leads.linkedin` (or `""`). It used to be a `linkedin.com/in/<name>`
+  slug invented from the name — a profile nobody gave us. Don't reintroduce a derived URL.
 - `toAppLead` (`lib/app/adapt.ts`) must not append a `Title: …` tag the stored tags already
   carry — `LeadsScreen` keys tag chips by text, so a repeat is a duplicate-key React warning.
 
@@ -526,7 +566,11 @@ Roughly in the order they should be closed.
    workflow does not update the campaign's channel list.
 6. **Nothing writes `events`, and no job builds `daily_rollups`.** Only the sample's rollups exist,
    so Analytics is real SQL over invented numbers until the engine lands. Rollups have no campaign
-   or person dimension, so Analytics cannot filter by either.
+   or person dimension, so Analytics cannot filter by either. The prospect profile already reads
+   `events` and `workflow_runs` per person, so its engagement section fills in once the engine writes them.
+   - **Audiences can't be renamed, deleted or exported yet**, and there is no bulk action on a
+     selection of prospects (the table's checkboxes select but nothing acts on them). The import
+     review lists the first 500 rows; every row is still imported.
 7. **Campaign counters are denormalised and nothing maintains them** (`sent`, `delivered`,
    rates): the sample's are derived from its rollups (a test pins that); real campaigns show "—".
 8. **Auth has no email verification, password reset link, OAuth or login rate limiting.** Fine for

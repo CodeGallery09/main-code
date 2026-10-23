@@ -16,6 +16,7 @@ import type {
   Message,
   Overview,
   Paged,
+  ProspectProfile,
   Task,
   Thread,
   User,
@@ -174,6 +175,7 @@ export const api = {
       stage?: string;
       ownerId?: string;
       campaignId?: string;
+      segmentId?: string;
       sort?: string;
       dir?: string;
       page?: number;
@@ -182,6 +184,9 @@ export const api = {
   ) => request<Paged<Lead>>(`/api/leads${qs(params)}`),
 
   lead: (id: string) => request<{ lead: Lead }>(`/api/leads/${encodeURIComponent(id)}`),
+
+  prospect: (id: string) =>
+    request<{ profile: ProspectProfile }>(`/api/leads/${encodeURIComponent(id)}/profile`),
 
   createLead: (input: LeadPatch) =>
     request<{ lead: Lead }>("/api/leads", { method: "POST", body: JSON.stringify(input) }),

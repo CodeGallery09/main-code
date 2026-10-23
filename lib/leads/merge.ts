@@ -52,7 +52,10 @@ export type MergeResult = {
   profiles: LeadProfile[];
   outcomes: MergeOutcome[];
   created: number;
+  /** Rows folded into a profile: existing prospects *and* repeats of a row earlier in the file. */
   merged: number;
+  /** Distinct prospects that already existed and this file matched — what "matched existing" means. */
+  matchedExisting: number;
 };
 
 /** The comparable form of an attribute: what two spellings of one person's address share. */
@@ -100,6 +103,7 @@ export function mergeLeads(
   const outcomes: MergeOutcome[] = [];
   let created = 0;
   let merged = 0;
+  const matched = new Set<number>();
 
   for (const lead of incoming) {
     if (!MATCH_KEYS.some((field) => lead[field])) continue; // nothing reachable, nothing to store
@@ -156,10 +160,80 @@ export function mergeLeads(
     if (!parent.segmentIds.includes(segmentId)) parent.segmentIds.push(segmentId);
     parent.updatedAt = now;
     merged++;
+    if (at < existing.length) matched.add(at);
     outcomes.push({ row: lead.row, profileId: parent.id, action: "merged", matchedOn, enriched });
   }
 
-  return { profiles, outcomes, created, merged };
+  return { profiles, outcomes, created, merged, matchedExisting: matched.size };
+}
+
+/* ---------- what saving would do, before anything is saved ---------------- */
+
+/**
+ * How one row of the file lands, decided by the same `mergeLeads` the save step runs:
+ *   new       — nobody in the workspace (or earlier in the file) matches; a prospect is created.
+ *   existing  — matches a prospect the workspace already has; it is linked and enriched, not copied.
+ *   duplicate — repeats a person an earlier row of the same file already brought in.
+ */
+export type RowOutcome = {
+  row: number;
+  outcome: "new" | "existing" | "duplicate";
+  /** The workspace prospect an `existing` row matched. */
+  leadId: string | null;
+  /** The earlier row a `duplicate` repeats. */
+  duplicateOf: number | null;
+  matchedOn: keyof ProfileAttributes | null;
+};
+
+export type ImportPlan = {
+  rows: RowOutcome[];
+  /** Prospects the import creates. */
+  created: number;
+  /** Distinct prospects the workspace already had that the file matches. */
+  existing: number;
+  /** Rows that repeat a person earlier in the same file. */
+  duplicates: number;
+};
+
+/**
+ * Dry run of the merge: what saving `incoming` against `existing` would create, link and collapse.
+ * Nothing is mutated. The first row to reach a person decides whether they are new or existing;
+ * every later row reaching the same person is a duplicate, whichever field it matched on.
+ */
+export function planImport(existing: (ProfileAttributes & { id: string })[], incoming: IncomingLead[]): ImportPlan {
+  const known = new Set(existing.map((p) => p.id));
+  const merge = mergeLeads(
+    existing.map((p) => ({ ...p, segmentIds: [], extra: {}, createdAt: "", updatedAt: "" })),
+    incoming,
+    "plan",
+    "",
+    (n) => `new:${n}`,
+  );
+
+  const firstRow = new Map<string, number>();
+  const rows: RowOutcome[] = [];
+  let created = 0;
+  let duplicates = 0;
+  const matched = new Set<string>();
+
+  for (const o of merge.outcomes) {
+    const seen = firstRow.get(o.profileId);
+    if (seen !== undefined) {
+      duplicates++;
+      rows.push({ row: o.row, outcome: "duplicate", leadId: null, duplicateOf: seen, matchedOn: o.matchedOn });
+      continue;
+    }
+    firstRow.set(o.profileId, o.row);
+    if (known.has(o.profileId)) {
+      matched.add(o.profileId);
+      rows.push({ row: o.row, outcome: "existing", leadId: o.profileId, duplicateOf: null, matchedOn: o.matchedOn });
+    } else {
+      created++;
+      rows.push({ row: o.row, outcome: "new", leadId: null, duplicateOf: null, matchedOn: null });
+    }
+  }
+
+  return { rows, created, existing: matched.size, duplicates };
 }
 
 /* ---------- who is already in a journey ----------------------------------- */

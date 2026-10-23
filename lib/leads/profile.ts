@@ -68,6 +68,47 @@ function nameFromLinkedin(url: string): string {
 
 const clip = (text: string) => (text.length > NAME_MAX ? text.slice(0, NAME_MAX - 1) + "…" : text);
 
+/**
+ * Which display details the file itself does not give for a row. A name can still be shown (made
+ * from the email or LinkedIn by `leadIdentity`), but the preview says it was not in the file.
+ */
+export function identityGaps(extra: Record<string, string>): { name: boolean; company: boolean; title: boolean } {
+  return {
+    name: !pick(extra, NAME) && !pick(extra, FIRST) && !pick(extra, LAST),
+    company: !pick(extra, COMPANY),
+    title: !pick(extra, TITLE),
+  };
+}
+
+const IDENTITY = new Set([...NAME, ...FIRST, ...LAST, ...COMPANY, ...TITLE]);
+const COMPANY_FACTS = new Set([
+  "industry", "sector", "vertical",
+  "website", "companywebsite", "companyurl", "domain", "companydomain",
+  "employees", "employeecount", "companysize", "size", "headcount",
+  "location", "city", "state", "country", "region", "hq", "headquarters",
+  "revenue", "annualrevenue", "founded", "foundedyear",
+]);
+
+/**
+ * Sorts the kept columns of an upload for the prospect profile: company columns (industry,
+ * website, size, location, …) and everything else. Name, company and title columns are left out —
+ * they are already the lead's own fields. Values are shown exactly as the file gave them.
+ */
+export function splitFileFields(extra: Record<string, string>): {
+  company: { label: string; value: string }[];
+  other: { label: string; value: string }[];
+} {
+  const company: { label: string; value: string }[] = [];
+  const other: { label: string; value: string }[] = [];
+  for (const [label, raw] of Object.entries(extra)) {
+    const value = String(raw ?? "").trim();
+    const k = key(label);
+    if (!value || IDENTITY.has(k)) continue;
+    (COMPANY_FACTS.has(k) ? company : other).push({ label, value });
+  }
+  return { company, other };
+}
+
 export function leadIdentity(row: RowIdentity): LeadIdentity {
   let name = pick(row.extra, NAME);
   if (!name) {
@@ -86,4 +127,22 @@ export function leadIdentity(row: RowIdentity): LeadIdentity {
     company: clip(pick(row.extra, COMPANY)),
     title: clip(pick(row.extra, TITLE)),
   };
+}
+
+/**
+ * What an import may fill in on a lead that already existed: its company and title, and only where
+ * the lead has none. A lead added by hand carries just a name and contact details, so a file that
+ * matches it later is where those come from. The name is never replaced, and nothing the lead
+ * already has is overwritten — the same "keeps what it has, gains what it lacked" rule merge.ts
+ * applies to contact fields.
+ */
+export function identityFill(
+  current: { company: string; title: string },
+  row: RowIdentity,
+): { company?: string; title?: string } {
+  const from = leadIdentity(row);
+  const fill: { company?: string; title?: string } = {};
+  if (!current.company.trim() && from.company) fill.company = from.company;
+  if (!current.title.trim() && from.title) fill.title = from.title;
+  return fill;
 }
