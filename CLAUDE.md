@@ -169,8 +169,13 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - The notify callback carries no secret (Unipile's `notify_url` takes no headers), so it proves
   nothing by itself: the reference must be an unexpired pending session, and the account identity is
   read back from the provider with our key. The account-status and messages webhooks **are**
-  authenticated, by a shared-secret header Unipile is asked to send back (it does not sign bodies) —
-  `UNIPILE_WEBHOOK_SECRET`, registered by `npm run unipile:webhooks`. Unset ⇒ every delivery refused.
+  authenticated, by `UNIPILE_WEBHOOK_SECRET` sent back on every delivery (Unipile does not sign
+  bodies). Two carriers are accepted — a header (`npm run unipile:webhooks` registers it via the
+  API) or a `?token=` query param on the callback URL, because Unipile's dashboard UI has no header
+  field for an "Account" webhook, so one made there has nowhere else to carry it. The matching logic
+  is the import-free, pure half in `lib/channels/webhookConfig.ts`
+  (`tests/webhookConfig.test.mjs`); `webhookAuth.ts` is just the untested `Request`/env glue around
+  it. Unset secret ⇒ every delivery refused, whichever carrier it arrives on.
 - **Unipile's v1 and v2 docs disagree on webhook field names**, so `lib/channels/events.ts` reads
   every documented spelling and refuses a payload missing what it needs. An unrecognised status is
   `error`, never `ok`. `event: "account.status"` is an event name, not a status — do not read it as

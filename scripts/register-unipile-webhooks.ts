@@ -4,10 +4,15 @@
  *   UNIPILE_DSN=... UNIPILE_API_KEY=... UNIPILE_WEBHOOK_SECRET=... APP_URL=https://… \
  *     npm run unipile:webhooks
  *
- * Unipile does not sign webhook bodies, so the secret is registered as a header it sends back to
- * us and `lib/channels/webhookAuth.ts` compares. That makes the secret the only thing standing
- * between the endpoints and anyone who finds the URL — so it goes in the environment, never argv
- * (arguments show up in `ps` and shell history) and never a committed file.
+ * Unipile does not sign webhook bodies, so the secret is registered two ways and
+ * `lib/channels/webhookAuth.ts` accepts either: as a header this script asks the API to send back
+ * (the clean path, used when the request succeeds), and as a `?token=` query param baked into the
+ * callback URL itself (works regardless of whether Unipile's API honours the `headers` field for a
+ * given webhook type — their dashboard UI, as of this writing, exposes no header field at all for
+ * an "Account" webhook, so a webhook made by hand there has nowhere else to carry it). That makes
+ * the secret the only thing standing between the endpoints and anyone who finds the URL — so it
+ * goes in the environment, never argv (arguments show up in `ps` and shell history) and never a
+ * committed file.
  *
  * Safe to re-run: a webhook already pointing at the same URL for the same source is left alone.
  * It never deletes one it did not recognise.
@@ -17,7 +22,7 @@
  */
 
 import { unipileBaseUrl } from "../lib/channels/unipileRequests.ts";
-import { WEBHOOK_HEADER, WEBHOOK_SOURCES } from "../lib/channels/webhookConfig.ts";
+import { WEBHOOK_HEADER, WEBHOOK_QUERY_PARAM, WEBHOOK_SOURCES } from "../lib/channels/webhookConfig.ts";
 
 type Row = { id?: string; source?: string; request_url?: string; url?: string };
 
@@ -56,10 +61,14 @@ async function main() {
       : [];
 
   for (const { source, path } of Object.values(WEBHOOK_SOURCES)) {
-    const target = origin + path;
+    // The query-param secret rides in the URL itself, so it is registered regardless of whether
+    // Unipile's API (or its dashboard, for a webhook someone edits by hand later) honours the
+    // `headers` field below for this source.
+    const target = `${origin}${path}?${WEBHOOK_QUERY_PARAM}=${encodeURIComponent(secret)}`;
+    const shown = `${origin}${path}?${WEBHOOK_QUERY_PARAM}=••••`;
     const already = rows.find((row) => row.source === source && (row.request_url ?? row.url) === target);
     if (already) {
-      console.log(`✓ ${source} already points at ${target}`);
+      console.log(`✓ ${source} already points at ${shown}`);
       continue;
     }
     const created = await fetch(`${base}/webhooks`, {
@@ -76,10 +85,15 @@ async function main() {
       process.exitCode = 1;
       continue;
     }
-    console.log(`+ ${source} → ${target}`);
+    console.log(`+ ${source} → ${shown}`);
   }
 
   console.log("\nThe hosted-auth callback needs no registration: it is passed per sign-in as notify_url.");
+  console.log(
+    `\nIf Unipile's dashboard ever needs this done by hand (no header field in the UI for a\n` +
+      `webhook type), paste the callback URL with the secret in its query string, e.g.:\n` +
+      `  ${origin}/api/webhooks/unipile/accounts?${WEBHOOK_QUERY_PARAM}=<your UNIPILE_WEBHOOK_SECRET>`,
+  );
 }
 
 main().catch((error) => {
