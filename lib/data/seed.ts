@@ -837,6 +837,19 @@ export function buildTrend(days = 90, endISO = "2026-10-12T00:00:00.000Z"): Tren
  * its accounts from the database; these are invented people and domains (`.co`, `.io`, `.com`
  * placeholders), shown in the dev deployment so the Configuration screen has something to explain.
  */
+/**
+ * The demo accounts were typed in, not connected: `provider: "manual"` is the honest value, and it
+ * is what keeps the Configuration screen from offering a "Reconnect" that would call a provider
+ * that has never heard of them.
+ */
+const MANUAL: ChannelAccount["connection"] = {
+  provider: "manual",
+  providerAccountId: null,
+  statusDetail: "",
+  connectedAt: null,
+  lastEventAt: null,
+};
+
 export const ACCOUNTS: ChannelAccount[] = [
   {
     id: "a_aarav",
@@ -847,6 +860,7 @@ export const ACCOUNTS: ChannelAccount[] = [
     settings: { connections: 25, messages: 60, visits: 80, inmail: 38 },
     campaignIds: ["c_netnew", "c_saasboomi"],
     isSample: false,
+    connection: MANUAL,
   },
   {
     id: "a_neha",
@@ -857,6 +871,7 @@ export const ACCOUNTS: ChannelAccount[] = [
     settings: { connections: 20, messages: 50, visits: 60, inmail: null },
     campaignIds: ["c_closedlost"],
     isSample: false,
+    connection: MANUAL,
   },
   {
     id: "m_aarav",
@@ -867,6 +882,7 @@ export const ACCOUNTS: ChannelAccount[] = [
     settings: { provider: "Google Workspace", health: 96, cap: 60, rotate: true },
     campaignIds: ["c_netnew"],
     isSample: false,
+    connection: MANUAL,
   },
   {
     id: "m_neha",
@@ -877,6 +893,7 @@ export const ACCOUNTS: ChannelAccount[] = [
     settings: { provider: "Google Workspace", health: 91, cap: 50, rotate: true },
     campaignIds: ["c_inbound"],
     isSample: false,
+    connection: MANUAL,
   },
   {
     id: "m_sales",
@@ -887,6 +904,7 @@ export const ACCOUNTS: ChannelAccount[] = [
     settings: { provider: "Microsoft 365", warmDay: 9, health: 74, cap: 20, rotate: false },
     campaignIds: [],
     isSample: false,
+    connection: MANUAL,
   },
 ];
 

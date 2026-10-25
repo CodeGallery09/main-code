@@ -329,6 +329,24 @@ export type EmailSettings = {
   rotate: boolean;
 };
 
+/**
+ * How an account is connected, and the provider's last word on it.
+ *
+ * A `manual` row was seeded or typed in: there is nothing behind it. A row connected through
+ * `lib/channels/` names its provider and carries the provider's own account id, which is what a
+ * webhook delivery is matched on. `statusDetail` is the provider's message shown verbatim — the UI
+ * never invents a reason an account stopped working.
+ */
+export type AccountConnection = {
+  provider: string;
+  providerAccountId: string | null;
+  statusDetail: string;
+  /** When the connection was made, as opposed to when the row was created. */
+  connectedAt: string | null;
+  /** Last time the provider said anything about this account. */
+  lastEventAt: string | null;
+};
+
 type AccountBase = {
   id: string;
   name: string;
@@ -338,12 +356,18 @@ type AccountBase = {
   campaignIds: string[];
   /** Invented at signup with the sample campaign; removed with it. */
   isSample: boolean;
+  connection: AccountConnection;
 };
 
 export type LinkedInAccount = AccountBase & {
   channel: "linkedin";
-  /** `signed_out` pauses the steps that use it until it reconnects. */
-  state: "healthy" | "signed_out";
+  /**
+   * `connecting` — the member has a hosted sign-in open and nothing is usable yet.
+   * `signed_out` — the session lapsed; steps that use it are paused until it reconnects.
+   * `restricted` — LinkedIn has limited the account. A product state, not a bug report: it is the
+   * most common thing that goes wrong in this category, so it has a name of its own.
+   */
+  state: "healthy" | "signed_out" | "restricted" | "connecting";
   settings: LinkedInSettings;
 };
 
@@ -367,6 +391,49 @@ export type SendingDomain = {
 export type AccountsSnapshot = {
   accounts: ChannelAccount[];
   domains: SendingDomain[];
+};
+
+/* ------------------------------------------------- connecting an account -- */
+
+export type ConnectSessionState = "pending" | "connected" | "failed" | "expired";
+
+/**
+ * One attempt to connect an account through a provider's hosted sign-in.
+ *
+ * The id is the reference handed to the provider and handed back on its callback — it is what maps
+ * a provider account to a workspace, so it is random and short-lived, never a workspace id.
+ */
+export type ConnectSession = {
+  id: string;
+  channel: Channel;
+  provider: string;
+  kind: "create" | "reconnect";
+  state: ConnectSessionState;
+  /** Why it failed, from the provider. "" while it is still pending or when it succeeded. */
+  detail: string;
+  /** The account it produced (or repaired), once the callback has landed. */
+  accountId: string | null;
+  expiresAt: string;
+};
+
+/**
+ * What has actually happened on one connected account, counted from the `events` log.
+ *
+ * Every figure here is a count of a real event the provider delivered. There is no estimate and no
+ * illustrative number: an account that has done nothing reads zero.
+ */
+export type AccountActivity = {
+  accountId: string;
+  /** Inbound messages delivered for this account inside the window. */
+  messagesReceived: number;
+  /** Status changes the provider reported inside the window. */
+  statusChanges: number;
+  /** Last inbound message, ISO, or null when there has been none. */
+  lastMessageAt: string | null;
+  /** When the provider last changed this account's status, ISO, or null. */
+  lastStatusAt: string | null;
+  /** Days counted. */
+  windowDays: number;
 };
 
 /** What the rail badges and the setup overview count, in one cheap read. */

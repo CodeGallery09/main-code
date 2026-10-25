@@ -19,25 +19,32 @@ import { SampleBanner } from "./SampleBanner";
 import { api } from "@/lib/api";
 import { CONFIG_TABS, type ConfigTab } from "@/lib/app/configuration";
 import { setupChecks, tabIssues } from "@/lib/data/setup";
-import type { AccountsSnapshot, Campaign } from "@/lib/data/types";
+import type { AccountActivity, AccountsSnapshot, Campaign } from "@/lib/data/types";
 import { Overview } from "./configuration/Overview";
 import { CallsTab, EmailTab, LinkedInTab, SmsTab, WhatsAppTab } from "./configuration/ChannelTabs";
 import { ComplianceTab, SendingRulesTab, VariablesTab } from "./configuration/RuleTabs";
 
 const EMPTY: AccountsSnapshot = { accounts: [], domains: [] };
 
-export function ConfigurationScreen() {
+export function ConfigurationScreen({ linkedInConfigured = false }: { linkedInConfigured?: boolean }) {
   const [tab, setTab] = useState<ConfigTab>("overview");
   const [snapshot, setSnapshot] = useState<AccountsSnapshot>(EMPTY);
+  const [activity, setActivity] = useState<AccountActivity[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [accounts, list] = await Promise.all([api.accounts(), api.campaigns()]);
+      const [accounts, list, counts] = await Promise.all([
+        api.accounts(),
+        api.campaigns(),
+        // Activity is a nice-to-have on this screen: a failure there must not blank the tabs.
+        api.accountActivity(30).catch(() => ({ activity: [] })),
+      ]);
       setSnapshot(accounts);
       setCampaigns(list.items);
+      setActivity(counts.activity);
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load the configuration.");
@@ -80,7 +87,15 @@ export function ConfigurationScreen() {
         ) : (
           <>
             {tab === "overview" && <Overview go={setTab} checks={checks} snapshot={snapshot} />}
-            {tab === "li" && <LinkedInTab snapshot={snapshot} campaigns={campaigns} onChange={load} />}
+            {tab === "li" && (
+              <LinkedInTab
+                snapshot={snapshot}
+                campaigns={campaigns}
+                onChange={load}
+                activity={activity}
+                linkedInConfigured={linkedInConfigured}
+              />
+            )}
             {tab === "mail" && <EmailTab snapshot={snapshot} campaigns={campaigns} onChange={load} />}
             {tab === "wa" && <WhatsAppTab />}
             {tab === "call" && <CallsTab />}

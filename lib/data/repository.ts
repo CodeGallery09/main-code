@@ -24,6 +24,7 @@ import type { Mapping, ParsedLead } from "@/lib/leads/validation";
 import type { Table } from "@/lib/leads/table";
 
 import type {
+  AccountActivity,
   AccountsSnapshot,
   Analytics,
   Badges,
@@ -32,6 +33,7 @@ import type {
   CampaignType,
   Channel,
   ChannelAccount,
+  ConnectSession,
   Lead,
   LeadQuery,
   Message,
@@ -197,6 +199,30 @@ export interface Repository {
    * workspace is a `WriteError`, never silently dropped.
    */
   setAccountCampaigns(ctx: Ctx, id: string, campaignIds: string[]): Promise<ChannelAccount | WriteError | null>;
+  /**
+   * Removes an account from the workspace. The caller disconnects it at the provider first, so
+   * this is the local half only. `null` when the account is not yours.
+   */
+  deleteAccount(ctx: Ctx, id: string): Promise<{ deleted: string } | null>;
+  /**
+   * What has happened on each of the workspace's connected accounts, counted from the event log
+   * over `windowDays`. Real counts only — an account that has done nothing reads zero.
+   */
+  accountActivity(ctx: Ctx, windowDays: number): Promise<AccountActivity[]>;
+
+  /* --------------------------------------------- connecting a channel account -- */
+
+  /**
+   * Opens a connect attempt and returns it. Its id is the reference handed to the provider; the
+   * provider hands it back on its callback, and that is the only thing tying a provider account to
+   * this workspace. `null` when `accountId` is given but is not this workspace's.
+   */
+  createConnectSession(
+    ctx: Ctx,
+    input: { channel: Channel; provider: string; kind: "create" | "reconnect"; accountId?: string; ttlMinutes: number },
+  ): Promise<ConnectSession | null>;
+  /** One connect attempt of this workspace's, for the screen that is waiting on it. */
+  getConnectSession(ctx: Ctx, id: string): Promise<ConnectSession | null>;
 
   /** The numbers on the rail badges. One cheap read, called on every navigation. */
   getBadges(ctx: Ctx): Promise<Badges>;

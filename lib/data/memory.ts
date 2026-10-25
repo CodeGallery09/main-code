@@ -51,6 +51,7 @@ import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments
 import { suggestMapping, type Mapping, type ParsedLead } from "@/lib/leads/validation";
 import type { Table } from "@/lib/leads/table";
 import type {
+  AccountActivity,
   AccountsSnapshot,
   Analytics,
   Badges,
@@ -59,6 +60,7 @@ import type {
   Channel,
   ChannelAccount,
   ChannelBreakdown,
+  ConnectSession,
   FunnelStage,
   Lead,
   LeadQuery,
@@ -504,6 +506,43 @@ export class MemoryRepository implements Repository {
       compliance: { ...settings.row.compliance, ...(patch.compliance ?? {}) },
     };
     return structuredClone(settings.row);
+  }
+
+  async deleteAccount(_ctx: Ctx, id: string): Promise<{ deleted: string } | null> {
+    const at = accounts.findIndex((a) => a.id === id);
+    if (at < 0) return null;
+    accounts.splice(at, 1);
+    return { deleted: id };
+  }
+
+  /**
+   * Nothing is connected in demo mode, so nothing has happened on any account: every figure is a
+   * truthful zero rather than an invented count.
+   */
+  async accountActivity(_ctx: Ctx, windowDays: number): Promise<AccountActivity[]> {
+    const days = Math.max(1, Math.min(365, Math.trunc(windowDays)));
+    return accounts.map((a) => ({
+      accountId: a.id,
+      messagesReceived: 0,
+      statusChanges: 0,
+      lastMessageAt: null,
+      lastStatusAt: null,
+      windowDays: days,
+    }));
+  }
+
+  /**
+   * Connecting needs a provider and somewhere durable to park the attempt, and demo mode has
+   * neither — a serverless instance that handled the provider's callback would not be the one
+   * holding this Map. So it refuses rather than opening an attempt that can never complete; the
+   * route turns `null` into the same "not configured" answer an unset API key gives.
+   */
+  async createConnectSession(): Promise<ConnectSession | null> {
+    return null;
+  }
+
+  async getConnectSession(): Promise<ConnectSession | null> {
+    return null;
   }
 
   async setAccountCampaigns(_ctx: Ctx, id: string, campaignIds: string[]): Promise<ChannelAccount | WriteError | null> {

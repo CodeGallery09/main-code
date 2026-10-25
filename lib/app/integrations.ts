@@ -10,13 +10,17 @@
  * This file is the static catalogue only. A provider's *state* (connected, needs
  * attention, not connected) is worked out from the workspace's own accounts and
  * domains by `providerView()`, so nothing here describes any particular
- * workspace. Connecting a LinkedIn account or mailbox is not built yet.
+ * workspace. **LinkedIn can now actually connect**, through the hosted sign-in in
+ * `lib/channels/` — but only where the deployment has a provider configured, which
+ * `providerView()` takes as an argument rather than assuming. Connecting a mailbox
+ * is still not built.
  *
  * Import-free apart from types, so it can be read from server components,
  * client components and tests alike.
  */
 
 import type { ChannelKey } from "@/lib/app/channels";
+import { linkedInNeedsAction, linkedInStateNote } from "@/lib/data/setup";
 import type { AccountsSnapshot } from "@/lib/data/types";
 
 export type ProviderState = "connected" | "attention" | "disconnected" | "planned";
@@ -165,20 +169,35 @@ const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? on
  * provider with nothing connected has no action; one that is connected offers "Manage", which goes
  * to Configuration where its accounts and limits live.
  */
-export function providerView(provider: Provider, snapshot: AccountsSnapshot): ProviderView {
+export function providerView(
+  provider: Provider,
+  snapshot: AccountsSnapshot,
+  /** Whether this deployment has a LinkedIn provider configured. Unset means "no". */
+  linkedInConfigured = false,
+): ProviderView {
   if (provider.planned) {
     return { provider, state: "planned", detail: "On the roadmap", action: null };
   }
 
   if (provider.k === "linkedin") {
     const seats = snapshot.accounts.filter((a) => a.channel === "linkedin");
-    if (!seats.length) return { provider, state: "disconnected", detail: "No account connected", action: null };
-    const out = seats.filter((a) => a.state === "signed_out").length;
+    // "Connect" is only offered where a sign-in can actually be opened. A button that 503s is a
+    // worse answer than saying the deployment is not set up for it.
+    const connect = linkedInConfigured ? "Connect" : null;
+    if (!seats.length) {
+      return {
+        provider,
+        state: "disconnected",
+        detail: linkedInConfigured ? "No account connected" : "Not configured on this deployment",
+        action: connect,
+      };
+    }
+    const blocked = seats.filter((a) => linkedInNeedsAction(a.state));
     return {
       provider,
-      state: out ? "attention" : "connected",
-      detail: out
-        ? `${count(seats.length, "account")} · ${out} signed out`
+      state: blocked.length ? "attention" : "connected",
+      detail: blocked.length
+        ? `${count(seats.length, "account")} · ${blocked.length === 1 ? `${blocked[0].name}: ${linkedInStateNote(blocked[0].state)}` : `${blocked.length} need attention`}`
         : `${count(seats.length, "account")} connected · healthy`,
       action: "Manage",
     };

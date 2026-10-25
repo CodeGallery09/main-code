@@ -15,6 +15,7 @@ import {
   type ProviderView,
 } from "@/lib/app/integrations";
 import { CONFIGURATION_HREF, INTEGRATIONS_HREF, SETTINGS_HREF } from "@/lib/nav";
+import { ConnectStatus, useLinkedInConnect } from "./integrations/ConnectLinkedIn";
 import type { AccountsSnapshot } from "@/lib/data/types";
 
 const EMPTY: AccountsSnapshot = { accounts: [], domains: [] };
@@ -111,7 +112,7 @@ function Section({
  * (connecting itself is not built yet, and says so); the rest are marked Planned rather than
  * offered as if they worked today. State is read from the workspace's own accounts and domains.
  */
-export function IntegrationsScreen() {
+export function IntegrationsScreen({ linkedInConfigured = false }: { linkedInConfigured?: boolean }) {
   const [open, setOpen] = useState<ProviderView | null>(null);
   const [snapshot, setSnapshot] = useState<AccountsSnapshot>(EMPTY);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -120,6 +121,8 @@ export function IntegrationsScreen() {
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [copied, setCopied] = useState(false);
+  /** What to say after coming back from the provider's hosted sign-in in this same tab. */
+  const [returned, setReturned] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -138,9 +141,41 @@ export function IntegrationsScreen() {
     void load();
   }, []);
 
+  /**
+   * The provider's redirect lands here with `?connected=<session>`. Normally it lands in the popup
+   * and the opener is already polling — but a blocked popup means the sign-in happened in this tab,
+   * and then this is the only thing that knows it finished. Either way the session is the source of
+   * truth, not the query string: a pasted `?connected=` proves nothing.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("connected") ?? params.get("failed");
+    if (!id) return;
+    let live = true;
+    void (async () => {
+      try {
+        const { session } = await api.connectSession(id);
+        if (!live) return;
+        setReturned(
+          session.state === "connected"
+            ? "LinkedIn account connected."
+            : session.detail || "That sign-in didn't complete.",
+        );
+        if (session.state === "connected") await load();
+      } catch {
+        /* an id that is not ours tells the user nothing, so it says nothing */
+      }
+    })();
+    // Leave the page on a clean URL so a reload does not replay the message.
+    window.history.replaceState(null, "", window.location.pathname);
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const sections = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const views = PROVIDERS.map((p) => providerView(p, snapshot)).filter(
+    const views = PROVIDERS.map((p) => providerView(p, snapshot, linkedInConfigured)).filter(
       (v) => !q || (v.provider.name + " " + v.provider.blurb + " " + v.provider.group).toLowerCase().includes(q),
     );
     const live = (v: ProviderView) => v.state === "connected" || v.state === "attention";
@@ -148,7 +183,7 @@ export function IntegrationsScreen() {
       { title: "Connected", rows: views.filter(live) },
       ...GROUPS.map((g) => ({ title: g, rows: views.filter((v) => !live(v) && v.provider.group === g) })),
     ].filter((s) => s.rows.length);
-  }, [snapshot, query]);
+  }, [snapshot, query, linkedInConfigured]);
 
   const toggle = (title: string) => setCollapsed((c) => ({ ...c, [title]: !c[title] }));
 
@@ -196,6 +231,12 @@ export function IntegrationsScreen() {
         </p>
       )}
 
+      {returned && (
+        <p className="empty" role="status">
+          {returned}
+        </p>
+      )}
+
       {!loaded && !error && <p className="empty">Loading your integrations…</p>}
 
       {loaded && (
@@ -224,14 +265,26 @@ export function IntegrationsScreen() {
         </div>
       )}
 
-      {open && <ProviderDrawer view={open} onClose={() => setOpen(null)} />}
+      {open && <ProviderDrawer view={open} onClose={() => setOpen(null)} onConnected={() => void load()} />}
     </Screen>
   );
 }
 
 /** Slide-over explaining what connecting does, before anything is authorised. */
-function ProviderDrawer({ view, onClose }: { view: ProviderView; onClose: () => void }) {
+function ProviderDrawer({
+  view,
+  onClose,
+  onConnected,
+}: {
+  view: ProviderView;
+  onClose: () => void;
+  onConnected: () => void;
+}) {
   const { provider } = view;
+  const connect = useLinkedInConnect(onConnected);
+  // LinkedIn is the one provider whose Connect button does something; every other row is either
+  // planned or has no connection flow built, and still says so.
+  const canConnect = provider.k === "linkedin" && view.action === "Connect";
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -275,11 +328,26 @@ function ProviderDrawer({ view, onClose }: { view: ProviderView; onClose: () => 
             ))}
           </ul>
 
-          <div className="warnbox" style={{ marginTop: 20 }}>
-            <b>Not available yet</b>
-            {planned
-              ? "This one is on the roadmap. Nothing is connected today."
-              : "Connecting isn't available yet. Campaigns you build now will use this once you can connect it."}
+          {canConnect ? (
+            <div className="warnbox" style={{ marginTop: 20 }}>
+              <b>Signing in happens on LinkedIn</b>
+              Connecting opens LinkedIn&apos;s own sign-in in a new window. Flightpath never sees the
+              password or the two-factor code. Nothing is sent from the account until a sender ships —
+              connecting only lets Flightpath read replies and report the account&apos;s health.
+            </div>
+          ) : (
+            <div className="warnbox" style={{ marginTop: 20 }}>
+              <b>Not available yet</b>
+              {planned
+                ? "This one is on the roadmap. Nothing is connected today."
+                : provider.k === "linkedin"
+                  ? "This deployment has no LinkedIn provider configured, so a sign-in can't be opened yet."
+                  : "Connecting isn't available yet. Campaigns you build now will use this once you can connect it."}
+            </div>
+          )}
+
+          <div style={{ marginTop: 12 }}>
+            <ConnectStatus phase={connect.phase} />
           </div>
         </div>
 
@@ -287,8 +355,14 @@ function ProviderDrawer({ view, onClose }: { view: ProviderView; onClose: () => 
           <button type="button" className="btn line" onClick={onClose}>
             Close
           </button>
-          <button type="button" className="btn pri" disabled title="Not available yet">
-            {planned ? "Planned" : "Connect"}
+          <button
+            type="button"
+            className="btn pri"
+            disabled={!canConnect || connect.busy}
+            title={canConnect ? undefined : "Not available yet"}
+            onClick={canConnect ? () => void connect.start() : undefined}
+          >
+            {planned ? "Planned" : connect.busy ? "Connecting…" : "Connect"}
           </button>
         </footer>
       </aside>

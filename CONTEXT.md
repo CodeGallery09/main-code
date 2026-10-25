@@ -4,7 +4,7 @@ Orientation file for agents. Read this first; it replaces grepping the tree.
 **Keep it current:** any change that adds a file, a route, a table or an architectural
 rule must update this file in the same commit. See "Maintaining this file" at the end.
 
-Last updated: 2026-10-23 · ~28k lines of source across 151 files.
+Last updated: 2026-10-25 · ~31k lines of source across 165 files.
 
 ---
 
@@ -29,6 +29,7 @@ npm test               # node --test tests/*.test.mjs
 npm run db:generate    # drizzle-kit generate  → drizzle/*.sql
 npm run db:migrate     # apply migrations
 npm run db:seed        # load demo rows
+npm run unipile:webhooks   # register the two Unipile webhooks (needs UNIPILE_* + APP_URL)
 ```
 
 ---
@@ -100,7 +101,7 @@ route. Never put figures, names, accounts or campaigns in a component or in `lib
 
 Tables, grouped:
 - **tenancy** `workspaces` `users` `memberships` `sessions`
-- **org-level channel accounts** `channel_accounts` `campaign_accounts` (many to many) `sending_domains`
+- **org-level channel accounts** `channel_accounts` `campaign_accounts` (many to many) `sending_domains` `connect_sessions`
 - **uploads** `uploads` (parked parsed files, swept after 1 h) `segments` `segment_leads`
 - **domain** `leads` `campaigns` `workflows` `threads` `messages` `tasks`
 - **quota/metrics** `channel_quotas` `daily_rollups` `events`
@@ -109,6 +110,59 @@ Tables, grouped:
 
 `workspace_id` is on every tenant-scoped table. `step_jobs.run_at` + `FOR UPDATE SKIP LOCKED`
 is the job queue — no Redis or SQS needed.
+
+### Connecting LinkedIn — `lib/channels/` + `app/api/integrations|webhooks/`
+
+Driving LinkedIn means holding a member session and replaying actions against LinkedIn's own
+internal endpoints. **We rent that, we do not build it** — and every call goes through one
+interface so the vendor can be replaced without touching a route, a screen or a table.
+
+| File | Purpose |
+|---|---|
+| `adapter.ts` | `LinkedInChannelAdapter`: `createHostedAuth`, `getAccount`, `deleteAccount`, `listWebhooks`, `createWebhook`. Plus `ProviderAccount` and `ProviderError`. The seam. |
+| `unipile.ts` | The one implementation. `https://{DSN}/api/v1`, `X-API-KEY`, 15 s timeout. Server-only: the key can read every connected account. |
+| `unipileRequests.ts` | The **pure** half — `unipileBaseUrl`, `hostedAuthBody`, `readHostedAuthUrl`, `readAccount`, `readWebhooks`. Import-free, so `tests/unipile.test.mjs` pins the request contract with no network and no key. |
+| `events.ts` | Normalises the webhook payloads. Import-free, tested. |
+| `webhookConfig.ts` | The header name and the two `source` values, in a module with no value imports so the registration **script** can import them too. |
+| `webhookAuth.ts` | Constant-time check of the shared-secret header. |
+| `connect.ts` | Opens a connect session, asks for a hosted link, returns the URL. Shared by connect and reconnect. |
+| `index.ts` | `getLinkedInAdapter()` → `null` until `UNIPILE_DSN` + `UNIPILE_API_KEY` are set, and `appOrigin()`. |
+| `components/app/integrations/ConnectLinkedIn.tsx` | `useLinkedInConnect()` — popup + poll, and the one status line. |
+| `scripts/register-unipile-webhooks.ts` | `npm run unipile:webhooks`. Idempotent; never deletes. |
+
+Five things about this that are not obvious:
+
+- **Hosted auth, not custom auth.** Custom auth would mean our servers handling the member's
+  LinkedIn password and the 2FA/checkpoint dance. Hosted auth keeps all of it at the provider. The
+  adapter exists so custom auth can be added later as one more method, not a rewrite.
+- **`connect_sessions` is the tenancy link.** A webhook carries the provider's account id and
+  nothing of ours, so something has to say which workspace asked. The session id is handed to the
+  provider as `name`, echoed back on `notify_url`, and is random (`randomBytes`, not `Math.random`
+  like `newId`) and short-lived. **It must never be the workspace id**: that would let anyone who
+  guessed one attach an account to someone else's workspace.
+- **`lib/channels/inbound.ts` is the one place that writes workspace rows without a `Ctx`.** A
+  webhook has no session. The workspace is *derived* from `channel_accounts.provider_account_id`,
+  which is unique across the whole table (`channel_accounts_provider_key`), so one provider account
+  belongs to exactly one workspace and the lookup cannot be steered by the caller. It never accepts
+  a workspace, lead or account id from a request body.
+- **The notify callback cannot carry a secret** (`notify_url` takes no headers), so it proves
+  nothing on its own: the reference must be an unexpired pending session, and the account's
+  identity is read back from the provider with our own key rather than taken from the body.
+  The other two webhooks *are* authenticated, by a shared-secret header Unipile is asked to send
+  back — Unipile does not sign bodies. No `UNIPILE_WEBHOOK_SECRET`, no deliveries accepted.
+- **Unipile's v1 and v2 docs disagree on webhook field names** (`AccountStatus` wrapper vs
+  `{event,data}`; `message_received` vs `message.created` vs `message.new`). `events.ts` reads
+  every documented spelling and refuses a payload missing what it needs, rather than betting on
+  one. An unrecognised status is `error`, never `ok`: an account in a state we do not understand
+  must not read as usable. Note `event: "account.status"` is the *event's* name and is deliberately
+  not read as a status.
+
+Inbound messages land in the Inbox **only** when the sender is already a lead in that workspace,
+matched on their LinkedIn handle. A message from a stranger is kept as an `events` row and nothing
+else: inventing a person out of a webhook payload would put them in someone's lead list.
+
+Nothing sends. `SENDING_ENABLED` is still false — connecting an account is not sending, and the
+drawer says as much.
 
 ### HTTP — `app/api/` + `lib/http.ts` + `lib/api.ts`
 `lib/http.ts` (56L) holds `withUser`, `json`, `fail`, param parsers — so auth, caching and error
@@ -126,8 +180,14 @@ directly.
 | `/api/campaigns/[id]/workflow` | GET, PUT | the campaign's workflow. PUT takes `{ name, graph }` and **rebuilds the graph from a whitelist** (`validateWorkflowGraph`); 422 names the reason. 404 for another workspace's campaign. |
 | `/api/workflows` | GET | every workflow in the workspace, newest edit first |
 | `/api/accounts` | GET | the workspace's LinkedIn accounts, mailboxes and sending domains, each with the campaigns that use it |
-| `/api/accounts/[id]` | PATCH | the dials only (LinkedIn daily caps; mailbox cap + rotate). Identity/state/health are never accepted |
+| `/api/accounts/[id]` | PATCH DELETE | PATCH is the dials only (LinkedIn daily caps; mailbox cap + rotate) — identity/state/health are never accepted. DELETE disconnects at the provider first, then removes the row |
 | `/api/accounts/[id]/campaigns` | PUT | `{ campaignIds }` replaces the campaigns sending from an account; a foreign campaign id is a 422 |
+| `/api/accounts/activity` | GET | `?days=` — real per-account counts from `events` (inbound messages, status changes). Zero means zero, never an estimate |
+| `/api/integrations/linkedin/connect` | POST | opens a Unipile hosted sign-in; `{ accountId }` repairs one instead. 503 `not_configured` with no API key, 502 when the provider refuses. **GET is a 405** — a link prefetch must not open a sign-in |
+| `/api/integrations/linkedin/connect/[id]` | GET | how one connect attempt of *this workspace's* is going; the screen polls it |
+| `/api/webhooks/unipile/notify` | POST | hosted sign-in finished. See "Connecting LinkedIn" below for why this one has no secret and is still safe |
+| `/api/webhooks/unipile/accounts` | POST | account status changed. Shared-secret header; writes `channel_accounts.state` |
+| `/api/webhooks/unipile/messages` | POST | inbound message. Shared-secret header; idempotent on the provider's message id |
 | `/api/badges` | GET | `{ tasks, inbox, config }`: the rail counts, fetched on every navigation |
 | `/api/settings` | GET, PATCH | the Configuration screen's Variables/Sending rules/Compliance tabs (`workspace_settings`). PATCH body carries only the section(s) changed (`{ variableFallbacks? \| sendingRules? \| compliance? }`); shape/range checked in `validate.ts`, merged into the stored row by the repository. Always real for the signed-in workspace, but `SENDING_ENABLED` stays false so nothing acts on it — see Configuration below |
 | `/api/leads/uploads`, `…/[id]/validate`, `/api/leads/segments` | POST, GET | parked file → review (per-channel reach, **in-journey warning**, import plan) → saved segment. Segments carry a live `leadCount`. Max 4 MB (Vercel's body cap) |
@@ -336,7 +396,9 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 
 ### Tests — `tests/` (Node's built-in runner, not Jest/Vitest)
 `dataQuery.test.mjs` · `demoRequest.test.mjs` · `workflow.test.mjs` · `validate.test.mjs` ·
-`adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `setup.test.mjs` · `workflowPersist.test.mjs` · `leadsValidation` `leadsMerge` `leadsJourney` `leadsProfile` `leadsImportPlan` `prospect` `workflowSegment` — **195 tests**
+`adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `setup.test.mjs` · `workflowPersist.test.mjs` · `leadsValidation` `leadsMerge` `leadsJourney` `leadsProfile` `leadsImportPlan` `prospect` `workflowSegment` ·
+`unipile.test.mjs` (the Unipile request contract + response readers) · `unipileEvents.test.mjs`
+(both documented webhook envelopes) — **210 tests**
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).
@@ -361,6 +423,9 @@ namespaces, no parameter properties).
 | Add a field to a stored workflow | `WorkflowGraph` + `validateWorkflowGraph` in `lib/app/workflow.ts` (the whitelist **drops/refuses** anything not listed) + a case in `tests/workflowPersist.test.mjs` |
 | Change what a connected account can do | `lib/data/types.ts` (`LinkedInSettings`/`EmailSettings`) → `validateAccountPatch` in `validate.ts` → `pg.ts` + `memory.ts` → `ChannelTabs.tsx` |
 | Add a setup check | `lib/data/setup.ts` (and its test). It is derived from `AccountsSnapshot`; do not hardcode |
+| Swap the LinkedIn vendor | implement `LinkedInChannelAdapter` (`lib/channels/adapter.ts`) and return it from `getLinkedInAdapter()`. Nothing else — that is what the interface is for. |
+| Handle another provider webhook | a reader in `lib/channels/events.ts` (+ a case in `tests/unipileEvents.test.mjs`), a writer in `inbound.ts`, a route under `app/api/webhooks/unipile/`, and the `source` in `webhookConfig.ts` so the registration script picks it up |
+| Add a per-account figure | `AccountActivity` in `lib/data/types.ts` → `accountActivity()` in **both** repository impls → `SeatActivity` in `ChannelTabs.tsx`. Count real `events` rows; never estimate |
 | Change how uploaded people are matched | `lib/leads/merge.ts` (`mergeLeads` + `findInJourney`; `planImport` follows `mergeLeads` automatically) and `tests/leadsMerge`/`leadsJourney`/`leadsImportPlan` |
 | Change what the import review shows | `ImportPreview`/`ReviewRow` in `lib/leads/segments.ts` → `analyseUpload` in `lib/leads/analyse.ts` → `components/app/leads/ImportReview.tsx` |
 | Add something to the prospect profile | `ProspectProfile` in `lib/data/types.ts` → `ProspectFacts` + `buildProspect` in `lib/leads/prospect.ts` (+ `tests/prospect.test.mjs`) → `getProspect` in **both** `pg.ts` and `memory.ts` (scope every query by `workspace_id`) → `ProspectDrawer.tsx` |
@@ -555,16 +620,22 @@ Roughly in the order they should be closed.
    Intended shape: an authenticated `/api/jobs/tick` claiming due rows with
    `FOR UPDATE SKIP LOCKED`, poked by cron (a GitHub Actions schedule is a free MVP scheduler).
    `SENDING_ENABLED` stays false until it lands.
-3. **LinkedIn and email connection are not built.** `channel_accounts` / `sending_domains` are
-   ready and the UI reads them, but a real workspace has none (only the sample's). A new workspace
-   therefore shows two blocking setup checks, which is true.
+3. **LinkedIn connects; email does not.** LinkedIn accounts connect through Unipile's hosted
+   sign-in (see "Connecting LinkedIn" in §3) wherever `UNIPILE_DSN` + `UNIPILE_API_KEY` are set;
+   without them the screens say so rather than offering a button that 503s. Still open on this
+   path: **no throttle service** (the per-account caps are stored and shown but nothing enforces
+   them — that is the execution engine, §2), **no profile enrichment** (`GET /users/{id}` is not
+   called, so a connected seat adds no lead context), and **nothing sends**. Mailbox connection is
+   not built at all: `sending_domains` is read-only and "Connect mailbox" is still disabled.
 4. **Configuration rules are stored but not enforced.** Variables, sending rules and compliance now
    persist in `workspace_settings` (`/api/settings`), but nothing reads that table yet — enforcing
    it needs the execution engine (§2) and `SENDING_ENABLED` to flip. The channel tabs' "All
    accounts" / Tracking switches are a separate, still-unstored thing (`ChannelTabs.tsx`).
 5. **`campaigns.channels` is not derived from the workflow's steps.** Both are stored; editing the
    workflow does not update the campaign's channel list.
-6. **Nothing writes `events`, and no job builds `daily_rollups`.** Only the sample's rollups exist,
+6. **`events` is written only by the LinkedIn webhooks, and no job builds `daily_rollups`.**
+   Account connects, status changes and inbound messages land in `events` (and `/api/accounts/activity`
+   counts them); nothing else does. Only the sample's rollups exist,
    so Analytics is real SQL over invented numbers until the engine lands. Rollups have no campaign
    or person dimension, so Analytics cannot filter by either. The prospect profile already reads
    `events` and `workflow_runs` per person, so its engagement section fills in once the engine writes them.
