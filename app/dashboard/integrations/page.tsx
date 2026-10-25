@@ -1,14 +1,22 @@
-import type { Metadata } from "next";
-import { IntegrationsScreen } from "@/components/app/IntegrationsScreen";
-import { linkedInConnectConfigured } from "@/lib/channels";
-
-export const metadata: Metadata = { title: "Integrations" };
+import { permanentRedirect } from "next/navigation";
+import { SETUP_HREF } from "@/lib/nav";
 
 /**
- * Whether a LinkedIn sign-in can be opened depends on this deployment's provider key, which only
- * the server can see. It is read here and handed down, so the screen never offers a Connect button
- * that would answer 503.
+ * The provider catalogue is Setup's Connections tab. The hosted LinkedIn sign-in returns to
+ * `?connected=`/`?failed=` on Setup now (see lib/channels/connect.ts), but an older in-flight
+ * sign-in may still come back here, so the query string is carried across.
  */
-export default function IntegrationsPage() {
-  return <IntegrationsScreen linkedInConfigured={linkedInConnectConfigured()} />;
+export default async function IntegrationsRedirect({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const query = new URLSearchParams();
+  for (const key of ["connected", "failed"]) {
+    const value = params[key];
+    if (typeof value === "string") query.set(key, value);
+  }
+  const suffix = query.size ? `?${query.toString()}` : "";
+  permanentRedirect(`${SETUP_HREF}${suffix}`);
 }

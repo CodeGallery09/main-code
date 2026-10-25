@@ -2,11 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  CHECKS,
   NODE_W,
+  OFFERED_CHECKS,
+  PALETTE,
+  STEPS,
+  TEMPLATES,
   WORKFLOWS,
   blankWorkflow,
   edgePath,
   getWorkflow,
+  graphFromTemplate,
   issues,
   layout,
   portX,
@@ -65,13 +71,15 @@ test("walks the audience count down the funnel", () => {
   const stats = stepStats(w.nodes, w.edges);
   const of = (kind, nth = 0) => stats[w.nodes.filter((n) => n.kind === kind)[nth].id];
 
+  // Rates carry a "~": they are typical rates applied to the audience size, not measurements,
+  // and on the canvas they sit beside counts that look exactly like results.
   assert.deepEqual(of("audience"), [["612", "leads"]]);
-  assert.deepEqual(of("li_invite"), [["612", "sent"], ["48%", "accepted"]]);
+  assert.deepEqual(of("li_invite"), [["612", "sent"], ["~48%", "accepted"]]);
   // 48% of 612 accept, so that is what the LinkedIn message goes out to.
-  assert.deepEqual(of("li_msg"), [["294", "sent"], ["9.2%", "replied"]]);
-  assert.deepEqual(of("email"), [["318", "sent"], ["58%", "opened"]]);
+  assert.deepEqual(of("li_msg"), [["294", "sent"], ["~9.2%", "replied"]]);
+  assert.deepEqual(of("email"), [["318", "sent"], ["~58%", "opened"]]);
   assert.deepEqual(of("wait", 0), [["24", "waiting"]]);
-  assert.deepEqual(of("call"), [["256", "tasks"], ["44%", "connected"]]);
+  assert.deepEqual(of("call"), [["256", "tasks"], ["~44%", "connected"]]);
   assert.deepEqual(of("goal", 0), [["15", "reached"]]);
   assert.deepEqual(of("goal", 1), [["102", "reached"]]);
   assert.deepEqual(of("exit"), [["318", "exited"]]);
@@ -146,4 +154,34 @@ test("draws a straight edge when the cards line up and a step when they do not",
   assert.match(stepped, /^M0 0L0 \d/);
   assert.ok(stepped.includes("Q"), "corners are rounded");
   assert.ok(stepped.endsWith("L200 100"));
+});
+
+test("only steps that can run are offered in the palette", () => {
+  const offered = PALETTE.flatMap(([, kinds]) => kinds);
+  // WhatsApp and SMS need a business number and approved templates that do not exist, so a
+  // sequence built from them could never send with nothing on the canvas saying so.
+  assert.equal(offered.includes("wa"), false);
+  assert.equal(offered.includes("sms"), false);
+  // A call step does run today: it becomes a to-do for a person.
+  assert.equal(offered.includes("call"), true);
+  for (const kind of offered) assert.ok(STEPS[kind], `${kind} is offered but not a known step`);
+  // Still described, so a stored graph that already holds one keeps rendering.
+  assert.ok(STEPS.wa && STEPS.sms);
+});
+
+test("no template builds a step that cannot run", () => {
+  for (const template of TEMPLATES) {
+    const { nodes } = graphFromTemplate(template.k);
+    for (const node of nodes) {
+      assert.ok(node.kind !== "wa" && node.kind !== "sms", `${template.k} starts with a ${node.kind} step`);
+    }
+    for (const channel of template.ch) {
+      assert.ok(channel !== "wa" && channel !== "sms", `${template.k} advertises ${channel}`);
+    }
+  }
+});
+
+test("a condition only offers checks something can observe", () => {
+  assert.equal(OFFERED_CHECKS.includes("read"), false, "nothing can observe a WhatsApp read");
+  for (const key of OFFERED_CHECKS) assert.ok(CHECKS[key], `${key} is offered but has no label`);
 });

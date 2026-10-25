@@ -78,10 +78,10 @@ export function ProspectDrawer({
         if (id !== requestId.current) return;
         setError(
           e instanceof ApiError && e.status === 404
-            ? "This prospect no longer exists."
+            ? "This lead no longer exists."
             : e instanceof Error
               ? e.message
-              : "Could not load this prospect.",
+              : "Could not load this lead.",
         );
       });
   }, [leadId]);
@@ -113,7 +113,7 @@ export function ProspectDrawer({
         <header className="drawer-h">
           {lead ? <Avatar name={lead.name} size="lg" /> : <span className="av lg pf-ghost" />}
           <div className="pf-who">
-            <b id="pf-title">{lead ? lead.name : error ? "Prospect" : "Loading…"}</b>
+            <b id="pf-title">{lead ? lead.name : error ? "Lead" : "Loading…"}</b>
             {lead && (
               <small>{[lead.title, lead.company].filter(Boolean).join(" · ") || "No title or company on file"}</small>
             )}
@@ -154,7 +154,7 @@ export function ProspectDrawer({
             Close
           </button>
           <button type="button" className="btn pri" disabled={!lead} onClick={() => lead && onEdit(lead)}>
-            Edit prospect
+            Edit lead
           </button>
         </footer>
       </aside>
@@ -230,7 +230,7 @@ function Company({ profile, onOpen }: { profile: ProspectProfile; onOpen: (id: s
       <h3 className="eyebrow">Company</h3>
       {nothing ? (
         <p className="pf-empty">
-          No company details on file. Add a company on the prospect, or upload a file with a company column.
+          No company details on file. Add a company on the lead, or upload a file with a company column.
         </p>
       ) : (
         <dl className="pf-kv">
@@ -244,7 +244,7 @@ function Company({ profile, onOpen }: { profile: ProspectProfile; onOpen: (id: s
       {company.colleagueCount > 0 && (
         <div className="pf-colleagues">
           <span className="hint">
-            {company.colleagueCount} other {company.colleagueCount === 1 ? "prospect" : "prospects"} at {company.name}{" "}
+            {company.colleagueCount} other {company.colleagueCount === 1 ? "lead" : "leads"} at {company.name}{" "}
             in this workspace
           </span>
           <ul>
@@ -301,7 +301,7 @@ function Journey({ profile }: { profile: ProspectProfile }) {
       </dl>
       {!SENDING_ENABLED && (
         <p className="pf-note">
-          Nothing is sent to this prospect automatically: sending isn’t connected yet, and importing never starts
+          Nothing is sent to this lead automatically: sending isn’t connected yet, and importing never starts
           outreach.
         </p>
       )}

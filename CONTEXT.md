@@ -34,7 +34,7 @@ npm run unipile:webhooks   # register the two Unipile webhooks (needs UNIPILE_* 
 
 ---
 
-## 2. The three splits you must know
+## 2. The splits you must know
 
 These are the only genuinely confusing things in the codebase. Everything else is ordinary.
 
@@ -61,8 +61,8 @@ colours/score band/avatar tints, `campaigns.ts` status tags), the workflow model
 catalogue and the Configuration rule defaults.
 
 ### 2c. Every workspace screen reads its own workspace
-Home, Inbox, Leads, Campaigns, Workflows (+ builder), Analytics, Configuration, Integrations and
-Settings all read through the repository / REST API, so a workspace only ever sees its own rows.
+Home, Inbox, Leads, Campaigns (+ builder), Analytics and Setup all read through the repository /
+REST API, so a workspace only ever sees its own rows.
 **There is no demo content in the app any more except the sample world** (`lib/data/sample.ts` + `sampleSeed.ts`, §3):
 rows flagged `is_sample`, seeded at signup, labelled "Sample" in the UI and deleted by "Remove
 sample data". In the no-database demo mode (the `dev` deployment) `MemoryRepository` serves the
@@ -70,6 +70,25 @@ old demo dataset (`lib/data/seed.ts`) through the same API, so the same screens 
 
 **The rule for new work:** a screen that needs data gets it from a repository method + an API
 route. Never put figures, names, accounts or campaigns in a component or in `lib/app/`.
+
+### 2d. Five destinations, and one record is never two sections
+`DASHBOARD_NAV` in `lib/nav.ts` carries **Home, Inbox, Leads, Campaigns, Setup**, and the rail and
+the mobile tab bar render the same five. There used to be nine, which did not fit the tab bar, so
+below 820px — where `app.css` hides the rail — Configuration, Integrations and Settings were
+unreachable on a phone. Two merges fixed that:
+
+- **A multichannel campaign *is* its workflow** (same id, one stored graph), so there is no
+  Workflows section. Campaigns is the list; `/dashboard/workflows/[id]` is still the builder, and
+  `/dashboard/workflows` redirects to Campaigns.
+- **Setup is Configuration + Integrations + Settings.** All three answered "what is connected and
+  how does sending behave"; Settings held no controls at all, only read-only copies of the other
+  two, and Integrations drew a tab strip across the three. `/dashboard/settings` and
+  `/dashboard/integrations` redirect to `/dashboard/configuration`.
+
+Analytics is a report rather than a place you live, so Home links to it instead of the rail.
+
+**The rule for new work:** before adding a rail item, check the record it lists is not already
+listed somewhere else under another name. Five fits the tab bar; a sixth does not.
 
 ---
 
@@ -275,17 +294,16 @@ leads the upload *creates*. It never changes an existing lead's consent.
 ### Workspace screens — `components/app/`
 | File | L | Reads from | Notes |
 |---|---|---|---|
-| `AppShell.tsx` | 407 | `/api/badges` | rail, top bar, mobile tab bar, sign-out. Badges refetch on every navigation |
-| `HomeScreen.tsx` | 292 | `/api/overview`, `/api/campaigns` | stats, to-dos (completable), campaigns, daily quotas |
-| `InboxScreen.tsx` | 315 | `/api/threads` | read-only: the composer is disabled while `!SENDING_ENABLED` |
-| `LeadsScreen.tsx` + `LeadEditor.tsx` | 650 + 165 | `/api/leads`, `/api/leads/segments`, `/api/leads/[id]/profile` | full CRUD, server-side filter/sort/page; audience cards narrow the table (`segmentId`); a row (or its name) opens `ProspectDrawer`; below 820px the table is replaced by the `.lcards` list. A saved import selects its new audience. **The lead form asks only name, email, phone, LinkedIn URL (+ the consent attestation)**; the PATCH/POST sends only those, so an edit never touches imported company/title/extra and the server defaults the rest (stage `new`, source `form`, owner = creator). Status, source, tags and next step are not shown in the table, its filters or the drawer (user request: profiles get enriched later) — they still exist in the schema |
-| `CampaignsScreen.tsx` + `CampaignEditor.tsx` | 405 + 192 | `/api/campaigns` | full CRUD |
-| `AnalyticsScreen.tsx` | 526 | `/api/analytics`, `/api/campaigns` | Overview / Channels / Campaigns. No per-person or per-campaign daily data exists, so none is shown |
-| `WorkflowsScreen.tsx` | 240 | server props from the repository | library + template picker |
-| `ConfigurationScreen.tsx` + `configuration/` | 96 + ~1340 | `/api/accounts`, `/api/campaigns` | see below |
-| `IntegrationsScreen.tsx` | 296 | `/api/accounts` | one card of collapsible sections (`.intg*` CSS at the end of `app.css`); provider state is *derived* (`providerView`) |
-| `SettingsScreen.tsx` | 227 | `/api/workspace`, `/api/accounts` | channels, domains, members, plan |
-| `SampleBanner.tsx` | 60 | `/api/workspace` | "this workspace includes sample data" + Remove button; renders on every data screen |
+| `AppShell.tsx` | ~370 | `/api/badges` | rail, top bar, mobile tab bar, sign-out. **Five destinations** (`DASHBOARD_NAV`), the same five in the rail and the tab bar — see §2d. Badges refetch on every navigation. The top bar carries the title and sign-out only: the Search (⌘K) button and the notification bell had no handler and the bell's dot was hardcoded |
+| `HomeScreen.tsx` | ~260 | `/api/overview`, `/api/campaigns` | stats (fixed 7-day window; ranges belong to Analytics, which it links to), to-dos (completable), campaigns. Each to-do's button **deep-links to its lead** (`?lead=<id>` on Inbox/Leads) rather than to the list |
+| `InboxScreen.tsx` | ~300 | `/api/threads` | read-only: with `!SENDING_ENABLED` the composer is one line of text, not a disabled box plus a note plus a disabled button. Opens the thread named by `?lead=<id>`. One "Open lead", pointed at the lead |
+| `LeadsScreen.tsx` + `LeadEditor.tsx` | ~570 + 165 | `/api/leads`, `/api/leads/segments`, `/api/leads/[id]/profile` | full CRUD, server-side filter/sort/page; audience cards narrow the table (`segmentId`); a row (or its name) opens `ProspectDrawer`; below 820px the table is replaced by the `.lcards` list. A saved import selects its new audience. Opens the lead named by `?lead=<id>`. **No row checkboxes** (nothing consumed the selection and there is no bulk action), **no "Avg call"/"Follow-ups" columns** (empty for every lead until calling and sending exist, and their sort only ordered the visible page) and no inline row Edit (the row opens the drawer, which edits). The UI says "lead" throughout; the `Prospect*` type and route names are unchanged. **The lead form asks only name, email, phone, LinkedIn URL (+ the consent attestation)**; the PATCH/POST sends only those, so an edit never touches imported company/title/extra and the server defaults the rest (stage `new`, source `form`, owner = creator). Status, source, tags and next step are not shown in the table, its filters or the drawer (user request: profiles get enriched later) — they still exist in the schema |
+| `CampaignsScreen.tsx` + `campaigns/TemplatePicker.tsx` + `CampaignEditor.tsx` | ~320 + 105 + 100 | `/api/campaigns` | **the only campaign list and the only place one is created** (§2d). New campaign = pick a template, which creates the campaign and its workflow and opens the builder. Row click opens the builder. Row actions are Pause (live/scheduled only), Rename, Delete. `CampaignEditor.tsx` is now just `RenameCampaign` |
+| `AnalyticsScreen.tsx` | ~420 | `/api/analytics` | **one report, no tabs.** The per-channel table sits under its own bar chart; per-campaign totals link to Campaigns. No per-person or per-campaign daily data exists, so none is shown |
+| `ConfigurationScreen.tsx` + `configuration/` | ~120 + ~1700 | `/api/accounts`, `/api/campaigns` | the **Setup** screen — see below |
+| `configuration/Connections.tsx` | ~370 | `/api/accounts`, `/api/workspace` | was `IntegrationsScreen.tsx`; now Setup's Connections tab. One card of collapsible sections (`.intg*` CSS at the end of `app.css`); provider state is *derived* (`providerView`). "Manage" switches tab instead of navigating |
+| `configuration/Workspace.tsx` | ~90 | `/api/workspace` | was `SettingsScreen.tsx`; now Setup's Workspace tab, team + plan only |
+| `SampleBanner.tsx` | 60 | `/api/workspace` | "this workspace includes sample data" + Remove button. **Home only** — it used to repeat on all eight screens, undismissable; the "Sample" pills on rows carry it elsewhere |
 | `ui.tsx` `charts.tsx` `icons.tsx` | 628 | — | shared controls, SVG charts, 24px icons |
 | `glass.ts` | ~230 | — | refraction + specular runtime, **marketing-only now** (see §5) |
 
@@ -312,47 +330,66 @@ relabelled "(demo)". The Audience step stores only the list key.
 **Routes.** The builder has exactly one: `/dashboard/workflows/[id]` where `id` is a multichannel
 campaign's id (string). The page resolves the session itself, loads campaign + workflow through
 the repository, and 404s for an unknown id, another workspace's id or a standalone campaign.
-`/dashboard/workflows/new` and numeric (old demo) ids **redirect to the library**. The header
-`<select>` in the builder and the library lists the workspace's multichannel campaigns (a server-fed
-prop, not the demo `CAMPAIGNS`).
+`/dashboard/workflows/new` and numeric (old demo) ids **redirect to Campaigns**. The header
+`<select>` in the builder lists the workspace's multichannel campaigns (a server-fed prop, not the
+demo `CAMPAIGNS`).
 `/dashboard/campaigns/[id]` is a `permanentRedirect` to the builder, kept for old links — never
-render a second builder there. `/dashboard/workflows` is the library (`WorkflowsScreen`:
-`.wfgrid` cards from `summariseStored()` in `lib/app/workflowLibrary.ts`, template picker). Picking a
-template **creates a draft multichannel campaign + its workflow, then opens the builder** (a
-workflow needs a campaign; creating on a GET would let link prefetch create rows). Library
-"in flight"/"meetings" are dashes: nothing has been sent, so there is nothing to report.
-`/dashboard/integrations` (`IntegrationsScreen`, `lib/app/integrations.ts`): only LinkedIn and
-email can connect; every other provider is `state: "planned"`. Layout (a replica of a reference screenshot the user supplied — do not restyle it without asking):
-an underline tab row (Configuration / Integrations / Settings, real links) with the search box at its
-right, then ONE card: a Workspace ID row (real `org_…` id + copy icon), then collapsible sections
-(bold heading, thin chevron, no counts), each a two-column grid of rows (brand-coloured logo tile from
-the `TILE` map in the screen, name + pill, description, bare "+" or "Manage"). Providers that are connected or need attention are pulled out of their category into a
-**Connected** section on top (rows show the live detail and a Manage link to Configuration); the
-rest stay under Channels / Calendar / CRM / Developer. "+" opens the explainer drawer. The old
-per-account LinkedIn/DNS panels were removed: Configuration → Mailboxes & domains owns that detail.
+render a second builder there. **`/dashboard/workflows` is a `permanentRedirect` to Campaigns**:
+there is no separate library any more (§2d). Picking a template on Campaigns **creates a draft
+multichannel campaign + its workflow, then opens the builder** (a workflow needs a campaign;
+creating on a GET would let link prefetch create rows).
+
+**The builder offers only steps that can run.** `PALETTE` in `lib/app/workflow.ts` lists LinkedIn
+invite, LinkedIn message, Email and Call task; WhatsApp and SMS need a business number and approved
+templates that do not exist, so a sequence built from them could never send with nothing on the
+canvas saying so. `STEPS` still describes them and `CHECKS` still holds `read` ("Read WhatsApp"),
+so a stored graph that holds one keeps validating and rendering — `OFFERED_CHECKS` is what the
+Inspector offers. No template builds one either (`tests/workflow.test.mjs` pins all of this).
+The Audience step's Job titles / Company size / Location fields were removed: they were stored and
+never read, so the lead count beside them never moved.
+
+**Canvas figures are projections, and say so.** `stepStats()` multiplies the audience size by the
+fixed rates in `PASS`/`RATE`. Rates render with a `~` and the canvas carries a permanent line
+("Step counts are estimates from typical rates, not your results"). Replace them with real counts
+in the commit that lands a sender, not before.
 
 **Nothing sends, and the UI says so (`lib/capabilities.ts`).** `SENDING_ENABLED = false` gates every
-path to "live": the builder's Launch/Resume and Test are disabled, the Campaigns switch refuses to
-turn a campaign on, and the campaign editor hides Live/Scheduled. Pausing is always allowed. Flip
-the flag only in the commit that lands a sender.
+path to "live". The builder shows "Nothing sends yet" where Launch would be (a disabled Launch made
+its own confirmation dialog unreachable) and has no Test button (it was permanently disabled).
+The Campaigns table offers Pause, not an on/off switch that could only fail in one direction.
+Pausing is always allowed. Flip the flag only in the commit that lands a sender.
 
 **Sample data.** `SampleBanner` (`components/app/SampleBanner.tsx`) asks `api.workspace()` for
-`workspace.sample` and renders on Leads, Campaigns and Workflows until the user clicks "Remove
-sample data" (`DELETE /api/workspace/sample`). Sample rows carry a "Sample" tag (`isSample`
-through `adapt.ts`).
+`workspace.sample` and renders **on Home only**, until the user clicks "Remove sample data"
+(`DELETE /api/workspace/sample`). It used to repeat at the top of all eight screens. Sample rows
+carry a "Sample" tag (`isSample` through `adapt.ts`) wherever they appear.
 
-**Campaign creation has one entry point.** `CampaignsScreen`'s "Create campaign" button (opening
-`CampaignEditor`) is now the only way in: the sidebar used to carry a second "New campaign" button
-straight into a blank, unnamed workflow (`AppShell`, `href="/dashboard/workflows/new"`), and
-`CampaignsScreen` carried a third, "New workflow", doing the same — both bypassed the name/type/
-status/channel form and were removed. Starting a workflow from a template (`WorkflowsScreen`'s
-"New workflow" + picker) is unaffected; it is the builder's own entry point, not a competing
-campaign-creation path. Creating a **multichannel** campaign from `CampaignEditor` also saves an empty workflow and opens the builder on it.
+**Campaign creation has one entry point.** `CampaignsScreen`'s "New campaign" opens
+`campaigns/TemplatePicker.tsx`, and that is the only way in. It asks one question (which shape),
+because the old dialog's other four could not be answered before seeing the campaign: a
+standalone/multichannel type whose standalone branch had no detail screen at all, a status list
+including Completed, five channel checkboxes with a footnote saying three of them do not send, and
+a start date hinting it would "start now" when nothing starts. Channels follow from the steps and
+status follows from what the user does. `CampaignEditor.tsx` is now `RenameCampaign`.
 
-### Configuration — `/dashboard/configuration`
+### Setup — `/dashboard/configuration`
 `ConfigurationScreen.tsx` + `components/app/configuration/` (`Overview`, `ChannelTabs`, `RuleTabs`,
-`parts`). Nine tabs: overview, LinkedIn, Email, WhatsApp, Calls, SMS, Variables, Sending rules,
-Compliance. Reached from the rail's foot group (workspace-level setup, so not in `DASHBOARD_NAV`).
+`Connections`, `Workspace`, `parts`). **Six tabs: Overview, LinkedIn, Email, Connections, Rules,
+Workspace** (`CONFIG_TABS` in `lib/app/configuration.ts`), titled "Setup" and reached from the main
+rail — it is one of the five `DASHBOARD_NAV` destinations, so it works on a phone.
+
+It was three rail destinations. WhatsApp, Calls and SMS each had a tab whose whole content was a
+paragraph saying there was nothing to configure (the Overview tiles and Connections say it once);
+Variables, Sending rules and Compliance are three groups of switches over one subject and share the
+Rules tab; Connections is the old Integrations screen; Workspace is what was left of Settings.
+`/dashboard/integrations` and `/dashboard/settings` are `permanentRedirect`s here, and the
+integrations route carries `?connected=`/`?failed=` across so an in-flight hosted sign-in still
+lands (the screen then opens the Connections tab). **`lib/channels/connect.ts` builds its
+success/failure URLs from `SETUP_HREF`.**
+
+**The setup score only counts what the user can change.** "No mailbox connected" is `tone: "info"`,
+not a blocker: connecting a mailbox is not built, so scoring it left every workspace permanently
+short of full marks with a red row and no action. `CheckTab` is `"li" | "mail"`.
 
 **LinkedIn accounts and mailboxes belong to the workspace, not to a campaign.** There is no campaign
 scope on this screen. Each account tile has a "Used by campaigns" control (real campaigns, many to
@@ -362,8 +399,8 @@ many for BOTH channels — a mailbox is no longer exclusive to one campaign) sav
 so and the Connect button is disabled: **connecting a LinkedIn account or mailbox is not built**.
 
 The Overview's checks come from `lib/data/setup.ts` (real state), not from a constant.
-**WhatsApp, Calls and SMS** show only the planned note, because there is no account/number concept
-for them yet — nothing to configure, so nothing scaffolded.
+**WhatsApp, Calls and SMS** have a tile each, marked Planned, which opens Connections — there is no
+account/number concept for them yet, so there is nothing to configure and nothing was scaffolded.
 
 **Variables, Sending rules and Compliance now persist** through `/api/settings` →
 `workspace_settings` (one row per workspace, three jsonb blobs). `RuleTabs.tsx`'s
@@ -384,7 +421,7 @@ see §7.
 phone mask, tag colours, avatar tints) · `campaigns.ts` (status pill wording) · `configuration.ts`
 (tab list + rule catalogue + `defaultWorkspaceSettings()`, the one function that is a
 `WorkspaceSettings` — see Workspace data below) · `integrations.ts` (provider catalogue + `providerView`) ·
-`workflow.ts` (the graph model, templates, validation) · `workflowLibrary.ts` · `segments.ts` (a
+`workflow.ts` (the graph model, templates, validation) · `segments.ts` (a
 tiny event so the builder refreshes when a segment is saved) · **`adapt.ts` bridges to `lib/data`**
 and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and stage round-trip.
 **Nothing in here is workspace data.** (`workflow.ts` still carries the five demo workflows and
@@ -424,7 +461,9 @@ namespaces, no parameter properties).
 | Re-theme marketing | `:root` in `app/globals.css` + `@theme inline`. Grep `rgb(` and `pipSvg.ts` for hardcoded brand colours. |
 | Re-theme workspace | `:root` tokens in `app/app.css`. It is vendored, multi-pass — change the **final** `:root`/flattening block at the true end of the file, since same-specificity CSS means last-in-source wins over every earlier redeclaration. |
 | Add a glass surface (marketing only) | selector list in `globals.css`'s glass-skin block **AND** `SiteGlass.tsx`'s lens/specular lists. Miss one → renders flat. The workspace has no glass surfaces any more — see §5. |
-| Add a nav item | `lib/nav.ts` (workspace) or `lib/site.ts` (marketing) |
+| Add a nav item | `lib/nav.ts` (workspace) or `lib/site.ts` (marketing). For the workspace, read §2d first: the rail and the mobile tab bar render the same five entries, and five is what fits the bar |
+| Add a Setup tab | `CONFIG_TABS` + `ConfigTab` in `lib/app/configuration.ts`, then a branch in `ConfigurationScreen.tsx`. A tab whose content is "nothing to configure yet" belongs on Connections as a Planned row instead |
+| Offer a new builder step | `STEPS` + `defaults()` + `stepLabel()` **and** `PALETTE` in `lib/app/workflow.ts`. `STEPS` describes a step so stored graphs render; `PALETTE` is what a user may add, and only steps that can actually run go in it (`tests/workflow.test.mjs` pins that) |
 | Change what a new workspace starts with | `lib/data/sample.ts` (content, tested) and `sampleSeed.ts` (insert). Keep every email on `.example` and every phone in 555-01xx — the tests enforce it. |
 | Add a field to a stored workflow | `WorkflowGraph` + `validateWorkflowGraph` in `lib/app/workflow.ts` (the whitelist **drops/refuses** anything not listed) + a case in `tests/workflowPersist.test.mjs` |
 | Change what a connected account can do | `lib/data/types.ts` (`LinkedInSettings`/`EmailSettings`) → `validateAccountPatch` in `validate.ts` → `pg.ts` + `memory.ts` → `ChannelTabs.tsx` |
@@ -646,8 +685,9 @@ Roughly in the order they should be closed.
    or person dimension, so Analytics cannot filter by either. The prospect profile already reads
    `events` and `workflow_runs` per person, so its engagement section fills in once the engine writes them.
    - **Audiences can't be renamed, deleted or exported yet**, and there is no bulk action on a
-     selection of prospects (the table's checkboxes select but nothing acts on them). The import
-     review lists the first 500 rows; every row is still imported.
+     selection of leads — the table's row checkboxes were removed with the rest of the dead
+     controls, so bringing bulk actions back means bringing the selection back with them. The
+     import review lists the first 500 rows; every row is still imported.
 7. **Campaign counters are denormalised and nothing maintains them** (`sent`, `delivered`,
    rates): the sample's are derived from its rollups (a test pins that); real campaigns show "—".
 8. **Auth has no email verification, password reset link, OAuth or login rate limiting.** Fine for
@@ -663,7 +703,14 @@ Roughly in the order they should be closed.
     unique key on a lead's email, by design: contacts without one exist). The second upload would
     merge into the first.
 12. **The Inbox cannot mark a thread read/handled** (no endpoint) and cannot reply (nothing sends).
-13. `gtm_mock.html` at the root is a standalone design reference, not part of the app.
+13. **Deferred from the UX audit.** A lead still has two detail surfaces: the read-only
+    `ProspectDrawer` and the `LeadEditor` modal its Edit button opens. The inline row Edit is gone,
+    but making the drawer editable in place (and deleting the modal) is a real refactor and was
+    left out. There is also no global search: the top bar's Search button was removed because it
+    had no handler, so building search means building the palette, not re-adding the button.
+14. **Workspace-level channel on/off switches do not exist.** The builder's `channelsOff` prop and
+    its "…is off in Settings" tooltip are left in place for when they do; nothing passes it today.
+15. `gtm_mock.html` at the root is a standalone design reference, not part of the app.
 
 ## 8. Running it locally
 

@@ -1,17 +1,26 @@
 "use client";
 
+/**
+ * Analytics: one report, not three.
+ *
+ * It had Overview / Channels / Campaigns tabs. "Channels" was two rows of the same numbers the
+ * Overview's bar chart already draws, so the table now sits under that chart. "Campaigns" was the
+ * Campaigns table again, and it deliberately ignored the range and channel selection above it —
+ * with a footnote apologising for that — so it is a link to Campaigns instead.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Screen } from "./AppShell";
-import { SampleBanner } from "./SampleBanner";
 import { BarChart, Series, Sparkline, TrendChart } from "./charts";
-import { Delta, fmt, Segmented, Tabs } from "./ui";
+import { Delta, fmt, Segmented } from "./ui";
 import { api } from "@/lib/api";
 import { toChannelKey } from "@/lib/app/adapt";
 import { CHANNEL } from "@/lib/app/channels";
+import { CAMPAIGNS_HREF } from "@/lib/nav";
 import { SENDING_ENABLED } from "@/lib/capabilities";
-import type { Analytics, Campaign, CampaignStatus, Channel, Metric, TrendPoint } from "@/lib/data/types";
+import type { Analytics, Channel, Metric, TrendPoint } from "@/lib/data/types";
 
-type View = "overview" | "channels" | "campaigns";
 type Range = "7d" | "30d" | "90d";
 
 const RANGES: [Range, string][] = [
@@ -33,14 +42,6 @@ const SERIES_META = [
   { key: "positive", label: "Positive", color: "#2A8C6C", fill: "rgba(42,140,108,.22)" },
   { key: "meetings", label: "Meetings", color: "#111316", fill: "rgba(17,19,22,.18)" },
 ] as const;
-
-const STATUS_TAG: Record<CampaignStatus, { label: string; tone: string }> = {
-  live: { label: "Live", tone: "pos" },
-  scheduled: { label: "Scheduled", tone: "" },
-  paused: { label: "Paused", tone: "hl" },
-  draft: { label: "Draft", tone: "" },
-  completed: { label: "Completed", tone: "" },
-};
 
 /* ------------------------------------------------------------------ helpers -- */
 
@@ -86,7 +87,6 @@ type Loaded = { data: Analytics; range: Range; channels: Channel[]; today: strin
 /* ------------------------------------------------------------------- screen -- */
 
 export function AnalyticsScreen() {
-  const [view, setView] = useState<View>("overview");
   const [range, setRange] = useState<Range>("30d");
   const [active, setActive] = useState<Channel[]>(LIVE);
   const [hidden, setHidden] = useState<string[]>([]);
@@ -95,13 +95,8 @@ export function AnalyticsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
-  const [campaignsLoading, setCampaignsLoading] = useState(true);
-  const [campaignsError, setCampaignsError] = useState<string | null>(null);
-
   /** Guards against an out-of-order response overwriting a newer one. */
   const requestId = useRef(0);
-  const campaignRequestId = useRef(0);
 
   const load = useCallback(async () => {
     const id = ++requestId.current;
@@ -119,33 +114,9 @@ export function AnalyticsScreen() {
     }
   }, [range, active]);
 
-  const loadCampaigns = useCallback(async () => {
-    const id = ++campaignRequestId.current;
-    setCampaignsLoading(true);
-    try {
-      const result = await api.campaigns();
-      if (id !== campaignRequestId.current) return;
-      setCampaigns(result.items);
-      setCampaignsError(null);
-    } catch (caught) {
-      if (id !== campaignRequestId.current) return;
-      setCampaignsError(caught instanceof Error ? caught.message : "Could not load campaigns.");
-    } finally {
-      if (id === campaignRequestId.current) setCampaignsLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     void load();
   }, [load]);
-  useEffect(() => {
-    void loadCampaigns();
-  }, [loadCampaigns]);
-
-  const reloadAll = () => {
-    void load();
-    void loadCampaigns();
-  };
 
   const toggle = (channel: Channel) =>
     setActive((current) => {
@@ -239,20 +210,7 @@ export function AnalyticsScreen() {
 
   return (
     <Screen title="Analytics">
-      <SampleBanner onRemoved={reloadAll} />
-
-      <Tabs<View>
-        value={view}
-        onChange={setView}
-        items={[
-          ["overview", "Overview"],
-          ["channels", "Channels"],
-          ["campaigns", "Campaigns"],
-        ]}
-      />
-
-      {view !== "campaigns" && (
-        <div className="fbar">
+      <div className="fbar">
           {LIVE.map((channel) => {
             const meta = CHANNEL[toChannelKey(channel)];
             const on = active.includes(channel);
@@ -272,12 +230,11 @@ export function AnalyticsScreen() {
               </button>
             );
           })}
-          <span className="sp" />
-          <Segmented<Range> value={range} onChange={setRange} items={RANGES} />
-        </div>
-      )}
+        <span className="sp" />
+        <Segmented<Range> value={range} onChange={setRange} items={RANGES} />
+      </div>
 
-      {view !== "campaigns" && error && (
+      {error && (
         <p className="empty" role="status">
           {error}{" "}
           <button className="sortb" onClick={() => void load()}>
@@ -286,9 +243,9 @@ export function AnalyticsScreen() {
         </p>
       )}
 
-      {view !== "campaigns" && !loaded && loading && <p className="empty">Loading analytics…</p>}
+      {!loaded && loading && <p className="empty">Loading analytics…</p>}
 
-      {view !== "campaigns" && loaded && !error && empty && (
+      {loaded && !error && empty && (
         <section className="card">
           <p className="empty">
             <b>No activity in the {ranged}</b>
@@ -301,7 +258,7 @@ export function AnalyticsScreen() {
         </section>
       )}
 
-      {view === "overview" && loaded && !error && !empty && (
+      {loaded && !error && !empty && (
         <div style={loading ? { opacity: 0.6, transition: "opacity .2s" } : undefined} aria-busy={loading}>
           <div className="kpis">
             {kpis.map((k) => (
@@ -365,6 +322,35 @@ export function AnalyticsScreen() {
                     </span>
                   ))}
                 </div>
+                <div className="tblw" style={{ marginTop: 12 }}>
+                  <table className="tbl leads">
+                    <thead>
+                      <tr>
+                        <th>Channel</th>
+                        <th className="r">Reached</th>
+                        <th className="r">Replies</th>
+                        <th className="r">Reply rate</th>
+                        <th className="r">Meetings</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {channelRows.map((row) => (
+                        <tr key={row.channel}>
+                          <td>
+                            <span className="chname">
+                              <i className="cdot" style={{ background: row.meta.hex }} />
+                              {row.meta.name}
+                            </span>
+                          </td>
+                          <td className="r num">{fmt(row.reached)}</td>
+                          <td className="r num">{fmt(row.replies)}</td>
+                          <td className="r num">{percent(row.replies, row.reached)}</td>
+                          <td className="r num">{fmt(row.meetings)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </section>
 
@@ -397,128 +383,10 @@ export function AnalyticsScreen() {
         </div>
       )}
 
-      {view === "channels" && loaded && !error && !empty && (
-        <div
-          className="card ltable"
-          style={loading ? { opacity: 0.6, transition: "opacity .2s" } : undefined}
-          aria-busy={loading}
-        >
-          <div className="tblw">
-            <table className="tbl leads">
-              <thead>
-                <tr>
-                  <th>Channel</th>
-                  <th className="r">Reached</th>
-                  <th className="r">Replies</th>
-                  <th className="r">Reply rate</th>
-                  <th className="r">Meetings</th>
-                </tr>
-              </thead>
-              <tbody>
-                {channelRows.map((row) => (
-                  <tr key={row.channel}>
-                    <td>
-                      <span className="chname">
-                        <i className="cdot" style={{ background: row.meta.hex }} />
-                        {row.meta.name}
-                      </span>
-                    </td>
-                    <td className="r num">{fmt(row.reached)}</td>
-                    <td className="r num">{fmt(row.replies)}</td>
-                    <td className="r num">{percent(row.replies, row.reached)}</td>
-                    <td className="r num">{fmt(row.meetings)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {view === "campaigns" && (
-        <>
-          {campaignsError && (
-            <p className="empty" role="status">
-              {campaignsError}{" "}
-              <button className="sortb" onClick={() => void loadCampaigns()}>
-                Retry
-              </button>
-            </p>
-          )}
-          {campaignsLoading && !campaigns && <p className="empty">Loading campaigns…</p>}
-          {campaigns && campaigns.length === 0 && !campaignsError && (
-            <section className="card">
-              <p className="empty">
-                <b>No campaigns yet</b>
-                <span>Create a campaign and its figures will appear here.</span>
-              </p>
-            </section>
-          )}
-          {campaigns && campaigns.length > 0 && (
-            <div className="card ltable" aria-busy={campaignsLoading}>
-              <div className="tblw">
-                <table className="tbl leads">
-                  <thead>
-                    <tr>
-                      <th>Campaign</th>
-                      <th>Status</th>
-                      <th className="r">Leads</th>
-                      <th className="r hide-m">Sent</th>
-                      <th className="r">Delivered</th>
-                      <th className="r">Open rate</th>
-                      <th className="r">Reply rate</th>
-                      <th className="r hide-m">Clicks</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {campaigns.map((c) => {
-                      const tag = STATUS_TAG[c.status];
-                      // A campaign that has not sent anything has no figures, not zeros.
-                      const sent = (c.sent ?? 0) >= 1;
-                      const cell = (render: () => string) => (sent ? render() : "—");
-                      return (
-                        <tr key={c.id}>
-                          <td>
-                            {c.name}
-                            {c.isSample && (
-                              <span className="tag" style={{ marginLeft: 8 }}>
-                                Sample
-                              </span>
-                            )}
-                          </td>
-                          <td>
-                            <span className={"tag " + tag.tone}>{tag.label}</span>
-                          </td>
-                          <td className="r num">{fmt(c.leads)}</td>
-                          <td className="r num hide-m">{cell(() => fmt(c.sent ?? 0))}</td>
-                          <td className="r num">{cell(() => fmt(c.delivered ?? 0))}</td>
-                          <td className="r num">
-                            {cell(() => (c.openRate === null ? "—" : `${c.openRate.toFixed(1)}%`))}
-                          </td>
-                          <td className="r num">
-                            {cell(() => (c.replyRate === null ? "—" : `${c.replyRate.toFixed(1)}%`))}
-                          </td>
-                          <td className="r num hide-m">
-                            {cell(() => ((c.clicks ?? 0) >= 1 ? fmt(c.clicks ?? 0) : "—"))}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-          <p className="muted" style={{ fontSize: 12, marginTop: 14 }}>
-            Campaign figures are totals to date. They do not follow the range or channel selection, which only
-            apply to the Overview and Channels views.
-          </p>
-        </>
-      )}
-
-      {view !== "campaigns" && loaded && !error && !empty && (
+      {loaded && !error && !empty && (
         <p className="muted" style={{ fontSize: 12, marginTop: 14 }}>
           Daily totals recorded for this workspace, by UTC day. Change is against the previous {days} days.
+          Per-campaign totals are on <Link href={CAMPAIGNS_HREF}>Campaigns</Link>.
         </p>
       )}
     </Screen>

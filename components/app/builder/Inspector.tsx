@@ -6,10 +6,9 @@ import { Switch } from "../ui";
 import { StepChip } from "./StepCard";
 import {
   CHECKS,
-  GEOS,
+  OFFERED_CHECKS,
   GOALS,
   MERGE_VARS,
-  SIZES,
   STEPS,
   WA_TEMPLATES,
   WEEKDAYS,
@@ -191,7 +190,7 @@ export function Inspector({
                   </optgroup>
                 )}
                 {uploaded.length > 0 && (
-                  <optgroup label="File segments">
+                  <optgroup label="Audiences you imported">
                     {uploaded.map((l) => (
                       <option value={l.k} key={l.k}>
                         {l.name} · {l.n} reachable
@@ -226,38 +225,6 @@ export function Inspector({
                 </span>
               </div>
             )}
-            <div className="fld">
-              <label htmlFor="ins-titles">Job titles</label>
-              <input
-                id="ins-titles"
-                className="inp"
-                value={d.titles}
-                onChange={(e) => onChange({ titles: e.target.value })}
-              />
-            </div>
-            <div className="grid2">
-              <div className="fld">
-                <label htmlFor="ins-size">Company size</label>
-                <select
-                  id="ins-size"
-                  className="sel"
-                  value={d.size}
-                  onChange={(e) => onChange({ size: e.target.value })}
-                >
-                  {SIZES.map((s) => (
-                    <option key={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="fld">
-                <label htmlFor="ins-geo">Location</label>
-                <select id="ins-geo" className="sel" value={d.geo} onChange={(e) => onChange({ geo: e.target.value })}>
-                  {GEOS.map((g) => (
-                    <option key={g}>{g}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
           </>
         )}
 
@@ -373,9 +340,9 @@ export function Inspector({
                 value={d.check}
                 onChange={(e) => onChange({ check: e.target.value as CheckKey })}
               >
-                {Object.entries(CHECKS).map(([k, name]) => (
+                {OFFERED_CHECKS.map((k) => (
                   <option value={k} key={k}>
-                    {name}
+                    {CHECKS[k]}
                   </option>
                 ))}
               </select>
