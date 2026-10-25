@@ -525,9 +525,6 @@ export function WorkflowBuilder({
         </button>
 
         <span className="vsep hide-s" />
-        <button className="btn sm line hide-s" disabled title={SENDING_OFF_NOTE}>
-          Test
-        </button>
 
         {issueCount > 0 && meta.status !== "live" ? (
           <button className="btn sm warn" onClick={fixFirst}>
@@ -549,15 +546,14 @@ export function WorkflowBuilder({
           >
             Pause
           </button>
-        ) : (
-          <button
-            className="btn sm acc"
-            disabled={!SENDING_ENABLED}
-            title={SENDING_ENABLED ? undefined : SENDING_OFF_NOTE}
-            onClick={() => setLaunching(true)}
-          >
+        ) : SENDING_ENABLED ? (
+          <button className="btn sm acc" onClick={() => setLaunching(true)}>
             {meta.status === "paused" ? "Resume" : "Launch"}
           </button>
+        ) : (
+          <span className="saved hide-s" title={SENDING_OFF_NOTE}>
+            Nothing sends yet
+          </span>
         )}
       </div>
 
@@ -613,7 +609,11 @@ export function WorkflowBuilder({
             onQuickAdd={openMenu}
           />
 
-          {nodes.length <= 1 && <div className="canvas-tip">Drag a step in, or press + under Audience</div>}
+          <div className="canvas-tip">
+            {nodes.length <= 1
+              ? "Press + under Audience to add a step, or drag one in"
+              : "Step counts are estimates from typical rates, not your results"}
+          </div>
 
           <button className="btn pri fab" onClick={() => setPaletteOpen((open) => !open)}>
             Add step

@@ -16,9 +16,11 @@ const byId = (checks, id) => checks.find((c) => c.id === id);
 test("an empty workspace is told what is true: nothing is connected — and nothing invented", () => {
   const checks = setupChecks({ accounts: [], domains: [] });
   assert.equal(byId(checks, "li-accounts").tone, "bad");
-  assert.equal(byId(checks, "mail-accounts").tone, "bad");
+  // Connecting a mailbox is not built, so it is information rather than a blocker the user
+  // cannot clear. Only LinkedIn blocks.
+  assert.equal(byId(checks, "mail-accounts").tone, "info");
   assert.equal(byId(checks, "mail-dns"), undefined, "no domain, so nothing to authenticate");
-  assert.equal(blockingCount(checks), 2);
+  assert.equal(blockingCount(checks), 1);
   for (const check of checks) assert.doesNotMatch(check.detail, /Neha|getacme|acmehq/);
 });
 
@@ -58,5 +60,5 @@ test("planned channels are mentioned once, as information", () => {
 
 test("tab badges count only blocking checks, on the tab they point to", () => {
   const checks = setupChecks({ accounts: [], domains: [] });
-  assert.deepEqual(tabIssues(checks), { li: 1, mail: 1 });
+  assert.deepEqual(tabIssues(checks), { li: 1 });
 });

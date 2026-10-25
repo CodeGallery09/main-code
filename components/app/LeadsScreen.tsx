@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Screen } from "./AppShell";
-import { CheckIcon, SearchIcon } from "./icons";
+import { SearchIcon } from "./icons";
 import { Avatar } from "./ui";
 import { LeadEditor, type LeadDraft } from "./LeadEditor";
-import { SampleBanner } from "./SampleBanner";
 import { UploadLeads } from "./leads/UploadLeads";
 import { ProspectDrawer } from "./leads/ProspectDrawer";
 import { api, fieldErrorsOf } from "@/lib/api";
@@ -16,15 +16,20 @@ import { toAppLead, type AppLead } from "@/lib/app/adapt";
 import { maskPhone, scoreBand } from "@/lib/app/leads";
 import type { Campaign, Workspace } from "@/lib/data/types";
 
-/** Columns the database can sort on. `avgCall` and `msgs` are not indexed sorts, so they stay
- *  client-side over the current page — the header makes no promise about the whole set. */
-type ServerSort = "name" | "score" | "updated";
-type SortKey = ServerSort | "avgCall" | "msgs";
-const SERVER_SORTS: SortKey[] = ["name", "score", "updated"];
+/**
+ * Columns the database can sort on, which is now all of them.
+ *
+ * The table used to carry "Avg call" and "Follow-ups" as well. Both are empty for every lead until
+ * calling and sending exist, and neither is an indexed sort, so their headers sorted the visible
+ * page while appearing to sort the whole set.
+ */
+type SortKey = "name" | "score" | "updated";
 
 const PAGE_SIZE = 25;
 
 export function LeadsScreen() {
+  /** Home's to-dos and the Inbox link here with a lead, so its profile opens straight away. */
+  const asked = useSearchParams().get("lead");
   const [query, setQuery] = useState("");
   const [campaign, setCampaign] = useState("any");
   const [owner, setOwner] = useState("any");
@@ -36,7 +41,6 @@ export function LeadsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [picked, setPicked] = useState<string[]>([]);
   const [editing, setEditing] = useState<LeadDraft | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -47,8 +51,8 @@ export function LeadsScreen() {
   const [uploading, setUploading] = useState(false);
   /** The audience (uploaded segment) the table is narrowed to, or "any". */
   const [audience, setAudience] = useState("any");
-  /** The prospect whose profile drawer is open. */
-  const [viewing, setViewing] = useState<string | null>(null);
+  /** The lead whose profile drawer is open. */
+  const [viewing, setViewing] = useState<string | null>(asked);
 
   // Segments come from the API, so an upload made anywhere in the app (the rail's Import audience
   // too) shows up here, and the import lands the user on the new audience.
@@ -87,13 +91,12 @@ export function LeadsScreen() {
     const id = ++requestId.current;
     setLoading(true);
     try {
-      const serverSort: ServerSort = SERVER_SORTS.includes(sort.key) ? (sort.key as ServerSort) : "score";
       const result = await api.leads({
         q: debouncedQuery || undefined,
         ownerId: owner === "any" ? undefined : owner,
         campaignId: campaign === "any" ? undefined : campaign,
         segmentId: audience === "any" ? undefined : audience,
-        sort: serverSort,
+        sort: sort.key,
         dir: sort.dir === 1 ? "asc" : "desc",
         page,
         pageSize: PAGE_SIZE,
@@ -127,20 +130,12 @@ export function LeadsScreen() {
     })();
   }, []);
 
-  const sorted = useMemo(() => {
-    // Server sorts are already applied; only the two client-side keys need work here.
-    if (SERVER_SORTS.includes(sort.key)) return rows;
-    const value = (lead: AppLead) => (sort.key === "avgCall" ? (lead.avgCall ?? -1) : lead.msgs);
-    return [...rows].sort((a, b) => (value(a) - value(b)) * sort.dir);
-  }, [rows, sort]);
-
   const toggleSort = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: key === "name" ? 1 : -1 }));
 
   const arrow = (key: SortKey) => (sort.key === key ? (sort.dir === 1 ? "↑" : "↓") : "↕");
 
   const current = audience === "any" ? null : (segments?.find((s) => s.id === audience) ?? null);
-  const allPicked = picked.length === sorted.length && sorted.length > 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   /** Starring writes through to the database rather than living in component state. */
@@ -163,7 +158,6 @@ export function LeadsScreen() {
     setBusyId(lead.id);
     try {
       await api.deleteLead(lead.id);
-      setPicked((p) => p.filter((id) => id !== lead.id));
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not delete that lead.");
@@ -196,14 +190,13 @@ export function LeadsScreen() {
 
   return (
     <Screen title="Leads">
-      <SampleBanner onRemoved={() => void load()} />
       <div className="lfilters">
         <label className="q wide">
           <SearchIcon />
           <input
             type="search"
             placeholder="Search name, company or email"
-            aria-label="Search prospects"
+            aria-label="Search leads"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -232,12 +225,6 @@ export function LeadsScreen() {
           ))}
         </select>
 
-        <button className="ib more" aria-label="More actions">
-          ⋯
-        </button>
-        <button className="btn line" onClick={() => setUploading(true)}>
-          Import audience
-        </button>
         <button className="btn pri" onClick={() => setEditing({ ...EMPTY_DRAFT })}>
           New lead
         </button>
@@ -263,12 +250,12 @@ export function LeadsScreen() {
         <p className="aud-cur" role="status">
           <span>
             {loading
-              ? "Loading prospects in "
-              : `${total.toLocaleString("en-US")} ${total === 1 ? "prospect" : "prospects"} in `}
+              ? "Loading leads in "
+              : `${total.toLocaleString("en-US")} ${total === 1 ? "lead" : "leads"} in `}
             <b>{current.name}</b>
           </span>
           <button className="sortb" onClick={() => setAudience("any")}>
-            Show all prospects
+            Show all leads
           </button>
         </p>
       )}
@@ -280,66 +267,41 @@ export function LeadsScreen() {
               <tr>
                 <th className="c-n">
                   <span className="hn">
-                    <button
-                      className={"cb" + (allPicked ? " on" : "")}
-                      aria-label="Select all"
-                      onClick={() => setPicked(allPicked ? [] : sorted.map((r) => r.id))}
-                    >
-                      <CheckIcon />
-                    </button>
                     <button className={"sortb" + (sort.key === "name" ? " on" : "")} onClick={() => toggleSort("name")}>
                       Lead name<span className="arr">{arrow("name")}</span>
                     </button>
                   </span>
                 </th>
                 <th>
-                  <button className={"sortb" + (sort.key === "score" ? " on" : "")} onClick={() => toggleSort("score")}>
+                  <button
+                    className={"sortb" + (sort.key === "score" ? " on" : "")}
+                    title="Higher means the lead has engaged more recently and more often. Open a lead to see what moved it."
+                    onClick={() => toggleSort("score")}
+                  >
                     Score<span className="arr">{arrow("score")}</span>
                   </button>
                 </th>
                 <th>Email</th>
                 <th>LinkedIn</th>
                 <th className="c-mid c-cons">Consent</th>
-                <th className="c-mid">
-                  <button
-                    className={"sortb" + (sort.key === "avgCall" ? " on" : "")}
-                    onClick={() => toggleSort("avgCall")}
-                  >
-                    Avg call<span className="arr">{arrow("avgCall")}</span>
-                  </button>
-                </th>
-                <th className="c-mid c-fu">
-                  <button className={"sortb" + (sort.key === "msgs" ? " on" : "")} onClick={() => toggleSort("msgs")}>
-                    Follow-ups<span className="arr">{arrow("msgs")}</span>
-                  </button>
-                </th>
                 <th className="c-act" aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
-              {sorted.map((lead) => {
+              {rows.map((lead) => {
                 return (
                   <tr
                     className="click"
                     key={lead.id}
                     aria-busy={busyId === lead.id}
                     onClick={(e) => {
-                      // The row's own controls (select, star, edit, delete) keep their meaning.
+                      // The row's own controls (star, delete) keep their meaning.
                       if ((e.target as HTMLElement).closest("button, a, input")) return;
                       setViewing(lead.id);
                     }}
                   >
                     <td className="c-n">
                       <div className="lname">
-                        <button
-                          className={"cb" + (picked.includes(lead.id) ? " on" : "")}
-                          aria-label={`Select ${lead.n}`}
-                          onClick={() =>
-                            setPicked((p) => (p.includes(lead.id) ? p.filter((id) => id !== lead.id) : [...p, lead.id]))
-                          }
-                        >
-                          <CheckIcon />
-                        </button>
                         <Avatar name={lead.n} />
                         <div className="nm">
                           <span className="row1">
@@ -399,26 +361,8 @@ export function LeadsScreen() {
                       )}
                     </td>
                     <td className="c-mid c-cons">{lead.consent ? "Yes" : "No"}</td>
-                    <td className="c-mid num">{lead.avgCall ? `${lead.avgCall}s` : "—"}</td>
-                    <td className="c-mid c-fu">
-                      <span className="fu">
-                        <span className="fuc" title="Messages">
-                          {lead.msgs} msg
-                        </span>
-                        <span className="fuc" title="Calls">
-                          {lead.calls} call
-                        </span>
-                      </span>
-                    </td>
                     <td className="c-act">
                       <span className="fu">
-                        <button
-                          className="sortb"
-                          aria-label={`Edit ${lead.n}`}
-                          onClick={() => setEditing(draftOf(lead))}
-                        >
-                          Edit
-                        </button>
                         <button
                           className="sortb"
                           aria-label={`Delete ${lead.n}`}
@@ -437,8 +381,8 @@ export function LeadsScreen() {
         </div>
 
         {/* Phones: the stylesheet hides the table below 820px and shows this list instead. */}
-        <ul className="lcards" aria-label="Prospects">
-          {sorted.map((lead) => (
+        <ul className="lcards" aria-label="Leads">
+          {rows.map((lead) => (
             <li key={lead.id}>
               <button type="button" className="lc-btn" onClick={() => setViewing(lead.id)}>
                 <Avatar name={lead.n} />
@@ -463,23 +407,23 @@ export function LeadsScreen() {
 
         {/* A failed load is not an empty list, and an empty workspace is not a filter that matched
             nothing. The error banner above covers the first, so say nothing here. */}
-        {sorted.length === 0 &&
+        {rows.length === 0 &&
           !loading &&
           !error &&
           (owner !== "any" || campaign !== "any" || debouncedQuery ? (
-            <p className="empty">No prospects match those filters.</p>
+            <p className="empty">No leads match those filters.</p>
           ) : audience !== "any" ? (
             <p className="empty">
-              <b>No prospects left in this audience</b>
+              <b>No leads left in this audience</b>
               <span>Everyone it imported has since been deleted.</span>
             </p>
           ) : (
             <p className="empty">
-              <b>No prospects yet</b>
+              <b>No leads yet</b>
               <span>Import an audience from a .csv or .xlsx file, or add one with New lead.</span>
             </p>
           ))}
-        {loading && sorted.length === 0 && <p className="empty">Loading leads…</p>}
+        {loading && rows.length === 0 && <p className="empty">Loading leads…</p>}
 
         {pages > 1 && (
           <div className="lfilters" style={{ justifyContent: "flex-end" }}>
@@ -561,8 +505,8 @@ const shortDate = (iso: string) =>
   new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
 /**
- * The workspace's audiences: one per imported file. Picking one narrows the prospect table to the
- * people it holds. `leadCount` is the live membership (deleted prospects drop out); the per-channel
+ * The workspace's audiences: one per imported file. Picking one narrows the lead table to the
+ * people it holds. `leadCount` is the live membership (deleted leads drop out); the per-channel
  * figures are what the import's review showed.
  */
 function AudienceList({
@@ -583,7 +527,7 @@ function AudienceList({
       <div className="segs-h">
         <div>
           <span className="eyebrow">Audiences</span>
-          <p className="hint">Each imported file is an audience. Pick one to see its prospects.</p>
+          <p className="hint">Each imported file is an audience. Pick one to see its leads.</p>
         </div>
         <button className="btn line sm" onClick={onUpload}>
           Import audience
@@ -604,7 +548,7 @@ function AudienceList({
             onClick={() => onSelect("any")}
           >
             <span className="seg-t">
-              <b>All prospects</b>
+              <b>All leads</b>
             </span>
             <span className="hint">Everyone in the workspace, from every audience and added by hand.</span>
           </button>
@@ -619,7 +563,7 @@ function AudienceList({
               <span className="seg-t">
                 <b>{segment.name}</b>
                 <span className="spill segpill">
-                  {segment.leadCount.toLocaleString("en-US")} {segment.leadCount === 1 ? "prospect" : "prospects"}
+                  {segment.leadCount.toLocaleString("en-US")} {segment.leadCount === 1 ? "lead" : "leads"}
                 </span>
               </span>
               {segment.description && <span className="hint">{segment.description}</span>}
