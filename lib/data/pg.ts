@@ -8,9 +8,9 @@
  *
  * Two deliberate differences from a naive port of `MemoryRepository`:
  *
- * - **Leads page in SQL.** A workspace can hold tens of thousands; fetching them all to slice in
+ * - **Audiences page in SQL.** A workspace can hold tens of thousands; fetching them all to slice in
  *   JS would work in the demo and fall over in production.
- * - **Campaigns are fetched and aggregated in JS.** A workspace holds tens of campaigns, so the
+ * - **Strategies are fetched and aggregated in JS.** A workspace holds tens of strategies, so the
  *   round trip is cheap and the totals stay character-for-character identical to the in-memory
  *   implementation. If that assumption ever breaks, move the aggregate into SQL.
  *
@@ -24,17 +24,17 @@ import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql } from "dr
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb } from "@/lib/db/client";
 import {
-  campaignAccounts,
-  campaigns as campaignsTable,
+  strategyAccounts,
+  strategies as strategiesTable,
   channelAccounts,
   channelQuotas,
   connectSessions,
   dailyRollups,
   events as eventsTable,
-  leads as leadsTable,
+  audiences as audiencesTable,
   memberships,
   messages as messagesTable,
-  segmentLeads,
+  segmentAudiences,
   segments as segmentsTable,
   sendingDomains,
   tasks as tasksTable,
@@ -48,8 +48,8 @@ import {
 } from "@/lib/db/schema";
 import { deltaPercent, rangeDays, trendOf } from "@/lib/data/query";
 import type {
-  CampaignQuery,
-  CampaignTotals,
+  StrategyQuery,
+  StrategyTotals,
   Ctx,
   Repository,
   SendMessageInput,
@@ -62,20 +62,20 @@ import type { WorkflowGraph } from "@/lib/app/workflow";
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
 import { setupChecks, blockingCount } from "@/lib/data/setup";
 import { ACCOUNT_EVENT } from "@/lib/data/accountEvents";
-import { findInJourney, mergeLeads, type InJourneyRow, type LeadProfile } from "@/lib/leads/merge";
-import { identityFill, leadIdentity, splitFileFields } from "@/lib/leads/profile";
-import { buildProspect } from "@/lib/leads/prospect";
-import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
-import { suggestMapping, type Mapping, type ParsedLead } from "@/lib/leads/validation";
-import type { Table } from "@/lib/leads/table";
-import type { AccountSettingsPatch, CampaignPatch, LeadPatch } from "@/lib/data/validate";
+import { findInJourney, mergeAudiences, type InJourneyRow, type AudienceProfile } from "@/lib/audiences/merge";
+import { identityFill, audienceIdentity, splitFileFields } from "@/lib/audiences/profile";
+import { buildProspect } from "@/lib/audiences/prospect";
+import type { MappingReport, Segment, UploadPreview } from "@/lib/audiences/segments";
+import { suggestMapping, type Mapping, type ParsedAudience } from "@/lib/audiences/validation";
+import type { Table } from "@/lib/audiences/table";
+import type { AccountSettingsPatch, StrategyPatch, AudiencePatch } from "@/lib/data/validate";
 import type {
   AccountActivity,
   AccountsSnapshot,
   Analytics,
   Badges,
-  Campaign,
-  CampaignStatus,
+  Strategy,
+  StrategyStatus,
   Channel,
   ChannelAccount,
   ChannelBreakdown,
@@ -84,8 +84,8 @@ import type {
   ConnectSessionState,
   EmailSettings,
   FunnelStage,
-  Lead,
-  LeadQuery,
+  Audience,
+  AudienceQuery,
   LinkedInAccount,
   LinkedInSettings,
   Message,
@@ -312,18 +312,18 @@ export class PgRepository implements Repository {
   }
 
   /** How many sample rows the workspace still holds, so the UI knows whether to offer removal. */
-  private async sampleCounts(ctx: Ctx): Promise<{ campaigns: number; leads: number }> {
+  private async sampleCounts(ctx: Ctx): Promise<{ strategies: number; audiences: number }> {
     const [[c], [l]] = await Promise.all([
       this.db
         .select({ value: count() })
-        .from(campaignsTable)
-        .where(and(this.ws(campaignsTable.workspaceId, ctx), eq(campaignsTable.isSample, true))),
+        .from(strategiesTable)
+        .where(and(this.ws(strategiesTable.workspaceId, ctx), eq(strategiesTable.isSample, true))),
       this.db
         .select({ value: count() })
-        .from(leadsTable)
-        .where(and(this.ws(leadsTable.workspaceId, ctx), eq(leadsTable.isSample, true))),
+        .from(audiencesTable)
+        .where(and(this.ws(audiencesTable.workspaceId, ctx), eq(audiencesTable.isSample, true))),
     ]);
-    return { campaigns: Number(c?.value ?? 0), leads: Number(l?.value ?? 0) };
+    return { strategies: Number(c?.value ?? 0), audiences: Number(l?.value ?? 0) };
   }
 
   private async channelQuotas(ctx: Ctx): Promise<ChannelQuota[]> {
@@ -343,11 +343,11 @@ export class PgRepository implements Repository {
     const [metrics, tasks, live, quotas] = await Promise.all([
       this.headlineMetrics(ctx, range),
       this.listTasks(ctx, { kind: "all" }),
-      this.listCampaigns(ctx, { status: "live" }),
+      this.listStrategies(ctx, { status: "live" }),
       this.channelQuotas(ctx),
     ]);
 
-    return { user, metrics, tasks, campaigns: live.items.slice(0, 5), quotas };
+    return { user, metrics, tasks, strategies: live.items.slice(0, 5), quotas };
   }
 
   /** Current window vs the previous window of the same length, read off the rollups. */
@@ -389,10 +389,10 @@ export class PgRepository implements Repository {
     const days = rangeDays(range);
     const { current, previous } = await this.windows(ctx, days, null);
 
-    const [{ value: activeLeads = 0 } = { value: 0 }] = await this.db
+    const [{ value: activeAudiences = 0 } = { value: 0 }] = await this.db
       .select({ value: count() })
-      .from(leadsTable)
-      .where(and(this.ws(leadsTable.workspaceId, ctx), sql`${leadsTable.stage} <> 'closed'`));
+      .from(audiencesTable)
+      .where(and(this.ws(audiencesTable.workspaceId, ctx), sql`${audiencesTable.stage} <> 'closed'`));
 
     const reached = sumOf(current, "reached");
     const reachedPrev = sumOf(previous, "reached");
@@ -410,7 +410,7 @@ export class PgRepository implements Repository {
       // A rate has no change to report against a period with nothing sent: comparing it with 0
       // would present the whole rate as a gain.
       { ...metric("reply-rate", "Reply rate", rate, ratePrev, "percent", 1, spark("replied"), "points"), ...(reachedPrev ? {} : { delta: null, trend: "flat" as const }) },
-      metric("active-leads", "Active leads", Number(activeLeads), Number(activeLeads), "count", 0, spark("engaged")),
+      metric("active-audiences", "Active audiences", Number(activeAudiences), Number(activeAudiences), "count", 0, spark("engaged")),
     ];
   }
 
@@ -424,27 +424,27 @@ export class PgRepository implements Repository {
       .select({
         id: tasksTable.id,
         kind: tasksTable.kind,
-        leadId: tasksTable.leadId,
+        audienceId: tasksTable.audienceId,
         summary: tasksTable.summary,
         whenLabel: tasksTable.whenLabel,
         channel: tasksTable.channel,
         done: tasksTable.done,
-        leadName: leadsTable.name,
-        company: leadsTable.company,
-        score: leadsTable.score,
+        audienceName: audiencesTable.name,
+        company: audiencesTable.company,
+        score: audiencesTable.score,
       })
       .from(tasksTable)
-      .innerJoin(leadsTable, eq(leadsTable.id, tasksTable.leadId))
+      .innerJoin(audiencesTable, eq(audiencesTable.id, tasksTable.audienceId))
       .where(and(...where))
-      .orderBy(desc(leadsTable.score));
+      .orderBy(desc(audiencesTable.score));
 
     return rows.map((r) => ({
       id: r.id,
       kind: r.kind,
-      leadId: r.leadId,
-      leadName: r.leadName,
+      audienceId: r.audienceId,
+      audienceName: r.audienceName,
       company: r.company,
-      initials: initialsOf(r.leadName),
+      initials: initialsOf(r.audienceName),
       score: r.score,
       summary: r.summary,
       when: r.whenLabel,
@@ -458,7 +458,7 @@ export class PgRepository implements Repository {
       .update(tasksTable)
       .set({ done: true })
       .where(and(eq(tasksTable.id, id), this.ws(tasksTable.workspaceId, ctx)))
-      .returning({ id: tasksTable.id, leadId: tasksTable.leadId });
+      .returning({ id: tasksTable.id, audienceId: tasksTable.audienceId });
     if (!row) return null;
 
     // Re-read through listTasks' join so the shape is identical; the row is now done, so
@@ -467,17 +467,17 @@ export class PgRepository implements Repository {
       .select({
         id: tasksTable.id,
         kind: tasksTable.kind,
-        leadId: tasksTable.leadId,
+        audienceId: tasksTable.audienceId,
         summary: tasksTable.summary,
         whenLabel: tasksTable.whenLabel,
         channel: tasksTable.channel,
         done: tasksTable.done,
-        leadName: leadsTable.name,
-        company: leadsTable.company,
-        score: leadsTable.score,
+        audienceName: audiencesTable.name,
+        company: audiencesTable.company,
+        score: audiencesTable.score,
       })
       .from(tasksTable)
-      .innerJoin(leadsTable, eq(leadsTable.id, tasksTable.leadId))
+      .innerJoin(audiencesTable, eq(audiencesTable.id, tasksTable.audienceId))
       .where(and(eq(tasksTable.id, id), this.ws(tasksTable.workspaceId, ctx)))
       .limit(1);
     if (!full) return null;
@@ -485,10 +485,10 @@ export class PgRepository implements Repository {
     return {
       id: full.id,
       kind: full.kind,
-      leadId: full.leadId,
-      leadName: full.leadName,
+      audienceId: full.audienceId,
+      audienceName: full.audienceName,
       company: full.company,
-      initials: initialsOf(full.leadName),
+      initials: initialsOf(full.audienceName),
       score: full.score,
       summary: full.summary,
       when: full.whenLabel,
@@ -497,9 +497,9 @@ export class PgRepository implements Repository {
     };
   }
 
-  /* ----------------------------------------------------------- campaigns -- */
+  /* ----------------------------------------------------------- strategies -- */
 
-  private toCampaign(row: typeof campaignsTable.$inferSelect): Campaign {
+  private toStrategy(row: typeof strategiesTable.$inferSelect): Strategy {
     return {
       id: row.id,
       name: row.name,
@@ -508,7 +508,7 @@ export class PgRepository implements Repository {
       channels: row.channels as Channel[],
       version: row.version,
       startedAt: iso(row.startedAt),
-      leads: row.leads,
+      audiences: row.audiences,
       sent: row.sent,
       delivered: row.delivered,
       openRate: num(row.openRate),
@@ -518,26 +518,26 @@ export class PgRepository implements Repository {
     };
   }
 
-  async listCampaigns(
+  async listStrategies(
     ctx: Ctx,
-    query: CampaignQuery,
-  ): Promise<{ items: Campaign[]; totals: CampaignTotals }> {
-    const where = [this.ws(campaignsTable.workspaceId, ctx)];
-    if (query.q) where.push(ilike(campaignsTable.name, likeTerm(query.q)));
-    if (query.status && query.status !== "all") where.push(eq(campaignsTable.status, query.status));
-    if (query.type && query.type !== "all") where.push(eq(campaignsTable.type, query.type));
+    query: StrategyQuery,
+  ): Promise<{ items: Strategy[]; totals: StrategyTotals }> {
+    const where = [this.ws(strategiesTable.workspaceId, ctx)];
+    if (query.q) where.push(ilike(strategiesTable.name, likeTerm(query.q)));
+    if (query.status && query.status !== "all") where.push(eq(strategiesTable.status, query.status));
+    if (query.type && query.type !== "all") where.push(eq(strategiesTable.type, query.type));
     if (query.channel && query.channel !== "all") {
-      // Array containment: the campaign runs on this channel among possibly others.
-      where.push(sql`${campaignsTable.channels} @> ARRAY[${query.channel}]::channel[]`);
+      // Array containment: the strategy runs on this channel among possibly others.
+      where.push(sql`${strategiesTable.channels} @> ARRAY[${query.channel}]::channel[]`);
     }
 
     const rows = await this.db
       .select()
-      .from(campaignsTable)
+      .from(strategiesTable)
       .where(and(...where))
-      .orderBy(desc(campaignsTable.startedAt));
+      .orderBy(desc(strategiesTable.startedAt));
 
-    const items = rows.map((row) => this.toCampaign(row));
+    const items = rows.map((row) => this.toStrategy(row));
 
     const delivered = items.reduce((sum, c) => sum + (c.delivered ?? 0), 0);
     const sent = items.reduce((sum, c) => sum + (c.sent ?? 0), 0);
@@ -551,7 +551,7 @@ export class PgRepository implements Repository {
     return {
       items,
       totals: {
-        leads: items.reduce((sum, c) => sum + c.leads, 0),
+        audiences: items.reduce((sum, c) => sum + c.audiences, 0),
         delivered: delivered || sent,
         openRate: mean("openRate"),
         replyRate: mean("replyRate"),
@@ -559,22 +559,22 @@ export class PgRepository implements Repository {
     };
   }
 
-  async getCampaign(ctx: Ctx, id: string): Promise<Campaign | null> {
+  async getStrategy(ctx: Ctx, id: string): Promise<Strategy | null> {
     const [row] = await this.db
       .select()
-      .from(campaignsTable)
-      .where(and(eq(campaignsTable.id, id), this.ws(campaignsTable.workspaceId, ctx)))
+      .from(strategiesTable)
+      .where(and(eq(strategiesTable.id, id), this.ws(strategiesTable.workspaceId, ctx)))
       .limit(1);
-    return row ? this.toCampaign(row) : null;
+    return row ? this.toStrategy(row) : null;
   }
 
-  async createCampaign(ctx: Ctx, input: CampaignPatch): Promise<Campaign> {
+  async createStrategy(ctx: Ctx, input: StrategyPatch): Promise<Strategy> {
     const [row] = await this.db
-      .insert(campaignsTable)
+      .insert(strategiesTable)
       .values({
         id: newId("c"),
         workspaceId: ctx.workspaceId,
-        name: input.name ?? "Untitled campaign",
+        name: input.name ?? "Untitled strategy",
         status: input.status ?? "draft",
         type: input.type ?? "standalone",
         channels: input.channels ?? [],
@@ -582,11 +582,11 @@ export class PgRepository implements Repository {
         startedAt: input.startedAt ? new Date(input.startedAt) : new Date(),
       })
       .returning();
-    return this.toCampaign(row);
+    return this.toStrategy(row);
   }
 
-  async updateCampaign(ctx: Ctx, id: string, patch: CampaignPatch): Promise<Campaign | null> {
-    const set: Partial<typeof campaignsTable.$inferInsert> = { updatedAt: new Date() };
+  async updateStrategy(ctx: Ctx, id: string, patch: StrategyPatch): Promise<Strategy | null> {
+    const set: Partial<typeof strategiesTable.$inferInsert> = { updatedAt: new Date() };
     if (patch.name !== undefined) set.name = patch.name;
     if (patch.status !== undefined) set.status = patch.status;
     if (patch.type !== undefined) set.type = patch.type;
@@ -594,32 +594,32 @@ export class PgRepository implements Repository {
     if (patch.startedAt) set.startedAt = new Date(patch.startedAt);
 
     const [row] = await this.db
-      .update(campaignsTable)
+      .update(strategiesTable)
       .set(set)
-      .where(and(eq(campaignsTable.id, id), this.ws(campaignsTable.workspaceId, ctx)))
+      .where(and(eq(strategiesTable.id, id), this.ws(strategiesTable.workspaceId, ctx)))
       .returning();
-    return row ? this.toCampaign(row) : null;
+    return row ? this.toStrategy(row) : null;
   }
 
-  async deleteCampaign(ctx: Ctx, id: string): Promise<boolean> {
-    // leads.campaign_id and threads.campaign_id are ON DELETE SET NULL, so rows survive
-    // with the reference cleared rather than disappearing with the campaign.
+  async deleteStrategy(ctx: Ctx, id: string): Promise<boolean> {
+    // audiences.strategy_id and threads.strategy_id are ON DELETE SET NULL, so rows survive
+    // with the reference cleared rather than disappearing with the strategy.
     const gone = await this.db
-      .delete(campaignsTable)
-      .where(and(eq(campaignsTable.id, id), this.ws(campaignsTable.workspaceId, ctx)))
-      .returning({ id: campaignsTable.id });
+      .delete(strategiesTable)
+      .where(and(eq(strategiesTable.id, id), this.ws(strategiesTable.workspaceId, ctx)))
+      .returning({ id: strategiesTable.id });
     return gone.length > 0;
   }
 
-  async setCampaignStatus(ctx: Ctx, id: string, status: CampaignStatus): Promise<Campaign | null> {
-    return this.updateCampaign(ctx, id, { status });
+  async setStrategyStatus(ctx: Ctx, id: string, status: StrategyStatus): Promise<Strategy | null> {
+    return this.updateStrategy(ctx, id, { status });
   }
 
   /* ----------------------------------------------------------- workflows -- */
 
   private toWorkflow(row: typeof workflowsTable.$inferSelect): WorkflowRecord {
     return {
-      campaignId: row.campaignId,
+      strategyId: row.strategyId,
       name: row.name,
       // Written only through validateWorkflowGraph, which rebuilds it from a whitelist.
       graph: row.graph as WorkflowGraph,
@@ -627,11 +627,11 @@ export class PgRepository implements Repository {
     };
   }
 
-  async getWorkflow(ctx: Ctx, campaignId: string): Promise<WorkflowRecord | null> {
+  async getWorkflow(ctx: Ctx, strategyId: string): Promise<WorkflowRecord | null> {
     const [row] = await this.db
       .select()
       .from(workflowsTable)
-      .where(and(eq(workflowsTable.campaignId, campaignId), this.ws(workflowsTable.workspaceId, ctx)))
+      .where(and(eq(workflowsTable.strategyId, strategyId), this.ws(workflowsTable.workspaceId, ctx)))
       .limit(1);
     return row ? this.toWorkflow(row) : null;
   }
@@ -647,15 +647,15 @@ export class PgRepository implements Repository {
 
   async saveWorkflow(
     ctx: Ctx,
-    campaignId: string,
+    strategyId: string,
     input: { name: string; graph: WorkflowGraph },
   ): Promise<WorkflowRecord | WriteError | null> {
-    // The campaign must be this workspace's own: the workflow row carries workspace_id from the
-    // session, and the campaign id comes from the URL, so check them against each other.
-    const campaign = await this.getCampaign(ctx, campaignId);
-    if (!campaign) return null;
-    if (campaign.type !== "multichannel") {
-      return { error: { field: "campaign", message: "Only multichannel campaigns have a workflow." } };
+    // The strategy must be this workspace's own: the workflow row carries workspace_id from the
+    // session, and the strategy id comes from the URL, so check them against each other.
+    const strategy = await this.getStrategy(ctx, strategyId);
+    if (!strategy) return null;
+    if (strategy.type !== "multichannel") {
+      return { error: { field: "strategy", message: "Only multichannel strategies have a workflow." } };
     }
     const now = new Date();
     const [row] = await this.db
@@ -663,14 +663,14 @@ export class PgRepository implements Repository {
       .values({
         id: newId("wf"),
         workspaceId: ctx.workspaceId,
-        campaignId,
+        strategyId,
         name: input.name,
         graph: input.graph,
         createdAt: now,
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: workflowsTable.campaignId,
+        target: workflowsTable.strategyId,
         set: { name: input.name, graph: input.graph, updatedAt: now },
         // Never let a conflicting row from another workspace be rewritten.
         setWhere: eq(workflowsTable.workspaceId, ctx.workspaceId),
@@ -679,38 +679,38 @@ export class PgRepository implements Repository {
     return row ? this.toWorkflow(row) : null;
   }
 
-  async removeSampleData(ctx: Ctx): Promise<{ campaigns: number; leads: number }> {
+  async removeSampleData(ctx: Ctx): Promise<{ strategies: number; audiences: number }> {
     return this.db.transaction(async (tx) => {
       const sampleOnly = (table: { workspaceId: AnyPgColumn; isSample: AnyPgColumn }) =>
         and(this.ws(table.workspaceId, ctx), eq(table.isSample, true));
 
-      // Leads first: their threads, messages, to-dos and segment links cascade, and the campaign
+      // Audiences first: their threads, messages, to-dos and segment links cascade, and the strategy
       // FK is SET NULL anyway.
-      const leadsGone = await tx
-        .delete(leadsTable)
-        .where(sampleOnly(leadsTable))
-        .returning({ id: leadsTable.id });
-      // Deleting a campaign cascades to its workflow and its account assignments.
-      const campaignsGone = await tx
-        .delete(campaignsTable)
-        .where(sampleOnly(campaignsTable))
-        .returning({ id: campaignsTable.id });
+      const audiencesGone = await tx
+        .delete(audiencesTable)
+        .where(sampleOnly(audiencesTable))
+        .returning({ id: audiencesTable.id });
+      // Deleting a strategy cascades to its workflow and its account assignments.
+      const strategiesGone = await tx
+        .delete(strategiesTable)
+        .where(sampleOnly(strategiesTable))
+        .returning({ id: strategiesTable.id });
       // The invented LinkedIn account, mailbox and domain, and the invented funnel figures.
       await tx.delete(channelAccounts).where(sampleOnly(channelAccounts));
       await tx.delete(sendingDomains).where(sampleOnly(sendingDomains));
       await tx.delete(dailyRollups).where(sampleOnly(dailyRollups));
-      return { campaigns: campaignsGone.length, leads: leadsGone.length };
+      return { strategies: strategiesGone.length, audiences: audiencesGone.length };
     });
   }
 
   /* ------------------------------------------- org-level channel accounts -- */
 
-  private toAccount(row: typeof channelAccounts.$inferSelect, campaignIds: string[]): ChannelAccount {
+  private toAccount(row: typeof channelAccounts.$inferSelect, strategyIds: string[]): ChannelAccount {
     const base = {
       id: row.id,
       name: row.name,
       handle: row.handle,
-      campaignIds,
+      strategyIds,
       isSample: row.isSample,
       connection: {
         provider: row.provider,
@@ -757,9 +757,9 @@ export class PgRepository implements Repository {
         .where(this.ws(channelAccounts.workspaceId, ctx))
         .orderBy(asc(channelAccounts.createdAt), asc(channelAccounts.id)),
       this.db
-        .select({ accountId: campaignAccounts.accountId, campaignId: campaignAccounts.campaignId })
-        .from(campaignAccounts)
-        .where(this.ws(campaignAccounts.workspaceId, ctx)),
+        .select({ accountId: strategyAccounts.accountId, strategyId: strategyAccounts.strategyId })
+        .from(strategyAccounts)
+        .where(this.ws(strategyAccounts.workspaceId, ctx)),
       this.db
         .select()
         .from(sendingDomains)
@@ -768,7 +768,7 @@ export class PgRepository implements Repository {
     ]);
     const byAccount = new Map<string, string[]>();
     for (const link of links) {
-      byAccount.set(link.accountId, [...(byAccount.get(link.accountId) ?? []), link.campaignId]);
+      byAccount.set(link.accountId, [...(byAccount.get(link.accountId) ?? []), link.strategyId]);
     }
     return {
       accounts: rows.map((row) => this.toAccount(row, byAccount.get(row.id) ?? [])),
@@ -791,10 +791,10 @@ export class PgRepository implements Repository {
       .limit(1);
     if (!row) return null;
     const links = await this.db
-      .select({ campaignId: campaignAccounts.campaignId })
-      .from(campaignAccounts)
-      .where(and(eq(campaignAccounts.accountId, id), this.ws(campaignAccounts.workspaceId, ctx)));
-    return this.toAccount(row, links.map((l) => l.campaignId));
+      .select({ strategyId: strategyAccounts.strategyId })
+      .from(strategyAccounts)
+      .where(and(eq(strategyAccounts.accountId, id), this.ws(strategyAccounts.workspaceId, ctx)));
+    return this.toAccount(row, links.map((l) => l.strategyId));
   }
 
   async updateAccount(ctx: Ctx, id: string, patch: AccountSettingsPatch): Promise<ChannelAccount | WriteError | null> {
@@ -808,34 +808,34 @@ export class PgRepository implements Repository {
     return this.accountById(ctx, id);
   }
 
-  async setAccountCampaigns(
+  async setAccountStrategies(
     ctx: Ctx,
     id: string,
-    campaignIds: string[],
+    strategyIds: string[],
   ): Promise<ChannelAccount | WriteError | null> {
     const current = await this.accountById(ctx, id);
     if (!current) return null;
 
-    if (campaignIds.length) {
+    if (strategyIds.length) {
       // Both sides of the link must be this workspace's: the account was checked above, and each
-      // campaign id here comes from the request, so check it against the workspace too.
+      // strategy id here comes from the request, so check it against the workspace too.
       const owned = await this.db
-        .select({ id: campaignsTable.id })
-        .from(campaignsTable)
-        .where(and(inArray(campaignsTable.id, campaignIds), this.ws(campaignsTable.workspaceId, ctx)));
-      if (owned.length !== campaignIds.length) {
-        return { error: { field: "campaignIds", message: "One of those campaigns doesn't exist." } };
+        .select({ id: strategiesTable.id })
+        .from(strategiesTable)
+        .where(and(inArray(strategiesTable.id, strategyIds), this.ws(strategiesTable.workspaceId, ctx)));
+      if (owned.length !== strategyIds.length) {
+        return { error: { field: "strategyIds", message: "One of those strategies doesn't exist." } };
       }
     }
 
     await this.db.transaction(async (tx) => {
       await tx
-        .delete(campaignAccounts)
-        .where(and(eq(campaignAccounts.accountId, id), this.ws(campaignAccounts.workspaceId, ctx)));
-      if (campaignIds.length) {
+        .delete(strategyAccounts)
+        .where(and(eq(strategyAccounts.accountId, id), this.ws(strategyAccounts.workspaceId, ctx)));
+      if (strategyIds.length) {
         await tx
-          .insert(campaignAccounts)
-          .values(campaignIds.map((campaignId) => ({ workspaceId: ctx.workspaceId, campaignId, accountId: id })));
+          .insert(strategyAccounts)
+          .values(strategyIds.map((strategyId) => ({ workspaceId: ctx.workspaceId, strategyId, accountId: id })));
       }
     });
     return this.accountById(ctx, id);
@@ -844,7 +844,7 @@ export class PgRepository implements Repository {
   async deleteAccount(ctx: Ctx, id: string): Promise<{ deleted: string } | null> {
     const current = await this.accountById(ctx, id);
     if (!current) return null;
-    // `campaign_accounts` and `connect_sessions` cascade from the row.
+    // `strategy_accounts` and `connect_sessions` cascade from the row.
     await this.db
       .delete(channelAccounts)
       .where(and(eq(channelAccounts.id, id), this.ws(channelAccounts.workspaceId, ctx)));
@@ -1002,33 +1002,33 @@ export class PgRepository implements Repository {
     };
   }
 
-  /* --------------------------------------------------------------- leads -- */
+  /* --------------------------------------------------------------- audiences -- */
 
-  async listLeads(ctx: Ctx, query: LeadQuery): Promise<Paged<Lead>> {
-    const where = [this.ws(leadsTable.workspaceId, ctx)];
+  async listAudiences(ctx: Ctx, query: AudienceQuery): Promise<Paged<Audience>> {
+    const where = [this.ws(audiencesTable.workspaceId, ctx)];
     if (query.q) {
       const term = likeTerm(query.q);
       // Tags are an array, so a text match needs the unnest-and-compare form.
       where.push(
         or(
-          ilike(leadsTable.name, term),
-          ilike(leadsTable.company, term),
-          ilike(leadsTable.title, term),
-          ilike(leadsTable.email, term),
-          sql`EXISTS (SELECT 1 FROM unnest(${leadsTable.tags}) AS tag WHERE tag ILIKE ${term})`,
+          ilike(audiencesTable.name, term),
+          ilike(audiencesTable.company, term),
+          ilike(audiencesTable.title, term),
+          ilike(audiencesTable.email, term),
+          sql`EXISTS (SELECT 1 FROM unnest(${audiencesTable.tags}) AS tag WHERE tag ILIKE ${term})`,
         )!,
       );
     }
-    if (query.stage && query.stage !== "all") where.push(eq(leadsTable.stage, query.stage));
-    if (query.ownerId && query.ownerId !== "all") where.push(eq(leadsTable.ownerId, query.ownerId));
-    if (query.campaignId && query.campaignId !== "all") {
-      where.push(eq(leadsTable.campaignId, query.campaignId));
+    if (query.stage && query.stage !== "all") where.push(eq(audiencesTable.stage, query.stage));
+    if (query.ownerId && query.ownerId !== "all") where.push(eq(audiencesTable.ownerId, query.ownerId));
+    if (query.strategyId && query.strategyId !== "all") {
+      where.push(eq(audiencesTable.strategyId, query.strategyId));
     }
     if (query.segmentId && query.segmentId !== "all") {
       // The link row carries the workspace too, so another workspace's segment id matches nothing.
       where.push(
-        sql`EXISTS (SELECT 1 FROM ${segmentLeads} WHERE ${segmentLeads.leadId} = ${leadsTable.id}
-            AND ${segmentLeads.segmentId} = ${query.segmentId} AND ${segmentLeads.workspaceId} = ${ctx.workspaceId})`,
+        sql`EXISTS (SELECT 1 FROM ${segmentAudiences} WHERE ${segmentAudiences.audienceId} = ${audiencesTable.id}
+            AND ${segmentAudiences.segmentId} = ${query.segmentId} AND ${segmentAudiences.workspaceId} = ${ctx.workspaceId})`,
       );
     }
     const predicate = and(...where);
@@ -1036,41 +1036,41 @@ export class PgRepository implements Repository {
     const sortKey = query.sort ?? "score";
     const dir = query.dir ?? (sortKey === "name" ? "asc" : "desc");
     const column =
-      sortKey === "name" ? leadsTable.name : sortKey === "updated" ? leadsTable.updatedAt : leadsTable.score;
+      sortKey === "name" ? audiencesTable.name : sortKey === "updated" ? audiencesTable.updatedAt : audiencesTable.score;
     const order = dir === "asc" ? asc(column) : desc(column);
 
     // Clamp exactly as lib/data/query.ts paginate() does, so both stores page identically.
     const pageSize = Math.min(Math.max(Math.trunc(query.pageSize ?? 25) || 25, 1), 200);
     const [{ value: total = 0 } = { value: 0 }] = await this.db
       .select({ value: count() })
-      .from(leadsTable)
+      .from(audiencesTable)
       .where(predicate);
     const pages = Math.max(1, Math.ceil(Number(total) / pageSize));
     const page = Math.min(Math.max(Math.trunc(query.page ?? 1) || 1, 1), pages);
 
     const rows = await this.db
       .select({
-        lead: leadsTable,
+        audience: audiencesTable,
         ownerName: users.name,
       })
-      .from(leadsTable)
-      .leftJoin(users, eq(users.id, leadsTable.ownerId))
+      .from(audiencesTable)
+      .leftJoin(users, eq(users.id, audiencesTable.ownerId))
       .where(predicate)
       // A second, unique sort key keeps paging stable: without it, rows with equal scores can
       // swap between pages and a row is shown twice or skipped.
-      .orderBy(order, asc(leadsTable.id))
+      .orderBy(order, asc(audiencesTable.id))
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
     return {
-      items: rows.map((r) => this.toLead(r.lead, r.ownerName)),
+      items: rows.map((r) => this.toAudience(r.audience, r.ownerName)),
       total: Number(total),
       page,
       pageSize,
     };
   }
 
-  private toLead(row: typeof leadsTable.$inferSelect, ownerName: string | null): Lead {
+  private toAudience(row: typeof audiencesTable.$inferSelect, ownerName: string | null): Audience {
     return {
       id: row.id,
       name: row.name,
@@ -1092,55 +1092,55 @@ export class PgRepository implements Repository {
       nextStep: row.nextStep,
       ownerId: row.ownerId ?? "",
       ownerName: ownerName ?? "Unassigned",
-      campaignId: row.campaignId,
+      strategyId: row.strategyId,
       starred: row.starred,
       updatedAt: iso(row.updatedAt),
       isSample: row.isSample,
     };
   }
 
-  async getLead(ctx: Ctx, id: string): Promise<Lead | null> {
+  async getAudience(ctx: Ctx, id: string): Promise<Audience | null> {
     const [row] = await this.db
-      .select({ lead: leadsTable, ownerName: users.name })
-      .from(leadsTable)
-      .leftJoin(users, eq(users.id, leadsTable.ownerId))
-      .where(and(eq(leadsTable.id, id), this.ws(leadsTable.workspaceId, ctx)))
+      .select({ audience: audiencesTable, ownerName: users.name })
+      .from(audiencesTable)
+      .leftJoin(users, eq(users.id, audiencesTable.ownerId))
+      .where(and(eq(audiencesTable.id, id), this.ws(audiencesTable.workspaceId, ctx)))
       .limit(1);
-    return row ? this.toLead(row.lead, row.ownerName) : null;
+    return row ? this.toAudience(row.audience, row.ownerName) : null;
   }
 
   /**
    * Every read is scoped to the workspace — including the child tables (messages, events, runs),
-   * which carry their own `workspace_id`, so a lead id from another workspace returns nothing.
+   * which carry their own `workspace_id`, so an audience id from another workspace returns nothing.
    */
   async getProspect(ctx: Ctx, id: string): Promise<ProspectProfile | null> {
     const [row] = await this.db
-      .select({ lead: leadsTable, ownerName: users.name })
-      .from(leadsTable)
-      .leftJoin(users, eq(users.id, leadsTable.ownerId))
-      .where(and(eq(leadsTable.id, id), this.ws(leadsTable.workspaceId, ctx)))
+      .select({ audience: audiencesTable, ownerName: users.name })
+      .from(audiencesTable)
+      .leftJoin(users, eq(users.id, audiencesTable.ownerId))
+      .where(and(eq(audiencesTable.id, id), this.ws(audiencesTable.workspaceId, ctx)))
       .limit(1);
     if (!row) return null;
-    const lead = this.toLead(row.lead, row.ownerName);
+    const audience = this.toAudience(row.audience, row.ownerName);
 
-    const company = row.lead.company.trim();
-    const [campaign, runs, audiences, threads, tasks, events, colleagues, colleagueTotal] = await Promise.all([
-      row.lead.campaignId
+    const company = row.audience.company.trim();
+    const [strategy, runs, audiences, threads, tasks, events, colleagues, colleagueTotal] = await Promise.all([
+      row.audience.strategyId
         ? this.db
             .select({
-              id: campaignsTable.id,
-              name: campaignsTable.name,
-              status: campaignsTable.status,
-              type: campaignsTable.type,
+              id: strategiesTable.id,
+              name: strategiesTable.name,
+              status: strategiesTable.status,
+              type: strategiesTable.type,
             })
-            .from(campaignsTable)
-            .where(and(eq(campaignsTable.id, row.lead.campaignId), this.ws(campaignsTable.workspaceId, ctx)))
+            .from(strategiesTable)
+            .where(and(eq(strategiesTable.id, row.audience.strategyId), this.ws(strategiesTable.workspaceId, ctx)))
             .limit(1)
         : Promise.resolve([]),
       this.db
         .select()
         .from(workflowRuns)
-        .where(and(eq(workflowRuns.leadId, id), this.ws(workflowRuns.workspaceId, ctx)))
+        .where(and(eq(workflowRuns.audienceId, id), this.ws(workflowRuns.workspaceId, ctx)))
         .orderBy(desc(workflowRuns.startedAt))
         .limit(1),
       this.db
@@ -1150,23 +1150,23 @@ export class PgRepository implements Repository {
           fileName: segmentsTable.fileName,
           createdAt: segmentsTable.createdAt,
         })
-        .from(segmentLeads)
-        .innerJoin(segmentsTable, eq(segmentsTable.id, segmentLeads.segmentId))
+        .from(segmentAudiences)
+        .innerJoin(segmentsTable, eq(segmentsTable.id, segmentAudiences.segmentId))
         .where(
           and(
-            eq(segmentLeads.leadId, id),
-            this.ws(segmentLeads.workspaceId, ctx),
+            eq(segmentAudiences.audienceId, id),
+            this.ws(segmentAudiences.workspaceId, ctx),
             this.ws(segmentsTable.workspaceId, ctx),
           ),
         ),
       this.db
         .select()
         .from(threadsTable)
-        .where(and(eq(threadsTable.leadId, id), this.ws(threadsTable.workspaceId, ctx))),
+        .where(and(eq(threadsTable.audienceId, id), this.ws(threadsTable.workspaceId, ctx))),
       this.db
         .select()
         .from(tasksTable)
-        .where(and(eq(tasksTable.leadId, id), this.ws(tasksTable.workspaceId, ctx)))
+        .where(and(eq(tasksTable.audienceId, id), this.ws(tasksTable.workspaceId, ctx)))
         .orderBy(desc(tasksTable.createdAt)),
       this.db
         .select({
@@ -1176,32 +1176,32 @@ export class PgRepository implements Repository {
           occurredAt: eventsTable.occurredAt,
         })
         .from(eventsTable)
-        .where(and(eq(eventsTable.leadId, id), this.ws(eventsTable.workspaceId, ctx)))
+        .where(and(eq(eventsTable.audienceId, id), this.ws(eventsTable.workspaceId, ctx)))
         .orderBy(desc(eventsTable.occurredAt))
         .limit(500),
       company
         ? this.db
-            .select({ id: leadsTable.id, name: leadsTable.name, title: leadsTable.title })
-            .from(leadsTable)
+            .select({ id: audiencesTable.id, name: audiencesTable.name, title: audiencesTable.title })
+            .from(audiencesTable)
             .where(
               and(
-                this.ws(leadsTable.workspaceId, ctx),
-                sql`lower(${leadsTable.company}) = lower(${company})`,
-                sql`${leadsTable.id} <> ${id}`,
+                this.ws(audiencesTable.workspaceId, ctx),
+                sql`lower(${audiencesTable.company}) = lower(${company})`,
+                sql`${audiencesTable.id} <> ${id}`,
               ),
             )
-            .orderBy(asc(leadsTable.name), asc(leadsTable.id))
+            .orderBy(asc(audiencesTable.name), asc(audiencesTable.id))
             .limit(8)
         : Promise.resolve([]),
       company
         ? this.db
             .select({ value: count() })
-            .from(leadsTable)
+            .from(audiencesTable)
             .where(
               and(
-                this.ws(leadsTable.workspaceId, ctx),
-                sql`lower(${leadsTable.company}) = lower(${company})`,
-                sql`${leadsTable.id} <> ${id}`,
+                this.ws(audiencesTable.workspaceId, ctx),
+                sql`lower(${audiencesTable.company}) = lower(${company})`,
+                sql`${audiencesTable.id} <> ${id}`,
               ),
             )
         : Promise.resolve([{ value: 0 }]),
@@ -1218,13 +1218,13 @@ export class PgRepository implements Repository {
       : [];
 
     const run = runs[0];
-    const fields = splitFileFields((row.lead.extra ?? {}) as Record<string, string>);
+    const fields = splitFileFields((row.audience.extra ?? {}) as Record<string, string>);
     return buildProspect({
-      lead,
-      createdAt: iso(row.lead.createdAt),
+      audience,
+      createdAt: iso(row.audience.createdAt),
       companyFields: fields.company,
       otherFields: fields.other,
-      campaign: campaign[0] ?? null,
+      strategy: strategy[0] ?? null,
       run: run
         ? {
             state: run.state,
@@ -1273,17 +1273,17 @@ export class PgRepository implements Repository {
   /**
    * Checks a reference belongs to this workspace before it is written. Returning a `WriteError`
    * rather than nulling the field means the caller is told the reference was rejected instead of
-   * quietly getting a lead with no campaign.
+   * quietly getting an audience with no strategy.
    */
-  private async checkRefs(ctx: Ctx, patch: LeadPatch): Promise<WriteError | null> {
-    if (patch.campaignId) {
+  private async checkRefs(ctx: Ctx, patch: AudiencePatch): Promise<WriteError | null> {
+    if (patch.strategyId) {
       const [found] = await this.db
-        .select({ id: campaignsTable.id })
-        .from(campaignsTable)
-        .where(and(eq(campaignsTable.id, patch.campaignId), this.ws(campaignsTable.workspaceId, ctx)))
+        .select({ id: strategiesTable.id })
+        .from(strategiesTable)
+        .where(and(eq(strategiesTable.id, patch.strategyId), this.ws(strategiesTable.workspaceId, ctx)))
         .limit(1);
       if (!found) {
-        return { error: { field: "campaignId", message: "That campaign does not exist." } };
+        return { error: { field: "strategyId", message: "That strategy does not exist." } };
       }
     }
     if (patch.ownerId) {
@@ -1299,16 +1299,16 @@ export class PgRepository implements Repository {
     return null;
   }
 
-  async createLead(ctx: Ctx, input: LeadPatch): Promise<Lead | WriteError> {
+  async createAudience(ctx: Ctx, input: AudiencePatch): Promise<Audience | WriteError> {
     const bad = await this.checkRefs(ctx, input);
     if (bad) return bad;
 
     const [row] = await this.db
-      .insert(leadsTable)
+      .insert(audiencesTable)
       .values({
         id: newId("l"),
         workspaceId: ctx.workspaceId,
-        name: input.name ?? "Unnamed lead",
+        name: input.name ?? "Unnamed audience",
         company: input.company ?? "",
         title: input.title ?? "",
         phone: input.phone ?? null,
@@ -1320,15 +1320,15 @@ export class PgRepository implements Repository {
         tags: input.tags ?? [],
         consent: input.consent ?? false,
         nextStep: input.nextStep ?? "",
-        // Default ownership to whoever created the lead, so nothing lands unassigned.
+        // Default ownership to whoever created the audience, so nothing lands unassigned.
         ownerId: input.ownerId ?? ctx.userId,
-        campaignId: input.campaignId ?? null,
+        strategyId: input.strategyId ?? null,
         starred: input.starred ?? false,
       })
       .returning();
 
     const owner = await this.ownerName(row.ownerId);
-    return this.toLead(row, owner);
+    return this.toAudience(row, owner);
   }
 
   private async ownerName(id: string | null): Promise<string | null> {
@@ -1337,11 +1337,11 @@ export class PgRepository implements Repository {
     return row?.name ?? null;
   }
 
-  async updateLead(ctx: Ctx, id: string, patch: LeadPatch): Promise<Lead | WriteError | null> {
+  async updateAudience(ctx: Ctx, id: string, patch: AudiencePatch): Promise<Audience | WriteError | null> {
     const bad = await this.checkRefs(ctx, patch);
     if (bad) return bad;
 
-    const set: Partial<typeof leadsTable.$inferInsert> = { updatedAt: new Date() };
+    const set: Partial<typeof audiencesTable.$inferInsert> = { updatedAt: new Date() };
     if (patch.name !== undefined) set.name = patch.name;
     if (patch.company !== undefined) set.company = patch.company;
     if (patch.title !== undefined) set.title = patch.title;
@@ -1355,25 +1355,25 @@ export class PgRepository implements Repository {
     if (patch.consent !== undefined) set.consent = patch.consent;
     if (patch.nextStep !== undefined) set.nextStep = patch.nextStep;
     if (patch.starred !== undefined) set.starred = patch.starred;
-    if (patch.campaignId !== undefined) set.campaignId = patch.campaignId;
+    if (patch.strategyId !== undefined) set.strategyId = patch.strategyId;
     if (patch.ownerId !== undefined) set.ownerId = patch.ownerId;
 
     const [row] = await this.db
-      .update(leadsTable)
+      .update(audiencesTable)
       .set(set)
-      .where(and(eq(leadsTable.id, id), this.ws(leadsTable.workspaceId, ctx)))
+      .where(and(eq(audiencesTable.id, id), this.ws(audiencesTable.workspaceId, ctx)))
       .returning();
     if (!row) return null;
 
     const owner = await this.ownerName(row.ownerId);
-    return this.toLead(row, owner);
+    return this.toAudience(row, owner);
   }
 
-  async deleteLead(ctx: Ctx, id: string): Promise<boolean> {
+  async deleteAudience(ctx: Ctx, id: string): Promise<boolean> {
     const gone = await this.db
-      .delete(leadsTable)
-      .where(and(eq(leadsTable.id, id), this.ws(leadsTable.workspaceId, ctx)))
-      .returning({ id: leadsTable.id });
+      .delete(audiencesTable)
+      .where(and(eq(audiencesTable.id, id), this.ws(audiencesTable.workspaceId, ctx)))
+      .returning({ id: audiencesTable.id });
     return gone.length > 0;
   }
 
@@ -1385,23 +1385,23 @@ export class PgRepository implements Repository {
     if (query.q) {
       const term = likeTerm(query.q);
       where.push(
-        or(ilike(leadsTable.name, term), ilike(leadsTable.company, term), ilike(threadsTable.preview, term))!,
+        or(ilike(audiencesTable.name, term), ilike(audiencesTable.company, term), ilike(threadsTable.preview, term))!,
       );
     }
 
     const rows = await this.db
       .select({
         thread: threadsTable,
-        leadName: leadsTable.name,
-        company: leadsTable.company,
-        score: leadsTable.score,
-        stage: leadsTable.stage,
-        campaignName: campaignsTable.name,
+        audienceName: audiencesTable.name,
+        company: audiencesTable.company,
+        score: audiencesTable.score,
+        stage: audiencesTable.stage,
+        strategyName: strategiesTable.name,
         ownerName: users.name,
       })
       .from(threadsTable)
-      .innerJoin(leadsTable, eq(leadsTable.id, threadsTable.leadId))
-      .leftJoin(campaignsTable, eq(campaignsTable.id, threadsTable.campaignId))
+      .innerJoin(audiencesTable, eq(audiencesTable.id, threadsTable.audienceId))
+      .leftJoin(strategiesTable, eq(strategiesTable.id, threadsTable.strategyId))
       .leftJoin(users, eq(users.id, threadsTable.ownerId))
       .where(and(...where))
       .orderBy(desc(threadsTable.lastAt));
@@ -1411,19 +1411,19 @@ export class PgRepository implements Repository {
 
   private toThread(r: {
     thread: typeof threadsTable.$inferSelect;
-    leadName: string;
+    audienceName: string;
     company: string;
     score: number;
-    stage: Lead["stage"];
-    campaignName: string | null;
+    stage: Audience["stage"];
+    strategyName: string | null;
     ownerName: string | null;
   }): Thread {
     return {
       id: r.thread.id,
-      leadId: r.thread.leadId,
-      leadName: r.leadName,
+      audienceId: r.thread.audienceId,
+      audienceName: r.audienceName,
       company: r.company,
-      initials: initialsOf(r.leadName),
+      initials: initialsOf(r.audienceName),
       role: r.thread.role,
       channel: r.thread.channel as Channel,
       intent: r.thread.intent,
@@ -1433,7 +1433,7 @@ export class PgRepository implements Repository {
       lastAt: iso(r.thread.lastAt),
       score: r.score,
       stage: r.stage,
-      campaignName: r.campaignName,
+      strategyName: r.strategyName,
       ownerName: r.ownerName ?? "Unassigned",
       signals: (r.thread.signals as { label: string; points: number }[]) ?? [],
     };
@@ -1443,16 +1443,16 @@ export class PgRepository implements Repository {
     const [row] = await this.db
       .select({
         thread: threadsTable,
-        leadName: leadsTable.name,
-        company: leadsTable.company,
-        score: leadsTable.score,
-        stage: leadsTable.stage,
-        campaignName: campaignsTable.name,
+        audienceName: audiencesTable.name,
+        company: audiencesTable.company,
+        score: audiencesTable.score,
+        stage: audiencesTable.stage,
+        strategyName: strategiesTable.name,
         ownerName: users.name,
       })
       .from(threadsTable)
-      .innerJoin(leadsTable, eq(leadsTable.id, threadsTable.leadId))
-      .leftJoin(campaignsTable, eq(campaignsTable.id, threadsTable.campaignId))
+      .innerJoin(audiencesTable, eq(audiencesTable.id, threadsTable.audienceId))
+      .leftJoin(strategiesTable, eq(strategiesTable.id, threadsTable.strategyId))
       .leftJoin(users, eq(users.id, threadsTable.ownerId))
       .where(and(eq(threadsTable.id, id), this.ws(threadsTable.workspaceId, ctx)))
       .limit(1);
@@ -1581,7 +1581,7 @@ export class PgRepository implements Repository {
     };
   }
 
-  /* ------------------------------------------------ lead uploads and segments -- */
+  /* ------------------------------------------------ audience uploads and segments -- */
 
   async createUpload(
     ctx: Ctx,
@@ -1625,67 +1625,67 @@ export class PgRepository implements Repository {
     };
   }
 
-  /** The leads that already have a campaign, in the shape the matcher wants. */
+  /** The audiences that already have a strategy, in the shape the matcher wants. */
   private async knownInJourney(ctx: Ctx) {
     const rows = await this.db
       .select({
-        id: leadsTable.id,
-        campaignId: leadsTable.campaignId,
-        email: leadsTable.email,
-        mobile: leadsTable.phone,
-        whatsapp: leadsTable.whatsapp,
-        linkedin: leadsTable.linkedin,
+        id: audiencesTable.id,
+        strategyId: audiencesTable.strategyId,
+        email: audiencesTable.email,
+        mobile: audiencesTable.phone,
+        whatsapp: audiencesTable.whatsapp,
+        linkedin: audiencesTable.linkedin,
       })
-      .from(leadsTable)
-      .where(and(this.ws(leadsTable.workspaceId, ctx), sql`${leadsTable.campaignId} is not null`));
+      .from(audiencesTable)
+      .where(and(this.ws(audiencesTable.workspaceId, ctx), sql`${audiencesTable.strategyId} is not null`));
     return rows;
   }
 
   async findInJourney(
     ctx: Ctx,
-    leads: ParsedLead[],
-  ): Promise<{ hits: InJourneyRow[]; campaignNames: Record<string, string> }> {
+    audiences: ParsedAudience[],
+  ): Promise<{ hits: InJourneyRow[]; strategyNames: Record<string, string> }> {
     const known = await this.knownInJourney(ctx);
-    const hits = known.length ? findInJourney(known, leads) : [];
-    const ids = [...new Set(hits.map((h) => h.campaignId))];
-    const campaignNames: Record<string, string> = {};
+    const hits = known.length ? findInJourney(known, audiences) : [];
+    const ids = [...new Set(hits.map((h) => h.strategyId))];
+    const strategyNames: Record<string, string> = {};
     if (ids.length) {
       const named = await this.db
-        .select({ id: campaignsTable.id, name: campaignsTable.name })
-        .from(campaignsTable)
-        .where(and(inArray(campaignsTable.id, ids), this.ws(campaignsTable.workspaceId, ctx)));
-      for (const c of named) campaignNames[c.id] = c.name;
+        .select({ id: strategiesTable.id, name: strategiesTable.name })
+        .from(strategiesTable)
+        .where(and(inArray(strategiesTable.id, ids), this.ws(strategiesTable.workspaceId, ctx)));
+      for (const c of named) strategyNames[c.id] = c.name;
     }
-    return { hits, campaignNames };
+    return { hits, strategyNames };
   }
 
-  async listLeadKeys(ctx: Ctx) {
+  async listAudienceKeys(ctx: Ctx) {
     return this.db
       .select({
-        id: leadsTable.id,
-        name: leadsTable.name,
-        email: leadsTable.email,
-        mobile: leadsTable.phone,
-        whatsapp: leadsTable.whatsapp,
-        linkedin: leadsTable.linkedin,
+        id: audiencesTable.id,
+        name: audiencesTable.name,
+        email: audiencesTable.email,
+        mobile: audiencesTable.phone,
+        whatsapp: audiencesTable.whatsapp,
+        linkedin: audiencesTable.linkedin,
       })
-      .from(leadsTable)
-      .where(this.ws(leadsTable.workspaceId, ctx));
+      .from(audiencesTable)
+      .where(this.ws(audiencesTable.workspaceId, ctx));
   }
 
-  /** Live member counts. `segment_leads` cascades on lead delete, so a deleted prospect drops out. */
+  /** Live member counts. `segment_audiences` cascades on audience delete, so a deleted prospect drops out. */
   private async segmentCounts(ctx: Ctx, ids?: string[]): Promise<Map<string, number>> {
-    const where = [this.ws(segmentLeads.workspaceId, ctx)];
-    if (ids) where.push(inArray(segmentLeads.segmentId, ids));
+    const where = [this.ws(segmentAudiences.workspaceId, ctx)];
+    if (ids) where.push(inArray(segmentAudiences.segmentId, ids));
     const rows = await this.db
-      .select({ segmentId: segmentLeads.segmentId, value: count() })
-      .from(segmentLeads)
+      .select({ segmentId: segmentAudiences.segmentId, value: count() })
+      .from(segmentAudiences)
       .where(and(...where))
-      .groupBy(segmentLeads.segmentId);
+      .groupBy(segmentAudiences.segmentId);
     return new Map(rows.map((r) => [r.segmentId, Number(r.value)]));
   }
 
-  private toSegment(row: typeof segmentsTable.$inferSelect, leadCount = 0): Segment {
+  private toSegment(row: typeof segmentsTable.$inferSelect, audienceCount = 0): Segment {
     return {
       id: row.id,
       name: row.name,
@@ -1702,7 +1702,7 @@ export class PgRepository implements Repository {
       errorCount: row.errorCount,
       createdAt: iso(row.createdAt),
       createdBy: row.createdBy ?? "",
-      leadCount,
+      audienceCount,
     };
   }
 
@@ -1737,7 +1737,7 @@ export class PgRepository implements Repository {
       description: string;
       mapping: Mapping;
       report: MappingReport;
-      leads: ParsedLead[];
+      audiences: ParsedAudience[];
       consent: boolean;
     },
   ) {
@@ -1749,33 +1749,33 @@ export class PgRepository implements Repository {
 
     // People already in a journey elsewhere stay out. Recomputed here: the browser's warning is a
     // courtesy, and the rows it showed may be minutes old.
-    const { hits } = await this.findInJourney(ctx, input.leads);
+    const { hits } = await this.findInJourney(ctx, input.audiences);
     const out = new Set(hits.map((h) => h.row));
-    const incoming = input.leads.filter((lead) => !out.has(lead.row));
-    // `input.leads` arrives with the review's exclusions already taken out, so the recheck above only
-    // finds people who joined a campaign since. The audience records both.
+    const incoming = input.audiences.filter((audience) => !out.has(audience.row));
+    // `input.audiences` arrives with the review's exclusions already taken out, so the recheck above only
+    // finds people who joined a strategy since. The audience records both.
     const excluded = input.report.journey.excluded + out.size;
 
     return this.db.transaction(async (tx) => {
-      // Every lead the workspace has, as profiles, so a row can merge into the right one.
+      // Every audience the workspace has, as profiles, so a row can merge into the right one.
       const existingRows = await tx
         .select({
-          id: leadsTable.id,
-          email: leadsTable.email,
-          mobile: leadsTable.phone,
-          whatsapp: leadsTable.whatsapp,
-          linkedin: leadsTable.linkedin,
-          extra: leadsTable.extra,
-          company: leadsTable.company,
-          title: leadsTable.title,
-          createdAt: leadsTable.createdAt,
-          updatedAt: leadsTable.updatedAt,
+          id: audiencesTable.id,
+          email: audiencesTable.email,
+          mobile: audiencesTable.phone,
+          whatsapp: audiencesTable.whatsapp,
+          linkedin: audiencesTable.linkedin,
+          extra: audiencesTable.extra,
+          company: audiencesTable.company,
+          title: audiencesTable.title,
+          createdAt: audiencesTable.createdAt,
+          updatedAt: audiencesTable.updatedAt,
         })
-        .from(leadsTable)
-        .where(this.ws(leadsTable.workspaceId, ctx));
+        .from(audiencesTable)
+        .where(this.ws(audiencesTable.workspaceId, ctx));
       const identityBefore = new Map(existingRows.map((r) => [r.id, { company: r.company, title: r.title }]));
 
-      const existing: LeadProfile[] = existingRows.map((r) => ({
+      const existing: AudienceProfile[] = existingRows.map((r) => ({
         id: r.id,
         email: r.email,
         mobile: r.mobile,
@@ -1788,34 +1788,34 @@ export class PgRepository implements Repository {
       }));
       const before = new Map(existing.map((p) => [p.id, p]));
 
-      const merge = mergeLeads(
+      const merge = mergeAudiences(
         existing,
-        incoming.map((lead) => ({
-          row: lead.row,
-          email: lead.email,
-          mobile: lead.mobile,
-          whatsapp: lead.whatsapp,
-          linkedin: lead.linkedin,
-          extra: lead.extra,
+        incoming.map((audience) => ({
+          row: audience.row,
+          email: audience.email,
+          mobile: audience.mobile,
+          whatsapp: audience.whatsapp,
+          linkedin: audience.linkedin,
+          extra: audience.extra,
         })),
         segmentId,
         now.toISOString(),
         () => newId("l"),
       );
 
-      const created: LeadProfile[] = [];
-      const touched: LeadProfile[] = [];
+      const created: AudienceProfile[] = [];
+      const touched: AudienceProfile[] = [];
       for (const profile of merge.profiles) {
         const was = before.get(profile.id);
         if (!was) created.push(profile);
         else if (profile.segmentIds.includes(segmentId)) touched.push(profile);
       }
 
-      // Brand-new leads, in chunks that stay under Postgres's parameter limit.
+      // Brand-new audiences, in chunks that stay under Postgres's parameter limit.
       for (let i = 0; i < created.length; i += 500) {
-        await tx.insert(leadsTable).values(
+        await tx.insert(audiencesTable).values(
           created.slice(i, i + 500).map((p) => {
-            const who = leadIdentity(p);
+            const who = audienceIdentity(p);
             return {
               id: p.id,
               workspaceId: ctx.workspaceId,
@@ -1836,7 +1836,7 @@ export class PgRepository implements Repository {
         );
       }
 
-      // Existing leads that gained an attribute or a column from a matching row.
+      // Existing audiences that gained an attribute or a column from a matching row.
       for (const p of touched) {
         const was = before.get(p.id);
         if (!was) continue;
@@ -1850,7 +1850,7 @@ export class PgRepository implements Repository {
           JSON.stringify(p.extra) !== JSON.stringify(was.extra);
         if (!changed) continue;
         await tx
-          .update(leadsTable)
+          .update(audiencesTable)
           .set({
             email: p.email,
             phone: p.mobile,
@@ -1860,7 +1860,7 @@ export class PgRepository implements Repository {
             ...fill,
             updatedAt: now,
           })
-          .where(and(eq(leadsTable.id, p.id), this.ws(leadsTable.workspaceId, ctx)));
+          .where(and(eq(audiencesTable.id, p.id), this.ws(audiencesTable.workspaceId, ctx)));
       }
 
       const [segmentRow] = await tx
@@ -1887,8 +1887,8 @@ export class PgRepository implements Repository {
       const members = [...created, ...touched];
       for (let i = 0; i < members.length; i += 2000) {
         await tx
-          .insert(segmentLeads)
-          .values(members.slice(i, i + 2000).map((p) => ({ workspaceId: ctx.workspaceId, segmentId, leadId: p.id })))
+          .insert(segmentAudiences)
+          .values(members.slice(i, i + 2000).map((p) => ({ workspaceId: ctx.workspaceId, segmentId, audienceId: p.id })))
           .onConflictDoNothing();
       }
 

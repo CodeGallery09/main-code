@@ -27,7 +27,7 @@ const SECTIONS: Section[] = [
     { sel: "[data-hcard]", idx: 5, kind: "top", at: 0.5, line: "Zero duplicate touches. LinkedIn and email run on one clock." },
   ] },
   { id: "journey", el: sec("journey"), items: [
-    { sel: "#journey-card", kind: "top", at: 0.9, fallback: { kind: "screen", fx: 0.06 }, line: "Meet Maya, a sample lead. Pick how she responds and watch her route change." },
+    { sel: "#journey-card", kind: "top", at: 0.9, fallback: { kind: "screen", fx: 0.06 }, line: "Meet Maya, a sample audience. Pick how she responds and watch her route change." },
   ] },
   { id: "why", el: sec("why"), items: [
     { sel: '[data-why="today"]', kind: "top", at: 0.85, line: "Today: five tools, five clocks, twelve tabs. Does your Monday look like this?" },
@@ -38,7 +38,7 @@ const SECTIONS: Section[] = [
     { sel: "[data-wf-step]", idx: 3, kind: "top", at: 0.5, line: "The IF node routes by behaviour, not by a timer. That's the whole trick." },
   ] },
   { id: "demo", el: sec("demo"), items: [
-    { sel: '[data-pip="cta"]', kind: "floor", at: 0.1, fallback: { kind: "screen", fx: 0.92 }, line: { t: "That's the tour! Want this running on your own leads?", act: true } },
+    { sel: '[data-pip="cta"]', kind: "floor", at: 0.1, fallback: { kind: "screen", fx: 0.92 }, line: { t: "That's the tour! Want this running on your own audiences?", act: true } },
   ] },
   { id: "book-intro", el: sec("book-intro"), items: [
     { sel: '[data-pip="book-flow"]', kind: "top", at: 0.92, line: "LinkedIn, then email, then a signal decides the next action. That's the whole idea." },
@@ -50,7 +50,7 @@ const SECTIONS: Section[] = [
 ];
 
 const JOKES = [
-  "Why did the lead ghost? Step 4 fired anyway.",
+  "Why did the audience ghost? Step 4 fired anyway.",
   "Cold outreach? I prefer “room-temperature outreach”.",
   "I'm not a cloud bird. CRM sync is still “Planned”.",
   "I run entirely on sample data. Very low calorie.",
@@ -388,8 +388,8 @@ export function startPip(root: HTMLElement): PipHandle {
     } },
     { id: "yoga", run: simple("", "yoga", "Stretching. Twelve tabs worth of tension.", "Namaste. Or as we say in sales: next steps.", 3200, 3000) },
     { id: "juggle", run: async () => {
-      prop("juggle"); speak("Juggling leads. Rule one: never drop a lead.", 3200); await wait(3600);
-      pose("dropped", true); speak("...it was a sample lead. Phew.", 2600); await wait(2800);
+      prop("juggle"); speak("Juggling audiences. Rule one: never drop an audience.", 3200); await wait(3600);
+      pose("dropped", true); speak("...it was a sample audience. Phew.", 2600); await wait(2800);
     } },
     { id: "plane", run: async () => {
       prop("paper"); speak("Folding a paper plane. Flightpath, get it?", 2800); await wait(2900);
@@ -431,8 +431,8 @@ export function startPip(root: HTMLElement): PipHandle {
     { id: "fish", top: true, run: async () => {
       const a0 = getAt(P.spot);
       await walk(Math.max(0.82, a0), 900); prop("rod");
-      speak("Fishing for leads. Outbound, but with a rod.", 3200); await wait(3600);
-      speak("Got one! ...sample lead. Catch and release.", 3000); await wait(3000); await walk(a0, 900);
+      speak("Fishing for audiences. Outbound, but with a rod.", 3200); await wait(3600);
+      speak("Got one! ...sample audience. Catch and release.", 3000); await wait(3000); await walk(a0, 900);
     } },
     { id: "sweep", run: simple("broom", "", "Sweeping up twelve tabs' worth of dust.", "Cleaner already. Imagine your pipeline.", 3000, 2800) },
     { id: "phone", run: simple("phone", "", "Hello? Yes, this is a call task.", "No, I can't talk. I'm perched.", 2800, 2800) },

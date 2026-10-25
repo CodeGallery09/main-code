@@ -4,8 +4,8 @@
  * Configuration · the five channel tabs.
  *
  * LinkedIn and email are the channels the product runs. Their accounts and mailboxes belong to the
- * **workspace** and are read from the database: the daily caps and which campaigns use each account
- * are saved as you change them, and any number of campaigns can share one account. WhatsApp, Calls
+ * **workspace** and are read from the database: the daily caps and which strategies use each account
+ * are saved as you change them, and any number of strategies can share one account. WhatsApp, Calls
  * and SMS carry the planned note Integrations uses, because the UI never offers a connection the
  * product cannot honour.
  */
@@ -24,7 +24,7 @@ import { EMAIL_CAP_MAX, LINKEDIN_LIMITS, type AccountSettingsPatch } from "@/lib
 import type {
   AccountActivity,
   AccountsSnapshot,
-  Campaign,
+  Strategy,
   ChannelAccount,
   EmailAccount,
   LinkedInAccount,
@@ -49,7 +49,7 @@ import {
 
 type TabProps = {
   snapshot: AccountsSnapshot;
-  campaigns: Campaign[];
+  strategies: Strategy[];
   /** Re-reads the workspace after a change that other tabs depend on. */
   onChange: () => void;
 };
@@ -95,24 +95,24 @@ function useSavedSetting(initial: number, save: (value: number) => Promise<unkno
   return { value, set, failed };
 }
 
-/** The campaigns that send from one account: chips to remove, a menu to add. Saved on each change. */
+/** The strategies that send from one account: chips to remove, a menu to add. Saved on each change. */
 function UsedBy({
   account,
-  campaigns,
+  strategies,
   onChange,
 }: {
   account: ChannelAccount;
-  campaigns: Campaign[];
+  strategies: Strategy[];
   onChange: () => void;
 }) {
-  const [ids, setIds] = useState(account.campaignIds);
+  const [ids, setIds] = useState(account.strategyIds);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Only campaigns that run on this account's channel are offered, and a workflow is what makes a
-  // multichannel campaign send, so standalone ones are listed too if they use the channel.
-  const addable = campaigns.filter((c) => c.channels.includes(account.channel) && !ids.includes(c.id));
-  const byId = new Map(campaigns.map((c) => [c.id, c]));
+  // Only strategies that run on this account's channel are offered, and a workflow is what makes a
+  // multichannel strategy send, so standalone ones are listed too if they use the channel.
+  const addable = strategies.filter((c) => c.channels.includes(account.channel) && !ids.includes(c.id));
+  const byId = new Map(strategies.map((c) => [c.id, c]));
 
   async function commit(next: string[]) {
     const before = ids;
@@ -120,7 +120,7 @@ function UsedBy({
     setBusy(true);
     setError(null);
     try {
-      await api.setAccountCampaigns(account.id, next);
+      await api.setAccountStrategies(account.id, next);
       onChange();
     } catch {
       setIds(before);
@@ -132,12 +132,12 @@ function UsedBy({
 
   return (
     <div className="cf-list cf-span2">
-      <TileLabel label="Used by campaigns" />
+      <TileLabel label="Used by strategies" />
       <div className="cf-chips" style={{ marginTop: 4 }}>
-        {ids.length === 0 && <small className="muted">Not used by any campaign</small>}
+        {ids.length === 0 && <small className="muted">Not used by any strategy</small>}
         {ids.map((id) => {
-          const campaign = byId.get(id);
-          if (!campaign) return null;
+          const strategy = byId.get(id);
+          if (!strategy) return null;
           return (
             <button
               type="button"
@@ -145,9 +145,9 @@ function UsedBy({
               key={id}
               disabled={busy}
               onClick={() => void commit(ids.filter((x) => x !== id))}
-              aria-label={`Stop using ${account.name} for ${campaign.name}`}
+              aria-label={`Stop using ${account.name} for ${strategy.name}`}
             >
-              {campaign.name}
+              {strategy.name}
               <Glyph n="x" className="i" />
             </button>
           );
@@ -159,12 +159,12 @@ function UsedBy({
           style={{ marginTop: 6 }}
           value=""
           disabled={busy}
-          aria-label={`Add a campaign to ${account.name}`}
+          aria-label={`Add a strategy to ${account.name}`}
           onChange={(e) => {
             if (e.target.value) void commit([...ids, e.target.value]);
           }}
         >
-          <option value="">Add to a campaign…</option>
+          <option value="">Add to a strategy…</option>
           {addable.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -196,7 +196,7 @@ function NoLinkedInAccount({
     <Panel title="No LinkedIn account connected">
       <p className="cf-nocontent">
         LinkedIn steps have no account to send from. Signing in happens on LinkedIn&apos;s own page in
-        a new window — Flightpath never sees the password. Campaigns you build now will use any
+        a new window — Flightpath never sees the password. Strategies you build now will use any
         account you connect.
       </p>
       <button
@@ -225,7 +225,7 @@ function NothingConnected({ what }: { what: string }) {
     <Panel title={`No ${what} connected`}>
       <p className="cf-nocontent">
         Connect {what === "mailbox" ? "a" : "a"} {what} to send from it. Connecting isn&apos;t available yet, so
-        there is nothing to set up here until it is. Campaigns you build now will use any account you
+        there is nothing to set up here until it is. Strategies you build now will use any account you
         connect later.
       </p>
       <button type="button" className="btn sm pri" disabled title="Connecting isn't available yet">
@@ -239,7 +239,7 @@ function NothingConnected({ what }: { what: string }) {
 
 export function LinkedInTab({
   snapshot,
-  campaigns,
+  strategies,
   onChange,
   activity = [],
   linkedInConfigured = false,
@@ -260,8 +260,8 @@ export function LinkedInTab({
         <>
           <div className="cf-head between">
             <p className="cf-nocontent" style={{ margin: 0 }}>
-              These accounts belong to your workspace. Any campaign can send from any of them, and one
-              account can run several campaigns at once.
+              These accounts belong to your workspace. Any strategy can send from any of them, and one
+              account can run several strategies at once.
             </p>
             <span className="row" style={{ gap: 8 }}>
               <ConnectStatus phase={connect.phase} />
@@ -281,7 +281,7 @@ export function LinkedInTab({
               <Seat
                 key={account.id}
                 account={account}
-                campaigns={campaigns}
+                strategies={strategies}
                 onChange={onChange}
                 activity={byAccount.get(account.id)}
               />
@@ -321,12 +321,12 @@ export function LinkedInTab({
 
 function Seat({
   account,
-  campaigns,
+  strategies,
   onChange,
   activity,
 }: {
   account: LinkedInAccount;
-  campaigns: Campaign[];
+  strategies: Strategy[];
   onChange: () => void;
   activity?: AccountActivity;
 }) {
@@ -411,7 +411,7 @@ function Seat({
         />
         <TileFigure label="InMail" unit="left" value={account.settings.inmail ?? "—"} />
 
-        <UsedBy account={account} campaigns={campaigns} onChange={onChange} />
+        <UsedBy account={account} strategies={strategies} onChange={onChange} />
       </div>
 
       {connected && <SeatActivity account={account} activity={activity} />}
@@ -433,10 +433,10 @@ function Seat({
   );
 
   async function disconnect() {
-    // Irreversible and it affects every campaign using the seat, so it asks first.
-    const using = account.campaignIds.length;
+    // Irreversible and it affects every strategy using the seat, so it asks first.
+    const using = account.strategyIds.length;
     const warning = using
-      ? `Disconnect ${account.name}? ${using === 1 ? "1 campaign uses" : `${using} campaigns use`} this account and will have nothing to send from.`
+      ? `Disconnect ${account.name}? ${using === 1 ? "1 strategy uses" : `${using} strategies use`} this account and will have nothing to send from.`
       : `Disconnect ${account.name}?`;
     if (!window.confirm(warning)) return;
     setRemoving(true);
@@ -489,7 +489,7 @@ function SeatActivity({ account, activity }: { account: LinkedInAccount; activit
 
 /* ========== Email ========================================================= */
 
-export function EmailTab({ snapshot, campaigns, onChange }: TabProps) {
+export function EmailTab({ snapshot, strategies, onChange }: TabProps) {
   const [sub, setSub] = useState<"mailboxes" | "tracking">("mailboxes");
 
   return (
@@ -503,7 +503,7 @@ export function EmailTab({ snapshot, campaigns, onChange }: TabProps) {
         ]}
       />
 
-      {sub === "mailboxes" && <Mailboxes snapshot={snapshot} campaigns={campaigns} onChange={onChange} />}
+      {sub === "mailboxes" && <Mailboxes snapshot={snapshot} strategies={strategies} onChange={onChange} />}
       {sub === "tracking" && (
         <>
           <Tracking />
@@ -514,7 +514,7 @@ export function EmailTab({ snapshot, campaigns, onChange }: TabProps) {
   );
 }
 
-function Mailboxes({ snapshot, campaigns, onChange }: TabProps) {
+function Mailboxes({ snapshot, strategies, onChange }: TabProps) {
   const mailboxes = snapshot.accounts.filter((a): a is EmailAccount => a.channel === "email");
 
   return (
@@ -537,11 +537,11 @@ function Mailboxes({ snapshot, campaigns, onChange }: TabProps) {
       ) : (
         <Panel
           title="Mailboxes"
-          sub="These belong to your workspace. Any campaign can send from any mailbox, and one mailbox can serve several campaigns. Keep each under 60 a day for cold email."
+          sub="These belong to your workspace. Any strategy can send from any mailbox, and one mailbox can serve several strategies. Keep each under 60 a day for cold email."
         >
           <div className="cf-cardgrid">
             {mailboxes.map((m) => (
-              <MailboxCard key={m.id} account={m} campaigns={campaigns} onChange={onChange} />
+              <MailboxCard key={m.id} account={m} strategies={strategies} onChange={onChange} />
             ))}
           </div>
         </Panel>
@@ -575,11 +575,11 @@ function DomainCard({ domain }: { domain: SendingDomain }) {
 
 function MailboxCard({
   account,
-  campaigns,
+  strategies,
   onChange,
 }: {
   account: EmailAccount;
-  campaigns: Campaign[];
+  strategies: Strategy[];
   onChange: () => void;
 }) {
   const cap = useSavedSetting(account.settings.cap, (v) => api.updateAccount(account.id, { cap: v }));
@@ -636,7 +636,7 @@ function MailboxCard({
           <TileLabel label="Rotate into sending pool" />
           <Switch on={rotate} label={`Rotate ${account.handle}`} onChange={() => void toggleRotate()} />
         </div>
-        <UsedBy account={account} campaigns={campaigns} onChange={onChange} />
+        <UsedBy account={account} strategies={strategies} onChange={onChange} />
       </div>
     </article>
   );

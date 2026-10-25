@@ -2,13 +2,13 @@
  * How the screens hear about a newly saved segment.
  *
  * The upload modal lives in the app shell and the segment list lives on the
- * Leads screen, so a save in one has to reach the other. There is no client
+ * Audiences screen, so a save in one has to reach the other. There is no client
  * store in the prototype, so the shell announces the save on `window` and
  * whoever is showing segments reloads. A real app would do this through its
  * data layer.
  */
 
-import type { Segment } from "@/lib/leads/segments";
+import type { Segment } from "@/lib/audiences/segments";
 
 const EVENT = "flightpath:segment-saved";
 

@@ -4,11 +4,11 @@ import { blockingCount, missingRecords, setupChecks, tabIssues } from "../lib/da
 
 const li = (over = {}) => ({
   id: "a1", channel: "linkedin", name: "Maya Reyes", handle: "linkedin.com/in/maya", state: "healthy",
-  settings: { connections: 20, messages: 50, visits: 60, inmail: null }, campaignIds: [], isSample: false, ...over,
+  settings: { connections: 20, messages: 50, visits: 60, inmail: null }, strategyIds: [], isSample: false, ...over,
 });
 const mb = (over = {}) => ({
   id: "m1", channel: "email", name: "Sales", handle: "sales@acme.example", state: "warm",
-  settings: { provider: "Google", health: 90, cap: 40, rotate: true }, campaignIds: [], isSample: false, ...over,
+  settings: { provider: "Google", health: 90, cap: 40, rotate: true }, strategyIds: [], isSample: false, ...over,
 });
 const dom = (over = {}) => ({ id: "d1", host: "acme.example", spf: true, dkim: true, dmarc: true, isSample: false, ...over });
 const byId = (checks, id) => checks.find((c) => c.id === id);

@@ -31,10 +31,10 @@ npm run dev        # http://localhost:3000
 | `/book-demo`      | Demo-request form                                                       |
 | `/login`          | Sign in (prototype, see below)                                          |
 | `/signup`         | Sign-up form (dummy, creates nothing)                                   |
-| `/dashboard`      | Workspace home: metrics, to-do list, live campaigns, sending caps        |
+| `/dashboard`      | Workspace home: metrics, to-do list, live strategies, sending caps        |
 | `/dashboard/inbox` | Unified inbox across channels, with a reply composer                   |
-| `/dashboard/leads` | Lead table with search, facets and sorting                             |
-| `/dashboard/campaigns` | Campaign list with live/paused toggles                             |
+| `/dashboard/audiences` | Audience table with search, facets and sorting                             |
+| `/dashboard/strategies` | Strategy list with live/paused toggles                             |
 | `/dashboard/workflows` | Workflow library, and the builder at `/workflows/[id]`             |
 | `/dashboard/integrations` | Connect LinkedIn, email domains and mailboxes; roadmap providers |
 | `/dashboard/analytics` | Trend, channel breakdown and funnel                                |
@@ -99,10 +99,10 @@ All require a session cookie and answer `401` without one. Errors are always
 | GET | `/api/overview?range=7d\|30d\|90d` | Everything the home screen shows |
 | GET | `/api/tasks?kind=all\|reply\|call\|review` | Open to-dos |
 | POST | `/api/tasks/:id/complete` | Mark a to-do handled |
-| GET | `/api/campaigns?q=&status=&type=&channel=` | Campaign list with totals |
-| GET / PATCH | `/api/campaigns/:id` | Read one; `{ status }` pauses or resumes |
-| GET | `/api/leads?q=&stage=&ownerId=&campaignId=&sort=&dir=&page=&pageSize=` | Paged leads |
-| GET | `/api/leads/:id` | One lead |
+| GET | `/api/strategies?q=&status=&type=&channel=` | Strategy list with totals |
+| GET / PATCH | `/api/strategies/:id` | Read one; `{ status }` pauses or resumes |
+| GET | `/api/audiences?q=&stage=&ownerId=&strategyId=&sort=&dir=&page=&pageSize=` | Paged audiences |
+| GET | `/api/audiences/:id` | One audience |
 | GET | `/api/threads?filter=to-reply\|all&q=` | Inbox list |
 | GET | `/api/threads/:id` | Thread with messages |
 | POST | `/api/threads/:id/messages` | `{ channel, body }` sends a reply |

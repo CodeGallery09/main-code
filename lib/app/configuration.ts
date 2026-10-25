@@ -3,7 +3,7 @@
  * (with the values they start at), the personalisation variables the product understands, and the
  * compliance choices.
  *
- * **Nothing here describes a particular workspace.** Accounts, domains, campaigns and the setup
+ * **Nothing here describes a particular workspace.** Accounts, domains, strategies and the setup
  * checks come from the database (`lib/data/setup.ts`, `/api/accounts`); this file only says what
  * can be configured and what each setting defaults to. Variables, Sending rules and Compliance do
  * have a real settings store behind them now (`workspace_settings`, via `/api/settings` —
@@ -60,8 +60,8 @@ export const LINKEDIN_ACCOUNT_RULES: ToggleRow[] = [
   },
   {
     id: "spread",
-    label: "Spread leads across accounts",
-    hint: "Each lead stays with one sender for the whole sequence",
+    label: "Spread audiences across accounts",
+    hint: "Each audience stays with one sender for the whole sequence",
     on: true,
   },
   { id: "skip-connected", label: "Skip the invite if already connected", on: true, locked: true },
@@ -71,7 +71,7 @@ export const LINKEDIN_ACCOUNT_RULES: ToggleRow[] = [
     hint: "Random 2–7 minute gaps and no sends in exact bursts",
     on: true,
   },
-  { id: "stop-reply", label: "Stop when the lead replies", on: true, locked: true },
+  { id: "stop-reply", label: "Stop when the audience replies", on: true, locked: true },
 ];
 
 export const LINKEDIN_NUMBER_RULES = [
@@ -134,9 +134,9 @@ export const EMAIL_FOOTER: ToggleRow[] = [
 
 export type Variable = {
   token: string;
-  /** Which field on the lead it reads. */
+  /** Which field on the audience it reads. */
   from: string;
-  /** Text used when the lead has no value, or null for "blank if missing". */
+  /** Text used when the audience has no value, or null for "blank if missing". */
   fallback: string | null;
   /** Channels it is available on; a single channel makes it channel-specific. */
   channels: ChannelKey[];
@@ -169,8 +169,8 @@ export const SENDING_RULES = {
   days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
   from: "09:00",
   to: "18:00",
-  /** `lead` sends in each lead's own time zone; `workspace` in the workspace's. */
-  timezone: "lead" as "lead" | "workspace",
+  /** `audience` sends in each audience's own time zone; `workspace` in the workspace's. */
+  timezone: "audience" as "audience" | "workspace",
   holidays: ["India", "US"],
   perDay: 1,
   perWeek: 4,
@@ -180,8 +180,8 @@ export const SENDING_RULES = {
 export const HOLIDAY_COUNTRIES = ["India", "US", "UK", "UAE", "Singapore"];
 
 export const STOP_RULES: ToggleRow[] = [
-  { id: "reply", label: "Lead replies on any channel", on: true, locked: true },
-  { id: "unsub", label: "Lead unsubscribes or opts out", on: true, locked: true },
+  { id: "reply", label: "Audience replies on any channel", on: true, locked: true },
+  { id: "unsub", label: "Audience unsubscribes or opts out", on: true, locked: true },
   { id: "meeting", label: "Meeting is booked", on: true },
   {
     id: "bounce",
@@ -195,14 +195,14 @@ export const STOP_RULES: ToggleRow[] = [
     hint: "Pauses and resumes the day after the return date in the reply",
     on: true,
   },
-  { id: "assign", label: "Assign positive replies to the lead owner", on: true },
+  { id: "assign", label: "Assign positive replies to the audience owner", on: true },
 ];
 
 export const AUDIENCE_RULES: ToggleRow[] = [
   {
     id: "skip-active",
-    label: "Skip leads active in another campaign",
-    hint: "Applied when you upload leads: anyone already in a journey in another campaign is left out and you are told how many",
+    label: "Skip audiences active in another strategy",
+    hint: "Applied when you upload audiences: anyone already in a journey in another strategy is left out and you are told how many",
     on: true,
     locked: true,
   },

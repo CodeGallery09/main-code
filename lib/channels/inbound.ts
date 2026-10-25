@@ -11,7 +11,7 @@
  *
  * **What that means in practice.** The functions here take a provider account id, resolve the row,
  * and then scope every write to the workspace they found. They never accept a workspace id, a
- * lead id or an account id from the request. Nothing here trusts the body beyond the fields the
+ * audience id or an account id from the request. Nothing here trusts the body beyond the fields the
  * normalisers in `events.ts` extract.
  *
  * Server-only. Requires a database: in demo mode there is nothing to write to and the routes say
@@ -24,7 +24,7 @@ import {
   channelAccounts,
   connectSessions,
   events as eventsTable,
-  leads as leadsTable,
+  audiences as audiencesTable,
   messages as messagesTable,
   threads as threadsTable,
 } from "@/lib/db/schema";
@@ -192,8 +192,8 @@ export async function applyAccountStatus(provider: string, event: AccountStatusE
 
   await db.transaction(async (tx) => {
     if (event.status === "deleted") {
-      // Gone at the provider: keep the row and its campaign links, but say it needs reconnecting
-      // rather than deleting a seat the user still sees in their campaigns.
+      // Gone at the provider: keep the row and its strategy links, but say it needs reconnecting
+      // rather than deleting a seat the user still sees in their strategies.
       await tx
         .update(channelAccounts)
         .set({ state: "signed_out", statusDetail: event.detail || "Disconnected at the provider.", lastEventAt: now })
@@ -225,8 +225,8 @@ export type InboundMessageResult =
 /**
  * Records an inbound message on a connected account.
  *
- * Two deliberate limits. **It never invents a lead**: a message from someone the workspace has
- * never uploaded has no lead to hang a conversation on, so it is kept as an event and left out of
+ * Two deliberate limits. **It never invents an audience**: a message from someone the workspace has
+ * never uploaded has no audience to hang a conversation on, so it is kept as an event and left out of
  * the inbox rather than creating a person out of a webhook. **It never counts our own sends**: the
  * provider echoes outbound messages through the same webhook.
  *
@@ -253,19 +253,19 @@ export async function applyInboundMessage(provider: string, event: MessageEvent)
   if (seen) return { stored: false, reason: "duplicate" };
 
   const at = parseSentAt(event.sentAt);
-  const lead = event.senderId || event.senderName ? await matchLead(found.workspaceId, event) : null;
+  const audience = event.senderId || event.senderName ? await matchAudience(found.workspaceId, event) : null;
   const preview = event.text.slice(0, 160);
 
   const threadId = await db.transaction(async (tx) => {
     let id: string | null = null;
-    if (lead) {
+    if (audience) {
       const [open] = await tx
         .select({ id: threadsTable.id })
         .from(threadsTable)
         .where(
           and(
             eq(threadsTable.workspaceId, found.workspaceId),
-            eq(threadsTable.leadId, lead.id),
+            eq(threadsTable.audienceId, audience.id),
             eq(threadsTable.channel, "linkedin"),
           ),
         )
@@ -281,14 +281,14 @@ export async function applyInboundMessage(provider: string, event: MessageEvent)
         await tx.insert(threadsTable).values({
           id,
           workspaceId: found.workspaceId,
-          leadId: lead.id,
+          audienceId: audience.id,
           channel: "linkedin",
-          role: lead.title ?? "",
+          role: audience.title ?? "",
           preview,
           unread: true,
           needsReply: true,
           lastAt: at,
-          campaignId: lead.campaignId,
+          strategyId: audience.strategyId,
         });
       }
       await tx.insert(messagesTable).values({
@@ -308,15 +308,15 @@ export async function applyInboundMessage(provider: string, event: MessageEvent)
       workspaceId: found.workspaceId,
       kind: ACCOUNT_EVENT.message,
       channel: found.channel,
-      leadId: lead?.id ?? null,
-      campaignId: lead?.campaignId ?? null,
+      audienceId: audience?.id ?? null,
+      strategyId: audience?.strategyId ?? null,
       payload: {
         accountId: found.accountId,
         messageId: event.messageId,
         chatId: event.chatId,
         senderId: event.senderId,
         senderName: event.senderName,
-        matchedLead: Boolean(lead),
+        matchedAudience: Boolean(audience),
       },
       occurredAt: at,
     });
@@ -338,24 +338,24 @@ function parseSentAt(raw: string): Date {
 }
 
 /**
- * The lead this sender already is, matched on their LinkedIn handle. Nothing else: a name match
+ * The audience this sender already is, matched on their LinkedIn handle. Nothing else: a name match
  * would attach a stranger's message to the wrong person's conversation.
  */
-async function matchLead(
+async function matchAudience(
   workspaceId: string,
   event: MessageEvent,
-): Promise<{ id: string; title: string | null; campaignId: string | null } | null> {
+): Promise<{ id: string; title: string | null; strategyId: string | null } | null> {
   if (!event.senderId) return null;
   const db = getDb();
   // Handles are stored as the user typed or uploaded them, so match on the public identifier
   // appearing anywhere in the stored value rather than on an exact URL.
   const [row] = await db
-    .select({ id: leadsTable.id, title: leadsTable.title, campaignId: leadsTable.campaignId })
-    .from(leadsTable)
+    .select({ id: audiencesTable.id, title: audiencesTable.title, strategyId: audiencesTable.strategyId })
+    .from(audiencesTable)
     .where(
       and(
-        eq(leadsTable.workspaceId, workspaceId),
-        sql`${leadsTable.linkedin} IS NOT NULL AND position(lower(${event.senderId}) in lower(${leadsTable.linkedin})) > 0`,
+        eq(audiencesTable.workspaceId, workspaceId),
+        sql`${audiencesTable.linkedin} IS NOT NULL AND position(lower(${event.senderId}) in lower(${audiencesTable.linkedin})) > 0`,
       ),
     )
     .limit(1);

@@ -98,9 +98,9 @@ export function FounderBooker() {
 
   const cells = useMemo(() => {
     if (!view) return [];
-    const lead = (new Date(view.getFullYear(), view.getMonth(), 1).getDay() + 6) % 7; // Monday first
+    const audience = (new Date(view.getFullYear(), view.getMonth(), 1).getDay() + 6) % 7; // Monday first
     const count = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate();
-    return [...Array<null>(lead).fill(null), ...Array.from({ length: count }, (_, i) => new Date(view.getFullYear(), view.getMonth(), i + 1))];
+    return [...Array<null>(audience).fill(null), ...Array.from({ length: count }, (_, i) => new Date(view.getFullYear(), view.getMonth(), i + 1))];
   }, [view]);
 
   const canPrev = !!view && !!today && view > new Date(today.getFullYear(), today.getMonth(), 1);
@@ -130,7 +130,7 @@ export function FounderBooker() {
     let value = e.target.value;
     if (name === "fullName") {
       const clean = value.replace(/[^\p{L}\p{M} .'’-]/gu, "").slice(0, FOUNDER_NAME_MAX);
-      if (clean !== value && /\d/.test(value)) pipSay("Letters only in the name, please. Numbers belong in the lead count.", 4200);
+      if (clean !== value && /\d/.test(value)) pipSay("Letters only in the name, please. Numbers belong in the audience count.", 4200);
       value = clean;
     }
     const next = { ...values, [name]: value };

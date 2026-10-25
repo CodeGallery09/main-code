@@ -6,7 +6,7 @@
  * and erasable** so `node --test` can load this file directly (see CLAUDE.md) — that is what
  * makes the write path testable without a database or a server.
  *
- * It validates *shape and range only*. Referential questions ("does this campaign exist in my
+ * It validates *shape and range only*. Referential questions ("does this strategy exist in my
  * workspace?") belong to the repository, which is the only layer that can answer them.
  */
 
@@ -65,7 +65,7 @@ export function normalisePhone(raw: string): string | null {
 
 /**
  * A web URL, with `https://` added when it was typed without a scheme — the same rule the upload
- * applies to a LinkedIn column (`checkUrl` in lib/leads/validation.ts), so a profile added by hand
+ * applies to a LinkedIn column (`checkUrl` in lib/audiences/validation.ts), so a profile added by hand
  * and one imported from a file are stored, and matched, the same way.
  */
 export function normaliseUrl(raw: string): string | null {
@@ -98,9 +98,9 @@ function cleanTags(value: unknown, errors: ValidationErrors): string[] {
   return Array.from(seen);
 }
 
-/* ------------------------------------------------------------------ lead -- */
+/* ------------------------------------------------------------------ audience -- */
 
-export type LeadInput = {
+export type AudienceInput = {
   name: string;
   company: string;
   title: string;
@@ -114,27 +114,27 @@ export type LeadInput = {
   consent: boolean;
   nextStep: string;
   ownerId: string | null;
-  campaignId: string | null;
+  strategyId: string | null;
   starred: boolean;
 };
 
 /** A PATCH body: only the keys actually present are applied. */
-export type LeadPatch = Partial<LeadInput>;
+export type AudiencePatch = Partial<AudienceInput>;
 
 /**
  * `partial` switches between POST (every required field must be present) and PATCH (validate
  * only what was sent). One function for both keeps the two paths from drifting apart.
  */
-export function validateLead(input: unknown, partial = false): Validation<LeadPatch> {
+export function validateAudience(input: unknown, partial = false): Validation<AudiencePatch> {
   const errors: ValidationErrors = {};
   if (!isObject(input)) return { ok: false, errors: { _: "Expected an object." } };
 
-  const out: LeadPatch = {};
+  const out: AudiencePatch = {};
   const has = (key: string) => input[key] !== undefined;
 
   if (has("name") || !partial) {
     const name = text(input.name);
-    if (!name) errors.name = "Enter the lead's name.";
+    if (!name) errors.name = "Enter the audience's name.";
     else if (name.length > NAME_MAX) errors.name = `Keep the name to ${NAME_MAX} characters.`;
     else out.name = name;
   }
@@ -188,7 +188,7 @@ export function validateLead(input: unknown, partial = false): Validation<LeadPa
     out.linkedin = null;
   }
 
-  // A lead added by hand has not been contacted yet, so it starts at "new", like an imported one.
+  // An audience added by hand has not been contacted yet, so it starts at "new", like an imported one.
   if (has("stage") || !partial) {
     const stage = oneOf(input.stage ?? "new", LEAD_STAGES);
     if (!stage) errors.stage = "Pick a valid stage.";
@@ -232,8 +232,8 @@ export function validateLead(input: unknown, partial = false): Validation<LeadPa
   if (has("ownerId")) out.ownerId = text(input.ownerId) || null;
   else if (!partial) out.ownerId = null;
 
-  if (has("campaignId")) out.campaignId = text(input.campaignId) || null;
-  else if (!partial) out.campaignId = null;
+  if (has("strategyId")) out.strategyId = text(input.strategyId) || null;
+  else if (!partial) out.strategyId = null;
 
   if (Object.keys(errors).length) return { ok: false, errors };
   if (partial && Object.keys(out).length === 0) {
@@ -242,9 +242,9 @@ export function validateLead(input: unknown, partial = false): Validation<LeadPa
   return { ok: true, data: out };
 }
 
-/* -------------------------------------------------------------- campaign -- */
+/* -------------------------------------------------------------- strategy -- */
 
-export type CampaignInput = {
+export type StrategyInput = {
   name: string;
   status: (typeof CAMPAIGN_STATUSES)[number];
   type: (typeof CAMPAIGN_TYPES)[number];
@@ -252,18 +252,18 @@ export type CampaignInput = {
   startedAt: string | null;
 };
 
-export type CampaignPatch = Partial<CampaignInput>;
+export type StrategyPatch = Partial<StrategyInput>;
 
-export function validateCampaign(input: unknown, partial = false): Validation<CampaignPatch> {
+export function validateStrategy(input: unknown, partial = false): Validation<StrategyPatch> {
   const errors: ValidationErrors = {};
   if (!isObject(input)) return { ok: false, errors: { _: "Expected an object." } };
 
-  const out: CampaignPatch = {};
+  const out: StrategyPatch = {};
   const has = (key: string) => input[key] !== undefined;
 
   if (has("name") || !partial) {
     const name = text(input.name);
-    if (!name) errors.name = "Name the campaign.";
+    if (!name) errors.name = "Name the strategy.";
     else if (name.length > NAME_MAX) errors.name = `Keep the name to ${NAME_MAX} characters.`;
     else out.name = name;
   }
@@ -301,11 +301,11 @@ export function validateCampaign(input: unknown, partial = false): Validation<Ca
     }
   }
 
-  // A multichannel campaign with one channel is a standalone campaign wearing a hat: the
+  // A multichannel strategy with one channel is a standalone strategy wearing a hat: the
   // workflow builder only opens for `multichannel`, so an empty graph would be unreachable.
   const type = out.type ?? (partial ? null : "standalone");
   if (type === "multichannel" && out.channels && out.channels.length < 2) {
-    errors.channels = "A multichannel campaign needs two or more channels.";
+    errors.channels = "A multichannel strategy needs two or more channels.";
   }
 
   if (has("startedAt")) {
@@ -396,18 +396,18 @@ export function validateAccountPatch(
   return { ok: true, data: out };
 }
 
-/** A list of campaign ids, deduplicated; whether they exist is the repository's check. */
-export function validateCampaignIds(input: unknown): Validation<string[]> {
-  if (!isObject(input) || !Array.isArray(input.campaignIds)) {
-    return { ok: false, errors: { campaignIds: "Send the campaigns as a list." } };
+/** A list of strategy ids, deduplicated; whether they exist is the repository's check. */
+export function validateStrategyIds(input: unknown): Validation<string[]> {
+  if (!isObject(input) || !Array.isArray(input.strategyIds)) {
+    return { ok: false, errors: { strategyIds: "Send the strategies as a list." } };
   }
   const ids = new Set<string>();
-  for (const entry of input.campaignIds) {
+  for (const entry of input.strategyIds) {
     const id = text(entry);
-    if (!id || id.length > 64) return { ok: false, errors: { campaignIds: "Each campaign must be an id." } };
+    if (!id || id.length > 64) return { ok: false, errors: { strategyIds: "Each strategy must be an id." } };
     ids.add(id);
   }
-  if (ids.size > 200) return { ok: false, errors: { campaignIds: "Too many campaigns." } };
+  if (ids.size > 200) return { ok: false, errors: { strategyIds: "Too many strategies." } };
   return { ok: true, data: [...ids] };
 }
 
@@ -480,7 +480,7 @@ export type SendingRulesInput = {
   days: string[];
   from: string;
   to: string;
-  timezone: "lead" | "workspace";
+  timezone: "audience" | "workspace";
   holidays: string[];
   limitOn: boolean;
   perDay: number;
@@ -521,7 +521,7 @@ export function validateSendingRulesPatch(input: unknown): Validation<SendingRul
     else out.to = input.to;
   }
   if (has("timezone")) {
-    const tz = oneOf(input.timezone, ["lead", "workspace"] as const);
+    const tz = oneOf(input.timezone, ["audience", "workspace"] as const);
     if (!tz) errors.timezone = "Pick a valid time zone.";
     else out.timezone = tz;
   }

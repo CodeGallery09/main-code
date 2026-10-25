@@ -38,7 +38,7 @@ const TEMPLATES: Template[] = [
   {
     name: "Net-new outbound",
     nodes: {
-      t: { label: "New lead list", sub: "Trigger", kind: "trigger" },
+      t: { label: "New audience list", sub: "Trigger", kind: "trigger" },
       a: { label: "Connect", sub: "LinkedIn", kind: "linkedin" },
       b: { label: "Message", sub: "Once accepted", kind: "linkedin" },
       c: { label: "Follow-up", sub: "Email · if no reply", kind: "email" },
@@ -69,7 +69,7 @@ const TEMPLATES: Template[] = [
     branch: "yes",
     ifNote: "replied by email → true",
     result: { text: "21.5% · in range", good: true },
-    say: "She replied, so a human takes it from here. No bot pestering a warm lead.",
+    say: "She replied, so a human takes it from here. No bot pestering a warm audience.",
   },
   {
     name: "Closed-lost re-engage",

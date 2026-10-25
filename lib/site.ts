@@ -20,5 +20,5 @@ export const NAV_LINKS = [
 export const LOGIN_HREF = "/login";
 export const SIGNUP_HREF = "/signup";
 export const DASHBOARD_HREF = "/dashboard";
-/** Where a brand-new account lands: its sample campaign is here, and "Create campaign" is the next step. */
-export const FIRST_RUN_HREF = "/dashboard/campaigns";
+/** Where a brand-new account lands: its sample strategy is here, and "Create strategy" is the next step. */
+export const FIRST_RUN_HREF = "/dashboard/strategies";

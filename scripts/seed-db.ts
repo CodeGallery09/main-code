@@ -17,10 +17,10 @@ import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
 import {
-  campaigns,
+  strategies,
   channelQuotas,
   dailyRollups,
-  leads,
+  audiences,
   memberships,
   messages,
   tasks,
@@ -45,15 +45,15 @@ const TEAM = [
   { id: "u_3", name: "Ravi Verma", email: "ravi@acmegrowth.example", role: "member" as const, tz: "Asia/Kolkata" },
 ];
 
-/* ------------------------------------------------------------- campaigns -- */
+/* ------------------------------------------------------------- strategies -- */
 
-type SeedCampaign = {
+type SeedStrategy = {
   id: string;
   name: string;
   status: "live" | "scheduled" | "paused" | "draft" | "completed";
   type: "standalone" | "multichannel";
   channels: ChannelName[];
-  leads: number;
+  audiences: number;
   version: string | null;
   daysAgo: number;
   sent: number | null;
@@ -63,23 +63,23 @@ type SeedCampaign = {
   clicks: number | null;
 };
 
-const CAMPAIGNS: SeedCampaign[] = [
-  { id: "c_launch_v3", name: "Product launch · v3", status: "scheduled", type: "standalone", channels: ["email"], leads: 5200, version: null, daysAgo: -12, sent: null, delivered: null, openRate: null, replyRate: null, clicks: null },
-  { id: "c_net_new", name: "Net-new outbound", status: "live", type: "multichannel", channels: ["linkedin", "email", "call"], leads: 612, version: "v2", daysAgo: 30, sent: 4820, delivered: 4712, openRate: 41.2, replyRate: 6.8, clicks: 388 },
-  { id: "c_webinar", name: "Q4 webinar invite", status: "live", type: "standalone", channels: ["email"], leads: 2400, version: "v1", daysAgo: 15, sent: 2400, delivered: 2338, openRate: 38.4, replyRate: 3.1, clicks: 201 },
-  { id: "c_inbound", name: "Inbound follow-up", status: "live", type: "multichannel", channels: ["email", "whatsapp", "call"], leads: 214, version: "v1", daysAgo: 70, sent: 1340, delivered: 1312, openRate: 52.6, replyRate: 12.4, clicks: 176 },
-  { id: "c_trial", name: "Trial expiring · Oct cohort", status: "live", type: "standalone", channels: ["email"], leads: 640, version: "v1", daysAgo: 20, sent: 1880, delivered: 1844, openRate: 47.1, replyRate: 8.2, clicks: 149 },
-  { id: "c_saasboomi", name: "SaaSBoomi follow-up", status: "live", type: "standalone", channels: ["linkedin"], leads: 180, version: "v1", daysAgo: 10, sent: 180, delivered: 174, openRate: null, replyRate: 14.6, clicks: null },
-  { id: "c_relapse", name: "Closed-lost re-engage", status: "live", type: "multichannel", channels: ["email", "linkedin", "sms"], leads: 458, version: "v1", daysAgo: 22, sent: 1620, delivered: 1588, openRate: 33.8, replyRate: 5.4, clicks: 118 },
-  { id: "c_renewal", name: "Renewal check-ins", status: "live", type: "standalone", channels: ["call"], leads: 96, version: "v1", daysAgo: 30, sent: 96, delivered: 92, openRate: null, replyRate: 36.2, clicks: null },
-  { id: "c_demo_rem", name: "Demo reminders", status: "paused", type: "standalone", channels: ["sms"], leads: 420, version: "v1", daysAgo: 60, sent: 840, delivered: 822, openRate: null, replyRate: 4.9, clicks: null },
-  { id: "c_event", name: "Event follow-up", status: "paused", type: "multichannel", channels: ["whatsapp", "call", "email"], leads: 180, version: "v1", daysAgo: 100, sent: 520, delivered: 508, openRate: 44.0, replyRate: 9.7, clicks: 61 },
-  { id: "c_draft_apac", name: "APAC expansion (draft)", status: "draft", type: "multichannel", channels: ["linkedin", "email"], leads: 0, version: null, daysAgo: 2, sent: null, delivered: null, openRate: null, replyRate: null, clicks: null },
+const CAMPAIGNS: SeedStrategy[] = [
+  { id: "c_launch_v3", name: "Product launch · v3", status: "scheduled", type: "standalone", channels: ["email"], audiences: 5200, version: null, daysAgo: -12, sent: null, delivered: null, openRate: null, replyRate: null, clicks: null },
+  { id: "c_net_new", name: "Net-new outbound", status: "live", type: "multichannel", channels: ["linkedin", "email", "call"], audiences: 612, version: "v2", daysAgo: 30, sent: 4820, delivered: 4712, openRate: 41.2, replyRate: 6.8, clicks: 388 },
+  { id: "c_webinar", name: "Q4 webinar invite", status: "live", type: "standalone", channels: ["email"], audiences: 2400, version: "v1", daysAgo: 15, sent: 2400, delivered: 2338, openRate: 38.4, replyRate: 3.1, clicks: 201 },
+  { id: "c_inbound", name: "Inbound follow-up", status: "live", type: "multichannel", channels: ["email", "whatsapp", "call"], audiences: 214, version: "v1", daysAgo: 70, sent: 1340, delivered: 1312, openRate: 52.6, replyRate: 12.4, clicks: 176 },
+  { id: "c_trial", name: "Trial expiring · Oct cohort", status: "live", type: "standalone", channels: ["email"], audiences: 640, version: "v1", daysAgo: 20, sent: 1880, delivered: 1844, openRate: 47.1, replyRate: 8.2, clicks: 149 },
+  { id: "c_saasboomi", name: "SaaSBoomi follow-up", status: "live", type: "standalone", channels: ["linkedin"], audiences: 180, version: "v1", daysAgo: 10, sent: 180, delivered: 174, openRate: null, replyRate: 14.6, clicks: null },
+  { id: "c_relapse", name: "Closed-lost re-engage", status: "live", type: "multichannel", channels: ["email", "linkedin", "sms"], audiences: 458, version: "v1", daysAgo: 22, sent: 1620, delivered: 1588, openRate: 33.8, replyRate: 5.4, clicks: 118 },
+  { id: "c_renewal", name: "Renewal check-ins", status: "live", type: "standalone", channels: ["call"], audiences: 96, version: "v1", daysAgo: 30, sent: 96, delivered: 92, openRate: null, replyRate: 36.2, clicks: null },
+  { id: "c_demo_rem", name: "Demo reminders", status: "paused", type: "standalone", channels: ["sms"], audiences: 420, version: "v1", daysAgo: 60, sent: 840, delivered: 822, openRate: null, replyRate: 4.9, clicks: null },
+  { id: "c_event", name: "Event follow-up", status: "paused", type: "multichannel", channels: ["whatsapp", "call", "email"], audiences: 180, version: "v1", daysAgo: 100, sent: 520, delivered: 508, openRate: 44.0, replyRate: 9.7, clicks: 61 },
+  { id: "c_draft_apac", name: "APAC expansion (draft)", status: "draft", type: "multichannel", channels: ["linkedin", "email"], audiences: 0, version: null, daysAgo: 2, sent: null, delivered: null, openRate: null, replyRate: null, clicks: null },
 ];
 
-/* ----------------------------------------------------------------- leads -- */
+/* ----------------------------------------------------------------- audiences -- */
 
-type SeedLead = {
+type SeedAudience = {
   id: string;
   name: string;
   company: string;
@@ -90,7 +90,7 @@ type SeedLead = {
   tags: string[];
   consent: boolean;
   owner: string;
-  campaignId: string | null;
+  strategyId: string | null;
   nextStep: string;
   phone: string | null;
   email: string | null;
@@ -100,29 +100,29 @@ type SeedLead = {
   avgCallSeconds: number | null;
 };
 
-const LEADS: SeedLead[] = [
-  { id: "l_omar", name: "Omar Haddad", company: "Brightline Logistics", role: "Head of Ops", stage: "hot", score: 80, source: "linkedin", tags: ["pricing", "8 seats"], consent: true, owner: "u_1", campaignId: "c_net_new", nextStep: "Send pricing for 8 seats", phone: "+971500000001", email: "omar@brightline.example", starred: true, messageCount: 6, callCount: 1, avgCallSeconds: 212 },
-  { id: "l_maya", name: "Maya Reyes", company: "Example Co", role: "VP Sales", stage: "hot", score: 70, source: "form", tags: ["clicked pricing"], consent: true, owner: "u_1", campaignId: "c_inbound", nextStep: "Call today", phone: "+6391000002", email: "maya@example.example", starred: true, messageCount: 4, callCount: 2, avgCallSeconds: 184 },
-  { id: "l_priya", name: "Priya Nair", company: "Kitebox", role: "Founder", stage: "hot", score: 72, source: "event", tags: ["pricing x2"], consent: true, owner: "u_2", campaignId: "c_saasboomi", nextStep: "Call today", phone: "+919000000003", email: "priya@kitebox.example", starred: false, messageCount: 3, callCount: 0, avgCallSeconds: null },
-  { id: "l_rohan", name: "Rohan Desai", company: "Tiffin Labs", role: "Growth Lead", stage: "engaged", score: 58, source: "linkedin", tags: ["deck"], consent: true, owner: "u_1", campaignId: "c_net_new", nextStep: "Send deck", phone: "+919000000004", email: "rohan@tiffinlabs.example", starred: false, messageCount: 5, callCount: 0, avgCallSeconds: null },
-  { id: "l_kenji", name: "Kenji Tanaka", company: "Northwind KK", role: "Sales Director", stage: "meeting", score: 86, source: "crm", tags: ["booked"], consent: true, owner: "u_2", campaignId: "c_inbound", nextStep: "Prep call notes", phone: "+815000000005", email: "kenji@northwind.example", starred: true, messageCount: 9, callCount: 3, avgCallSeconds: 341 },
-  { id: "l_sara", name: "Sara Oyelaran", company: "Lagos Freight", role: "COO", stage: "engaged", score: 54, source: "csv", tags: ["opened 3x"], consent: true, owner: "u_3", campaignId: "c_relapse", nextStep: "Follow up Thursday", phone: null, email: "sara@lagosfreight.example", starred: false, messageCount: 2, callCount: 0, avgCallSeconds: null },
-  { id: "l_tom", name: "Tom Blackwood", company: "Pennine Tools", role: "MD", stage: "reaching", score: 24, source: "csv", tags: [], consent: true, owner: "u_3", campaignId: "c_webinar", nextStep: "Awaiting first reply", phone: null, email: "tom@penninetools.example", starred: false, messageCount: 1, callCount: 0, avgCallSeconds: null },
-  { id: "l_ana", name: "Ana Brito", company: "Serra Sistemas", role: "Head of RevOps", stage: "engaged", score: 61, source: "linkedin", tags: ["accepted", "profile view"], consent: true, owner: "u_1", campaignId: "c_net_new", nextStep: "Share case study", phone: null, email: "ana@serra.example", starred: false, messageCount: 4, callCount: 0, avgCallSeconds: null },
-  { id: "l_david", name: "David Okonkwo", company: "Harbour Fin", role: "CFO", stage: "nurture", score: 32, source: "form", tags: ["not now"], consent: true, owner: "u_2", campaignId: "c_trial", nextStep: "Revisit in Q1", phone: null, email: "david@harbourfin.example", starred: false, messageCount: 3, callCount: 1, avgCallSeconds: 96 },
-  { id: "l_lena", name: "Lena Fischer", company: "Alpenmetall", role: "Procurement", stage: "stopped", score: 0, source: "csv", tags: ["opt-out"], consent: false, owner: "u_3", campaignId: "c_relapse", nextStep: "Do not contact", phone: null, email: "lena@alpenmetall.example", starred: false, messageCount: 2, callCount: 0, avgCallSeconds: null },
-  { id: "l_james", name: "James Whitfield", company: "Cobalt Health", role: "Director", stage: "new", score: 12, source: "event", tags: [], consent: true, owner: "u_1", campaignId: null, nextStep: "Add to sequence", phone: null, email: "james@cobalthealth.example", starred: false, messageCount: 0, callCount: 0, avgCallSeconds: null },
-  { id: "l_fatima", name: "Fatima Al-Sayed", company: "Gulf Retail Group", role: "Head of Sales", stage: "meeting", score: 78, source: "linkedin", tags: ["booked", "champion"], consent: true, owner: "u_2", campaignId: "c_net_new", nextStep: "Demo Thursday 3pm", phone: "+971500000012", email: "fatima@gulfretail.example", starred: true, messageCount: 7, callCount: 2, avgCallSeconds: 268 },
-  { id: "l_wei", name: "Wei Zhang", company: "Lintong Materials", role: "GM", stage: "paused", score: 28, source: "crm", tags: ["holiday"], consent: true, owner: "u_3", campaignId: "c_event", nextStep: "Resume after 20th", phone: null, email: "wei@lintong.example", starred: false, messageCount: 2, callCount: 0, avgCallSeconds: null },
-  { id: "l_grace", name: "Grace Mwangi", company: "Savannah Agri", role: "Ops Manager", stage: "closed", score: 92, source: "form", tags: ["won"], consent: true, owner: "u_1", campaignId: "c_inbound", nextStep: "Handover to onboarding", phone: null, email: "grace@savannahagri.example", starred: false, messageCount: 12, callCount: 4, avgCallSeconds: 402 },
-  { id: "l_marco", name: "Marco Rossi", company: "Veneto Logistica", role: "Owner", stage: "reaching", score: 18, source: "csv", tags: [], consent: true, owner: "u_3", campaignId: "c_webinar", nextStep: "Second touch queued", phone: null, email: "marco@venetolog.example", starred: false, messageCount: 1, callCount: 0, avgCallSeconds: null },
+const LEADS: SeedAudience[] = [
+  { id: "l_omar", name: "Omar Haddad", company: "Brightline Logistics", role: "Head of Ops", stage: "hot", score: 80, source: "linkedin", tags: ["pricing", "8 seats"], consent: true, owner: "u_1", strategyId: "c_net_new", nextStep: "Send pricing for 8 seats", phone: "+971500000001", email: "omar@brightline.example", starred: true, messageCount: 6, callCount: 1, avgCallSeconds: 212 },
+  { id: "l_maya", name: "Maya Reyes", company: "Example Co", role: "VP Sales", stage: "hot", score: 70, source: "form", tags: ["clicked pricing"], consent: true, owner: "u_1", strategyId: "c_inbound", nextStep: "Call today", phone: "+6391000002", email: "maya@example.example", starred: true, messageCount: 4, callCount: 2, avgCallSeconds: 184 },
+  { id: "l_priya", name: "Priya Nair", company: "Kitebox", role: "Founder", stage: "hot", score: 72, source: "event", tags: ["pricing x2"], consent: true, owner: "u_2", strategyId: "c_saasboomi", nextStep: "Call today", phone: "+919000000003", email: "priya@kitebox.example", starred: false, messageCount: 3, callCount: 0, avgCallSeconds: null },
+  { id: "l_rohan", name: "Rohan Desai", company: "Tiffin Labs", role: "Growth Audience", stage: "engaged", score: 58, source: "linkedin", tags: ["deck"], consent: true, owner: "u_1", strategyId: "c_net_new", nextStep: "Send deck", phone: "+919000000004", email: "rohan@tiffinlabs.example", starred: false, messageCount: 5, callCount: 0, avgCallSeconds: null },
+  { id: "l_kenji", name: "Kenji Tanaka", company: "Northwind KK", role: "Sales Director", stage: "meeting", score: 86, source: "crm", tags: ["booked"], consent: true, owner: "u_2", strategyId: "c_inbound", nextStep: "Prep call notes", phone: "+815000000005", email: "kenji@northwind.example", starred: true, messageCount: 9, callCount: 3, avgCallSeconds: 341 },
+  { id: "l_sara", name: "Sara Oyelaran", company: "Lagos Freight", role: "COO", stage: "engaged", score: 54, source: "csv", tags: ["opened 3x"], consent: true, owner: "u_3", strategyId: "c_relapse", nextStep: "Follow up Thursday", phone: null, email: "sara@lagosfreight.example", starred: false, messageCount: 2, callCount: 0, avgCallSeconds: null },
+  { id: "l_tom", name: "Tom Blackwood", company: "Pennine Tools", role: "MD", stage: "reaching", score: 24, source: "csv", tags: [], consent: true, owner: "u_3", strategyId: "c_webinar", nextStep: "Awaiting first reply", phone: null, email: "tom@penninetools.example", starred: false, messageCount: 1, callCount: 0, avgCallSeconds: null },
+  { id: "l_ana", name: "Ana Brito", company: "Serra Sistemas", role: "Head of RevOps", stage: "engaged", score: 61, source: "linkedin", tags: ["accepted", "profile view"], consent: true, owner: "u_1", strategyId: "c_net_new", nextStep: "Share case study", phone: null, email: "ana@serra.example", starred: false, messageCount: 4, callCount: 0, avgCallSeconds: null },
+  { id: "l_david", name: "David Okonkwo", company: "Harbour Fin", role: "CFO", stage: "nurture", score: 32, source: "form", tags: ["not now"], consent: true, owner: "u_2", strategyId: "c_trial", nextStep: "Revisit in Q1", phone: null, email: "david@harbourfin.example", starred: false, messageCount: 3, callCount: 1, avgCallSeconds: 96 },
+  { id: "l_lena", name: "Lena Fischer", company: "Alpenmetall", role: "Procurement", stage: "stopped", score: 0, source: "csv", tags: ["opt-out"], consent: false, owner: "u_3", strategyId: "c_relapse", nextStep: "Do not contact", phone: null, email: "lena@alpenmetall.example", starred: false, messageCount: 2, callCount: 0, avgCallSeconds: null },
+  { id: "l_james", name: "James Whitfield", company: "Cobalt Health", role: "Director", stage: "new", score: 12, source: "event", tags: [], consent: true, owner: "u_1", strategyId: null, nextStep: "Add to sequence", phone: null, email: "james@cobalthealth.example", starred: false, messageCount: 0, callCount: 0, avgCallSeconds: null },
+  { id: "l_fatima", name: "Fatima Al-Sayed", company: "Gulf Retail Group", role: "Head of Sales", stage: "meeting", score: 78, source: "linkedin", tags: ["booked", "champion"], consent: true, owner: "u_2", strategyId: "c_net_new", nextStep: "Demo Thursday 3pm", phone: "+971500000012", email: "fatima@gulfretail.example", starred: true, messageCount: 7, callCount: 2, avgCallSeconds: 268 },
+  { id: "l_wei", name: "Wei Zhang", company: "Lintong Materials", role: "GM", stage: "paused", score: 28, source: "crm", tags: ["holiday"], consent: true, owner: "u_3", strategyId: "c_event", nextStep: "Resume after 20th", phone: null, email: "wei@lintong.example", starred: false, messageCount: 2, callCount: 0, avgCallSeconds: null },
+  { id: "l_grace", name: "Grace Mwangi", company: "Savannah Agri", role: "Ops Manager", stage: "closed", score: 92, source: "form", tags: ["won"], consent: true, owner: "u_1", strategyId: "c_inbound", nextStep: "Handover to onboarding", phone: null, email: "grace@savannahagri.example", starred: false, messageCount: 12, callCount: 4, avgCallSeconds: 402 },
+  { id: "l_marco", name: "Marco Rossi", company: "Veneto Logistica", role: "Owner", stage: "reaching", score: 18, source: "csv", tags: [], consent: true, owner: "u_3", strategyId: "c_webinar", nextStep: "Second touch queued", phone: null, email: "marco@venetolog.example", starred: false, messageCount: 1, callCount: 0, avgCallSeconds: null },
 ];
 
 /* --------------------------------------------------------------- threads -- */
 
 type SeedThread = {
   id: string;
-  leadId: string;
+  audienceId: string;
   channel: ChannelName;
   intent: "interested" | "question" | "objection" | "out-of-office" | "opt-out";
   preview: string;
@@ -135,7 +135,7 @@ type SeedThread = {
 
 const THREADS: SeedThread[] = [
   {
-    id: "t_omar", leadId: "l_omar", channel: "email", intent: "interested",
+    id: "t_omar", audienceId: "l_omar", channel: "email", intent: "interested",
     preview: "What would 8 seats cost us annually?", unread: true, needsReply: true, minutesAgo: 35,
     signals: [{ label: "Replied", points: 30 }, { label: "Visited pricing twice", points: 20 }, { label: "Opened email 3×", points: 18 }],
     messages: [
@@ -144,7 +144,7 @@ const THREADS: SeedThread[] = [
     ],
   },
   {
-    id: "t_rohan", leadId: "l_rohan", channel: "whatsapp", intent: "question",
+    id: "t_rohan", audienceId: "l_rohan", channel: "whatsapp", intent: "question",
     preview: "Can you send a deck I can share internally?", unread: true, needsReply: true, minutesAgo: 20,
     signals: [{ label: "Replied", points: 30 }, { label: "Read WhatsApp", points: 8 }],
     messages: [
@@ -153,7 +153,7 @@ const THREADS: SeedThread[] = [
     ],
   },
   {
-    id: "t_kenji", leadId: "l_kenji", channel: "email", intent: "interested",
+    id: "t_kenji", audienceId: "l_kenji", channel: "email", intent: "interested",
     preview: "Thursday 3pm JST works. Calendar invite sent.", unread: false, needsReply: false, minutesAgo: 300,
     signals: [{ label: "Replied", points: 30 }, { label: "Clicked a link", points: 20 }, { label: "Visited pricing", points: 12 }],
     messages: [
@@ -162,7 +162,7 @@ const THREADS: SeedThread[] = [
     ],
   },
   {
-    id: "t_david", leadId: "l_david", channel: "email", intent: "objection",
+    id: "t_david", audienceId: "l_david", channel: "email", intent: "objection",
     preview: "Budget is frozen until the new fiscal year.", unread: false, needsReply: true, minutesAgo: 1200,
     signals: [{ label: "Replied “not now”", points: 10 }],
     messages: [
@@ -171,7 +171,7 @@ const THREADS: SeedThread[] = [
     ],
   },
   {
-    id: "t_lena", leadId: "l_lena", channel: "email", intent: "opt-out",
+    id: "t_lena", audienceId: "l_lena", channel: "email", intent: "opt-out",
     preview: "Please remove me from your list.", unread: false, needsReply: false, minutesAgo: 4000,
     signals: [{ label: "Asked to be removed", points: -100 }],
     messages: [
@@ -180,16 +180,16 @@ const THREADS: SeedThread[] = [
     ],
   },
   {
-    id: "t_fatima", leadId: "l_fatima", channel: "linkedin", intent: "interested",
-    preview: "Sending this to our RevOps lead now.", unread: true, needsReply: true, minutesAgo: 90,
+    id: "t_fatima", audienceId: "l_fatima", channel: "linkedin", intent: "interested",
+    preview: "Sending this to our RevOps audience now.", unread: true, needsReply: true, minutesAgo: 90,
     signals: [{ label: "Replied", points: 30 }, { label: "Accepted connection", points: 10 }, { label: "Viewed your profile", points: 4 }],
     messages: [
       { from: "us", body: "Thanks for connecting, Fatima. Most retail teams we speak to are stitching three tools together — is that your setup?", minutesAgo: 900 },
-      { from: "them", body: "Pretty much. Sending this to our RevOps lead now.", minutesAgo: 90 },
+      { from: "them", body: "Pretty much. Sending this to our RevOps audience now.", minutesAgo: 90 },
     ],
   },
   {
-    id: "t_wei", leadId: "l_wei", channel: "email", intent: "out-of-office",
+    id: "t_wei", audienceId: "l_wei", channel: "email", intent: "out-of-office",
     preview: "Out of office until the 20th.", unread: false, needsReply: false, minutesAgo: 2400,
     signals: [{ label: "Out of office", points: 0 }],
     messages: [
@@ -202,12 +202,12 @@ const THREADS: SeedThread[] = [
 /* ----------------------------------------------------------------- tasks -- */
 
 const TASKS = [
-  { id: "tk_omar", kind: "reply" as const, leadId: "l_omar", summary: "Asked about pricing for 8 seats", when: "35m", channel: "email" as ChannelName },
-  { id: "tk_rohan", kind: "reply" as const, leadId: "l_rohan", summary: "Asked for a deck", when: "20m", channel: "whatsapp" as ChannelName },
-  { id: "tk_fatima", kind: "reply" as const, leadId: "l_fatima", summary: "Forwarding to RevOps lead", when: "1h", channel: "linkedin" as ChannelName },
-  { id: "tk_maya", kind: "call" as const, leadId: "l_maya", summary: "Open to a chat · clicked pricing", when: "Today", channel: "call" as ChannelName },
-  { id: "tk_priya", kind: "call" as const, leadId: "l_priya", summary: "Visited pricing twice", when: "Today", channel: "call" as ChannelName },
-  { id: "tk_kenji", kind: "review" as const, leadId: "l_kenji", summary: "Prep notes before Thursday demo", when: "Waiting", channel: "email" as ChannelName },
+  { id: "tk_omar", kind: "reply" as const, audienceId: "l_omar", summary: "Asked about pricing for 8 seats", when: "35m", channel: "email" as ChannelName },
+  { id: "tk_rohan", kind: "reply" as const, audienceId: "l_rohan", summary: "Asked for a deck", when: "20m", channel: "whatsapp" as ChannelName },
+  { id: "tk_fatima", kind: "reply" as const, audienceId: "l_fatima", summary: "Forwarding to RevOps audience", when: "1h", channel: "linkedin" as ChannelName },
+  { id: "tk_maya", kind: "call" as const, audienceId: "l_maya", summary: "Open to a chat · clicked pricing", when: "Today", channel: "call" as ChannelName },
+  { id: "tk_priya", kind: "call" as const, audienceId: "l_priya", summary: "Visited pricing twice", when: "Today", channel: "call" as ChannelName },
+  { id: "tk_kenji", kind: "review" as const, audienceId: "l_kenji", summary: "Prep notes before Thursday demo", when: "Waiting", channel: "email" as ChannelName },
 ];
 
 /* --------------------------------------------------------------- rollups -- */
@@ -341,7 +341,7 @@ async function main() {
 
     await db.insert(channelQuotas).values(QUOTAS.map((q) => ({ ...q, workspaceId: WORKSPACE_ID })));
 
-    await db.insert(campaigns).values(
+    await db.insert(strategies).values(
       CAMPAIGNS.map((c) => ({
         id: c.id,
         workspaceId: WORKSPACE_ID,
@@ -351,7 +351,7 @@ async function main() {
         channels: c.channels,
         version: c.version,
         startedAt: daysAgoDate(c.daysAgo),
-        leads: c.leads,
+        audiences: c.audiences,
         sent: c.sent,
         delivered: c.delivered,
         // numeric columns take strings, so the exact decimal is preserved.
@@ -361,7 +361,7 @@ async function main() {
       })),
     );
 
-    await db.insert(leads).values(
+    await db.insert(audiences).values(
       LEADS.map((l) => ({
         id: l.id,
         workspaceId: WORKSPACE_ID,
@@ -380,7 +380,7 @@ async function main() {
         callCount: l.callCount,
         nextStep: l.nextStep,
         ownerId: l.owner,
-        campaignId: l.campaignId,
+        strategyId: l.strategyId,
         starred: l.starred,
         updatedAt: minutesAgo(Math.round(Math.abs(Math.sin(l.id.length * 7)) * 4000)),
       })),
@@ -388,20 +388,20 @@ async function main() {
 
     await db.insert(threads).values(
       THREADS.map((t) => {
-        const lead = LEADS.find((l) => l.id === t.leadId);
+        const audience = LEADS.find((l) => l.id === t.audienceId);
         return {
           id: t.id,
           workspaceId: WORKSPACE_ID,
-          leadId: t.leadId,
+          audienceId: t.audienceId,
           channel: t.channel,
           intent: t.intent,
-          role: lead?.role ?? "",
+          role: audience?.role ?? "",
           preview: t.preview,
           unread: t.unread,
           needsReply: t.needsReply,
           lastAt: minutesAgo(t.minutesAgo),
-          campaignId: lead?.campaignId ?? null,
-          ownerId: lead?.owner ?? null,
+          strategyId: audience?.strategyId ?? null,
+          ownerId: audience?.owner ?? null,
           signals: t.signals,
         };
       }),
@@ -426,7 +426,7 @@ async function main() {
         id: t.id,
         workspaceId: WORKSPACE_ID,
         kind: t.kind,
-        leadId: t.leadId,
+        audienceId: t.audienceId,
         summary: t.summary,
         channel: t.channel,
         whenLabel: t.when,
@@ -444,8 +444,8 @@ async function main() {
       [
         "Seeded workspace " + WORKSPACE_ID,
         `  users         ${TEAM.length}`,
-        `  campaigns     ${CAMPAIGNS.length}`,
-        `  leads         ${LEADS.length}`,
+        `  strategies     ${CAMPAIGNS.length}`,
+        `  audiences         ${LEADS.length}`,
         `  threads       ${THREADS.length} (${messageRows.length} messages)`,
         `  tasks         ${TASKS.length}`,
         `  daily rollups ${rollups.length} (${ROLLUP_DAYS} days × 5 channels)`,

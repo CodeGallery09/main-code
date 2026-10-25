@@ -30,7 +30,7 @@ test("every template produces a graph the validator accepts", () => {
   }
 });
 
-test("a template graph starts from the campaign's own leads, not a demo list", () => {
+test("a template graph starts from the strategy's own audiences, not a demo list", () => {
   const audience = graphFromTemplate("outbound").nodes.find((n) => n.kind === "audience");
   assert.equal(audience.data.list, AUDIENCE_CAMPAIGN);
 });
@@ -48,7 +48,7 @@ test("a graph survives toGraph, JSON and fromGraph unchanged", () => {
   assert.deepEqual(checked.data, graph);
 
   const workflow = fromGraph(checked.data, { id: "c_1", name: "Mine", status: "draft", started: null });
-  assert.equal(workflow.id, "c_1", "the id is the campaign's string id");
+  assert.equal(workflow.id, "c_1", "the id is the strategy's string id");
   assert.deepEqual(toGraph(workflow), graph);
 });
 
@@ -183,7 +183,7 @@ test("one socket leads to one step", () => {
   const first = graph.edges[0];
   const other = graph.nodes.find((n) => n.id !== first.source && n.id !== first.target && n.kind !== "audience");
   graph.edges.push({ id: "dup-socket", source: first.source, target: other.id, port: first.port });
-  refused(graph, /already leads somewhere/);
+  refused(graph, /already audiences somewhere/);
 });
 
 test("a cycle is refused — the canvas walks the graph recursively and would hang", () => {

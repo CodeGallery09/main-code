@@ -7,7 +7,7 @@ export const CHALLENGES = [
   "Finding the right audience",
   "Coordinating outreach channels",
   "Improving replies/conversions",
-  "Understanding campaign performance",
+  "Understanding strategy performance",
   "Managing compliance",
   "Other",
 ] as const;

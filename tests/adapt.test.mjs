@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {
   hasRun,
   relativeTime,
-  toAppCampaign,
-  toAppLead,
+  toAppStrategy,
+  toAppAudience,
   toChannel,
   toChannelKey,
   toStage,
@@ -24,7 +24,7 @@ test("every channel round-trips", () => {
   assert.equal(toChannelKey("whatsapp"), "wa");
 });
 
-test("every lead stage round-trips, including the widened values", () => {
+test("every audience stage round-trips, including the widened values", () => {
   for (const stage of [
     "new",
     "reaching",
@@ -42,7 +42,7 @@ test("every lead stage round-trips, including the widened values", () => {
   assert.equal(toStageLabel("stopped"), "Stopped", "a won deal and an opt-out stay distinct");
 });
 
-/* --------------------------------------------------------------------- lead -- */
+/* --------------------------------------------------------------------- audience -- */
 
 const LEAD = {
   id: "l_omar",
@@ -63,13 +63,13 @@ const LEAD = {
   nextStep: "Send pricing for 8 seats",
   ownerId: "u_1",
   ownerName: "Aarav Kapoor",
-  campaignId: "c_net_new",
+  strategyId: "c_net_new",
   starred: true,
   updatedAt: new Date().toISOString(),
 };
 
-test("a lead maps onto the table's shape", () => {
-  const row = toAppLead(LEAD);
+test("an audience maps onto the table's shape", () => {
+  const row = toAppAudience(LEAD);
   assert.equal(row.id, "l_omar", "the string id is kept, so the row can address the API");
   assert.equal(row.n, "Omar Haddad");
   assert.equal(row.c, "Brightline Logistics");
@@ -86,38 +86,38 @@ test("a lead maps onto the table's shape", () => {
 });
 
 test("the title becomes a derived tag, after the stored ones", () => {
-  const row = toAppLead(LEAD);
+  const row = toAppAudience(LEAD);
   assert.deepEqual(row.tags, ["pricing", "8 seats", "Title: VP Sales"]);
 });
 
-test("a lead with no title gets no title tag", () => {
-  const row = toAppLead({ ...LEAD, title: "" });
+test("an audience with no title gets no title tag", () => {
+  const row = toAppAudience({ ...LEAD, title: "" });
   assert.deepEqual(row.tags, ["pricing", "8 seats"]);
 });
 
 test("the editor's fields survive the mapping, so an edit cannot silently drop them", () => {
-  const row = toAppLead(LEAD);
-  assert.equal(row.campaignId, "c_net_new");
+  const row = toAppAudience(LEAD);
+  assert.equal(row.strategyId, "c_net_new");
   assert.equal(row.ownerId, "u_1");
   assert.equal(row.source, "linkedin");
 });
 
 test("a missing next step renders as an em dash, not an empty cell", () => {
-  assert.equal(toAppLead({ ...LEAD, nextStep: "" }).next, "—");
+  assert.equal(toAppAudience({ ...LEAD, nextStep: "" }).next, "—");
 });
 
 test("nulls become the shapes the table expects", () => {
-  const row = toAppLead({ ...LEAD, phone: null, email: null, avgCallSeconds: null });
+  const row = toAppAudience({ ...LEAD, phone: null, email: null, avgCallSeconds: null });
   assert.equal(row.ph, undefined, "the phone cell checks for undefined");
   assert.equal(row.email, "");
   assert.equal(row.avgCall, null);
 });
 
 test("an unassigned owner does not produce initials from nothing", () => {
-  assert.equal(toAppLead({ ...LEAD, ownerName: "Unassigned" }).own, "U");
+  assert.equal(toAppAudience({ ...LEAD, ownerName: "Unassigned" }).own, "U");
 });
 
-/* ----------------------------------------------------------------- campaign -- */
+/* ----------------------------------------------------------------- strategy -- */
 
 const DAY = 86_400_000;
 
@@ -129,7 +129,7 @@ const CAMPAIGN = {
   channels: ["linkedin", "email", "call"],
   version: "v2",
   startedAt: new Date(Date.now() - 30 * DAY).toISOString(),
-  leads: 612,
+  audiences: 612,
   sent: 4820,
   delivered: 4712,
   openRate: 41.2,
@@ -137,33 +137,33 @@ const CAMPAIGN = {
   clicks: 388,
 };
 
-test("a campaign maps onto the table's shape", () => {
-  const row = toAppCampaign(CAMPAIGN);
+test("a strategy maps onto the table's shape", () => {
+  const row = toAppStrategy(CAMPAIGN);
   assert.equal(row.id, "c_net_new");
   assert.equal(row.type, "multi");
   assert.deepEqual(row.channels, ["li", "mail", "call"]);
   assert.equal(row.ver, 2, "'v2' becomes 2");
-  assert.equal(row.leads, 612);
+  assert.equal(row.audiences, 612);
   assert.equal(row.openRate, 41.2, "rates stay numbers, not strings");
 });
 
-test("a standalone campaign maps to the legacy 'single' type", () => {
-  assert.equal(toAppCampaign({ ...CAMPAIGN, type: "standalone" }).type, "single");
+test("a standalone strategy maps to the legacy 'single' type", () => {
+  assert.equal(toAppStrategy({ ...CAMPAIGN, type: "standalone" }).type, "single");
 });
 
 test("a draft has no published version", () => {
-  const row = toAppCampaign({ ...CAMPAIGN, status: "draft", version: null });
+  const row = toAppStrategy({ ...CAMPAIGN, status: "draft", version: null });
   assert.equal(row.ver, 0);
   assert.equal(hasRun(row), false, "so the figure columns read as not-yet-run");
 });
 
 test("a future start date is a schedule, a past one is a start", () => {
-  const future = toAppCampaign({ ...CAMPAIGN, startedAt: new Date(Date.now() + 12 * DAY).toISOString() });
+  const future = toAppStrategy({ ...CAMPAIGN, startedAt: new Date(Date.now() + 12 * DAY).toISOString() });
   assert.ok(future.scheduledAt, "a future date surfaces as scheduledAt");
   assert.equal(future.startedAt, undefined);
-  assert.equal(hasRun(future), false, "a scheduled campaign has not run yet");
+  assert.equal(hasRun(future), false, "a scheduled strategy has not run yet");
 
-  const past = toAppCampaign(CAMPAIGN);
+  const past = toAppStrategy(CAMPAIGN);
   assert.ok(past.startedAt);
   assert.equal(past.scheduledAt, undefined);
   assert.equal(hasRun(past), true);

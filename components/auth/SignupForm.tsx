@@ -62,8 +62,8 @@ export function SignupForm() {
       const json = (await res.json()) as SignupResponse;
 
       if (json.ok) {
-        // A new account's first stop is Campaigns: its sample campaign is there to explore, and
-        // "Create campaign" is the next step. The dashboard home still shows demo figures.
+        // A new account's first stop is Strategies: its sample strategy is there to explore, and
+        // "Create strategy" is the next step. The dashboard home still shows demo figures.
         router.push(FIRST_RUN_HREF);
         router.refresh();
         return;

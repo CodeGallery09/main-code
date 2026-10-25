@@ -133,10 +133,10 @@ export const PROVIDERS: Provider[] = [
     k: "salesforce",
     planned: true,
     name: "Salesforce",
-    blurb: "Sync leads and contacts, and log activity against them.",
+    blurb: "Sync audiences and contacts, and log activity against them.",
     group: "CRM",
-    how: "Will sync leads and contacts, with field mapping you control.",
-    scopes: ["Read and write leads and contacts", "Log tasks and activity"],
+    how: "Will sync audiences and contacts, with field mapping you control.",
+    scopes: ["Read and write audiences and contacts", "Log tasks and activity"],
   },
   {
     k: "webhooks",

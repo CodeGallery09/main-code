@@ -349,7 +349,7 @@ function ProviderDrawer({
                 ? "This one is on the roadmap. Nothing is connected today."
                 : provider.k === "linkedin"
                   ? "This deployment has no LinkedIn provider configured, so a sign-in can't be opened yet."
-                  : "Connecting isn't available yet. Campaigns you build now will use this once you can connect it."}
+                  : "Connecting isn't available yet. Strategies you build now will use this once you can connect it."}
             </div>
           )}
 
