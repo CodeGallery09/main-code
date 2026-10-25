@@ -5,9 +5,9 @@ import { Reveal } from "./Reveal";
 import { LINKS, TOOLS, UntangleFlow, bow } from "./UntangleFlow";
 
 const PAINS = [
-  { k: "01 · Tool fatigue", t: "Every lead lives in five places at once." },
+  { k: "01 · Tool fatigue", t: "Every audience lives in five places at once." },
   { k: "02 · The if/then problem", t: "Checking engagement by hand before every touch doesn't scale." },
-  { k: "03 · Clashing clocks", t: "Timers fire no matter what the lead just did." },
+  { k: "03 · Clashing clocks", t: "Timers fire no matter what the audience just did." },
 ];
 
 export function WhyFlightpath() {
@@ -56,8 +56,8 @@ export function WhyFlightpath() {
                 ))}
               </div>
               <ul className="mt-5 space-y-2 text-[14px] text-ink-2">
-                <li className="border-l-2 border-line-strong pl-3">Example: a lead replies on LinkedIn, but email step 4 still goes out.</li>
-                <li className="border-l-2 border-line-strong pl-3">Example: two reps message the same lead.</li>
+                <li className="border-l-2 border-line-strong pl-3">Example: an audience replies on LinkedIn, but email step 4 still goes out.</li>
+                <li className="border-l-2 border-line-strong pl-3">Example: two reps message the same audience.</li>
               </ul>
             </div>
 

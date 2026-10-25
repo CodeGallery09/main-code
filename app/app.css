@@ -8,14 +8,14 @@
  * Layers, in cascade order:
  *   1. base tokens + reset            5. liquid-glass refinements
  *   2. layout (.app/.side/.main)      6. responsive (<=1180 / 980 / 820 / 560)
- *   3. screens (home/inbox/leads/...) 7. reduced motion
+ *   3. screens (home/inbox/audiences/...) 7. reduced motion
  *   4. liquid-glass material          8. switches and small controls
  *
  * The glass material needs the runtime engine in components/app/glass.ts, which
  * sets --lens (the SVG refraction filter) and --mx/--my (the cursor specular)
  * per element. Without it the surfaces still render, just without refraction.
  *
- * A few rules still target .react-flow* nodes from the reference's campaign
+ * A few rules still target .react-flow* nodes from the reference's strategy
  * builder. Nothing renders them today; they are kept so the port stays verbatim.
  * ------------------------------------------------------------------------- */
 
@@ -684,16 +684,16 @@ body { background:#f1e7da }
 .lfilters .sp { flex:1 }
 .sel.pill { width:auto;height:36px;border-radius:999px;padding:0 30px 0 14px;font-weight:500;font-size:13px }
 .ltable { overflow:hidden }
-.tbl.leads { font-size:13.5px }
-.tbl.leads thead th { position:sticky;top:0;z-index:2;background:#ffffffb8;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);padding:0 12px;height:42px }
-.tbl.leads td { padding:0 12px;height:62px;border-bottom:1px solid rgba(24,26,30,.09) }
-.tbl.leads tbody tr:last-child td { border-bottom:0 }
-.tbl.leads .ck { width:44px;padding-left:18px;padding-right:0 }
-.tbl.leads .c-n { min-width:230px }
-.tbl.leads .c-c { color:var(--ink-2);white-space:nowrap }
-.tbl.leads .c-score { width:120px }
-.tbl.leads .c-last { min-width:190px }
-.tbl.leads .c-act { width:112px;padding-right:16px;text-align:right }
+.tbl.audiences { font-size:13.5px }
+.tbl.audiences thead th { position:sticky;top:0;z-index:2;background:#ffffffb8;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);padding:0 12px;height:42px }
+.tbl.audiences td { padding:0 12px;height:62px;border-bottom:1px solid rgba(24,26,30,.09) }
+.tbl.audiences tbody tr:last-child td { border-bottom:0 }
+.tbl.audiences .ck { width:44px;padding-left:18px;padding-right:0 }
+.tbl.audiences .c-n { min-width:230px }
+.tbl.audiences .c-c { color:var(--ink-2);white-space:nowrap }
+.tbl.audiences .c-score { width:120px }
+.tbl.audiences .c-last { min-width:190px }
+.tbl.audiences .c-act { width:112px;padding-right:16px;text-align:right }
 .sortb { display:inline-flex;align-items:center;gap:5px;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;height:28px;padding:0 8px;margin-left:-8px;border-radius:8px }
 .sortb:hover { background:#ffffff8c;color:var(--ink) }
 .sortb.on { color:var(--ink) }
@@ -714,7 +714,7 @@ body { background:#f1e7da }
 .ownr { display:inline-flex;align-items:center;gap:8px;white-space:nowrap;color:var(--ink-2) }
 .racts { display:inline-flex;align-items:center;gap:4px;justify-content:flex-end }
 .racts .btn { opacity:0;transform:translate(6px);transition:opacity .2s,transform .45s var(--spring) }
-.tbl.leads tr:hover .racts .btn, .tbl.leads tr:focus-within .racts .btn { opacity:1;transform:none }
+.tbl.audiences tr:hover .racts .btn, .tbl.audiences tr:focus-within .racts .btn { opacity:1;transform:none }
 @media(hover:none) {
   .racts .btn { opacity:1;transform:none }
 }
@@ -745,9 +745,9 @@ body { background:#f1e7da }
 .lfilters .sel.pill { height:40px }
 .ib.more { width:40px;height:40px;border-radius:12px;font-size:18px;letter-spacing:1px;background:var(--g-fill);border:1px solid var(--g-border);box-shadow:var(--g-shadow);-webkit-backdrop-filter:var(--g-blur);backdrop-filter:var(--g-blur) }
 .lfilters .btn.pri { height:40px;padding:0 18px }
-.tbl.leads thead th { font-size:10.5px;letter-spacing:.1em }
-.tbl.leads td { height:76px }
-.tbl.leads .c-n { min-width:250px;padding-left:18px }
+.tbl.audiences thead th { font-size:10.5px;letter-spacing:.1em }
+.tbl.audiences td { height:76px }
+.tbl.audiences .c-n { min-width:250px;padding-left:18px }
 .hn { display:inline-flex;align-items:center;gap:14px }
 .lname { display:flex;align-items:center;gap:12px;min-width:0 }
 .lname .av { width:40px;height:40px;font-size:13px;box-shadow:inset 0 0 0 1px #ffffffb3 }
@@ -773,11 +773,11 @@ body { background:#f1e7da }
 .more-n { height:26px;min-width:34px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:600;color:var(--ink-2);background:#ffffff8c;box-shadow:inset 0 1px #fff,0 0 0 1px #181a1e1f;transition:transform .45s var(--spring) }
 .more-n:hover { background:#ffffffd9 }
 .more-n:active { transform:scale(.92) }
-.tbl.leads .c-mid { text-align:center }
-.tbl.leads th.c-mid .sortb { margin-left:0 }
+.tbl.audiences .c-mid { text-align:center }
+.tbl.audiences th.c-mid .sortb { margin-left:0 }
 .fu { display:inline-flex;gap:6px }
 .fuc { display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:8px;font-size:12px;font-weight:500;color:var(--ink-2);background:#ffffff80;box-shadow:inset 0 0 0 1px #181a1e1a;white-space:nowrap;font-variant-numeric:tabular-nums }
-.tbl.leads .c-next { min-width:180px;padding-right:18px }
+.tbl.audiences .c-next { min-width:180px;padding-right:18px }
 .nxt { display:flex;align-items:center;justify-content:space-between;gap:8px }
 .nxt-t { font-size:13px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px }
 .addstep { flex-shrink:0;width:30px;height:30px;border-radius:50%;font-size:18px;line-height:1;color:var(--ink-2);display:grid;place-items:center;transition:background .2s,transform .45s var(--spring) }
@@ -793,21 +793,21 @@ body { background:#f1e7da }
 .tagall { display:flex;flex-wrap:wrap;gap:6px;padding:6px }
 .tagall .ltag { max-width:none }
 @media(max-width:1499px) {
-  .tbl.leads .c-src { display:none }
+  .tbl.audiences .c-src { display:none }
 }
 @media(max-width:1180px) {
-  .tbl.leads .c-cons { display:none }
+  .tbl.audiences .c-cons { display:none }
 }
-.tbl.leads { min-width:1040px;table-layout:auto }
-.tbl.leads .c-tags { min-width:210px }
+.tbl.audiences { min-width:1040px;table-layout:auto }
+.tbl.audiences .c-tags { min-width:210px }
 .tagstack { flex-shrink:0 }
-.tbl.leads .c-fu { min-width:132px }
-.tbl.leads .c-next { min-width:170px }
-.tbl.leads td, .tbl.leads thead th { padding-left:10px;padding-right:10px }
-.tbl.leads .c-n { min-width:220px;padding-left:16px }
+.tbl.audiences .c-fu { min-width:132px }
+.tbl.audiences .c-next { min-width:170px }
+.tbl.audiences td, .tbl.audiences thead th { padding-left:10px;padding-right:10px }
+.tbl.audiences .c-n { min-width:220px;padding-left:16px }
 .nm b { max-width:128px }
-.tbl.leads .c-tags { min-width:196px }
-.tbl.leads .c-next { min-width:150px }
+.tbl.audiences .c-tags { min-width:196px }
+.tbl.audiences .c-next { min-width:150px }
 .nxt-t { max-width:120px }
 .toasts { top:70px;bottom:auto }
 .toast { animation:drop .5s var(--spring) }
@@ -943,7 +943,7 @@ body, .bgfx { background:#fafafa }
 .ib-list, .ctx { background:#ffffff38;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px) }
 .convo-h, .composer { background:#ffffff73;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px) }
 .msg.them .bubble { background:#ffffff8c;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);border:1px solid rgba(255,255,255,.9);box-shadow:0 0 0 .5px #11131612,0 8px 20px -14px #11131640 }
-.tbl.leads thead th { background:#ffffff8c }
+.tbl.audiences thead th { background:#ffffff8c }
 .inp, .sel, .ta { background:#ffffff8c;border:1px solid rgba(255,255,255,.95);box-shadow:0 0 0 .5px #1113161a,inset 0 1px 2px #1113160f }
 .thumb, .navthumb, .vthumb, .tabthumb { background:linear-gradient(180deg,#fffffff5,#ffffffb8);box-shadow:inset 0 1px #fff,inset 0 -1px 1px #1113160a,0 0 0 .5px #1113161a,0 8px 18px -8px #11131659 }
 .react-flow__node.selected .fpnode { box-shadow:0 0 0 1.5px #111316,0 18px 36px -18px #11131659 }
@@ -1485,7 +1485,7 @@ html, body { background:#fafafa }
 .navlist .navi, .navlist .navhas { position:relative;z-index:1 }
 .navi.on { background:transparent!important;box-shadow:none!important }
 .navthumb { left:0;right:0;top:0;border-radius:12px;position:absolute;z-index:0;pointer-events:none }
-/* The Leads row sits inside its dropdown wrapper, so the pill measures the
+/* The Audiences row sits inside its dropdown wrapper, so the pill measures the
    link and the wrapper contributes no offset of its own. */
 .navhas { display:block }
 /* The navbar's pill (desktop rail and its mobile stand-in, the tab bar) drops
@@ -1554,8 +1554,8 @@ html, body { background:#fafafa }
 }
 
 /* ---------------------------------------------------------------------------
-   Lead uploads: the Leads dropdown in the rail, the upload modal's steps,
-   preview, mapping grid and error log, and the segment list on the Leads
+   Audience uploads: the Audiences dropdown in the rail, the upload modal's steps,
+   preview, mapping grid and error log, and the segment list on the Audiences
    screen. Added for the upload feature — the rest of this file is the vendored
    reference stylesheet. The new glass surface here is `.navmenu`, which is a
    `.qmenu` and so already in the lens and specular lists in glass.ts.
@@ -1594,7 +1594,7 @@ html, body { background:#fafafa }
 .drop.big .btn { justify-self:center;margin-top:8px }
 @media(max-width:620px) { .mapgrid { grid-template-columns:minmax(0,1fr) } }
 
-/* Segment list on the Leads screen */
+/* Segment list on the Audiences screen */
 .segs { padding:16px 18px;display:grid;gap:12px }
 .segs-h { display:flex;align-items:flex-start;gap:12px;justify-content:space-between;flex-wrap:wrap }
 .seglist { display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:10px }
@@ -1616,16 +1616,16 @@ html, body { background:#fafafa }
 .insread { font-size:12.5px;color:var(--ink-2);padding:8px 10px;border-radius:10px;background:var(--accent-soft) }
 .insread.none { background:var(--alert-soft);color:var(--alert) }
 
-/* Row actions on the leads table. The table already carries nine columns, so a pair of
+/* Row actions on the audiences table. The table already carries nine columns, so a pair of
    full-width buttons pushed it past its container and clipped "Delete" at the viewport edge
    (.tblw scrolls, so nothing was unreachable — it just looked broken). A fixed narrow column
    with compact buttons keeps the table inside its card at desktop widths, and the column
    drops out below 820px where the horizontal budget is tightest. */
-.tbl.leads .c-act { width:64px;padding-right:14px;padding-left:4px;white-space:nowrap }
+.tbl.audiences .c-act { width:64px;padding-right:14px;padding-left:4px;white-space:nowrap }
 /* Stacked, not side by side: inline they either collided or pushed the table over. */
-.tbl.leads .c-act .fu { flex-direction:column;align-items:flex-end;gap:2px }
-.tbl.leads .c-act .sortb { padding:2px 4px;font-size:11.5px;line-height:1.35 }
-@media(max-width:820px) { .tbl.leads .c-act { display:none } }
+.tbl.audiences .c-act .fu { flex-direction:column;align-items:flex-end;gap:2px }
+.tbl.audiences .c-act .sortb { padding:2px 4px;font-size:11.5px;line-height:1.35 }
+@media(max-width:820px) { .tbl.audiences .c-act { display:none } }
 
 /* ---------------------------------------------------------------------------
    Configuration screen (/dashboard/configuration).
@@ -2100,12 +2100,12 @@ button.navi { font-size:13px }
 .setnav button { height:30px;font-size:12.5px }
 .trow { padding:10px 0 }
 .trow b { font-size:12.5px }
-.tbl, .tbl.leads { font-size:12.5px }
-.tbl th, .tbl.leads thead th { font-size:9.5px }
+.tbl, .tbl.audiences { font-size:12.5px }
+.tbl th, .tbl.audiences thead th { font-size:9.5px }
 .tbl th { padding:8px 12px }
 .tbl td { padding:8px 12px }
-.tbl.leads thead th { height:34px }
-.tbl.leads td { height:52px }
+.tbl.audiences thead th { height:34px }
+.tbl.audiences td { height:52px }
 .tbl.camps td { height:46px }
 .th { padding:9px 11px;gap:9px }
 .th .r1 b { font-size:12.5px }
@@ -2130,7 +2130,7 @@ button.navi { font-size:13px }
 .lname .av { width:32px;height:32px;font-size:11px }
 .srcic { width:30px;height:30px;border-radius:9px }
 .av.lg { width:38px;height:38px;font-size:13px }
-.tbl.leads td { height:48px }
+.tbl.audiences td { height:48px }
 
 /* ---- Setup · Connections: a search row, then one card: workspace-id row, collapsible sections
    of two-column rows. The tab row that used to sit here linked across to Configuration and
@@ -2175,7 +2175,7 @@ button.navi { font-size:13px }
   .intg-grid { grid-template-columns:minmax(0,1fr) }
 }
 
-/* ---- Audiences + prospect profile (Leads screen). Flat surfaces in the dashboard's tokens; kept after
+/* ---- Audiences + prospect profile (Audiences screen). Flat surfaces in the dashboard's tokens; kept after
    the density block so its sizes win. ---- */
 .aud-card { font:inherit;color:inherit;text-align:left;width:100%;cursor:pointer;align-content:start;transition:border-color .15s,box-shadow .15s }
 .aud-card:hover { border-color:var(--line-strong) }
@@ -2263,6 +2263,6 @@ button.navi { font-size:13px }
   .pf-row { grid-template-columns:minmax(0,1fr);gap:1px }
 }
 .imp-toggle { display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2);cursor:pointer }
-/* Leads table: the Email and LinkedIn columns that replaced Status/Source/Tags/Next step. */
-.tbl.leads .lcontact { display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2) }
-.tbl.leads a.lcontact:hover { color:var(--ink);text-decoration:underline }
+/* Audiences table: the Email and LinkedIn columns that replaced Status/Source/Tags/Next step. */
+.tbl.audiences .lcontact { display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2) }
+.tbl.audiences a.lcontact:hover { color:var(--ink);text-decoration:underline }

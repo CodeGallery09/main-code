@@ -128,7 +128,7 @@ export function TrendChart({
 
   return (
     <div className="chart">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Campaign trend" tabIndex={0}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Strategy trend" tabIndex={0}>
         <defs>
           <clipPath id={clipId}>
             <rect x="0" y="0" width={W} height={H} />

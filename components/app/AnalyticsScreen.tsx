@@ -3,10 +3,10 @@
 /**
  * Analytics: one report, not three.
  *
- * It had Overview / Channels / Campaigns tabs. "Channels" was two rows of the same numbers the
- * Overview's bar chart already draws, so the table now sits under that chart. "Campaigns" was the
- * Campaigns table again, and it deliberately ignored the range and channel selection above it —
- * with a footnote apologising for that — so it is a link to Campaigns instead.
+ * It had Overview / Channels / Strategies tabs. "Channels" was two rows of the same numbers the
+ * Overview's bar chart already draws, so the table now sits under that chart. "Strategies" was the
+ * Strategies table again, and it deliberately ignored the range and channel selection above it —
+ * with a footnote apologising for that — so it is a link to Strategies instead.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -251,8 +251,8 @@ export function AnalyticsScreen() {
             <b>No activity in the {ranged}</b>
             <span>
               {SENDING_ENABLED
-                ? "Reached, replies and meetings appear here once campaigns start sending."
-                : "Nothing is sent from Flightpath yet, so there is nothing to report. Reached, replies and meetings will appear here once campaigns send."}
+                ? "Reached, replies and meetings appear here once strategies start sending."
+                : "Nothing is sent from Flightpath yet, so there is nothing to report. Reached, replies and meetings will appear here once strategies send."}
             </span>
           </p>
         </section>
@@ -275,7 +275,7 @@ export function AnalyticsScreen() {
 
           <section className="card trendcard">
             <div className="card-h">
-              <h3>Campaign trend</h3>
+              <h3>Strategy trend</h3>
               <span className="muted" style={{ fontSize: 12.5 }}>
                 {windowLabel} · {loaded.channels.map((c) => CHANNEL[toChannelKey(c)].name).join(" + ")} · UTC days
               </span>
@@ -323,7 +323,7 @@ export function AnalyticsScreen() {
                   ))}
                 </div>
                 <div className="tblw" style={{ marginTop: 12 }}>
-                  <table className="tbl leads">
+                  <table className="tbl audiences">
                     <thead>
                       <tr>
                         <th>Channel</th>
@@ -386,7 +386,7 @@ export function AnalyticsScreen() {
       {loaded && !error && !empty && (
         <p className="muted" style={{ fontSize: 12, marginTop: 14 }}>
           Daily totals recorded for this workspace, by UTC day. Change is against the previous {days} days.
-          Per-campaign totals are on <Link href={CAMPAIGNS_HREF}>Campaigns</Link>.
+          Per-strategy totals are on <Link href={CAMPAIGNS_HREF}>Strategies</Link>.
         </p>
       )}
     </Screen>

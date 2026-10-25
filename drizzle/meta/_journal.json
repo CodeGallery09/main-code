@@ -43,6 +43,13 @@
       "when": 1792924419866,
       "tag": "0005_channel_connections",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792950000000,
+      "tag": "0006_rename_leads_and_campaigns",
+      "breakpoints": true
     }
   ]
 }

@@ -15,7 +15,7 @@ type Pt = { x: number; y: number; r: number };
 export type Tool = { label: string; tangled: Pt; neat: Pt; side: "in" | "out"; dur: number };
 
 export const TOOLS: Tool[] = [
-  { label: "Lead lists", tangled: { x: 20, y: 20, r: -6 }, neat: { x: 15, y: 22, r: 0 }, side: "in", dur: 4.2 },
+  { label: "Audience lists", tangled: { x: 20, y: 20, r: -6 }, neat: { x: 15, y: 22, r: 0 }, side: "in", dur: 4.2 },
   { label: "Sequencer", tangled: { x: 74, y: 16, r: 4 }, neat: { x: 85, y: 30, r: 0 }, side: "out", dur: 3.6 },
   { label: "LinkedIn", tangled: { x: 46, y: 50, r: -3 }, neat: { x: 85, y: 70, r: 0 }, side: "out", dur: 4.8 },
   { label: "Call list", tangled: { x: 18, y: 80, r: 5 }, neat: { x: 15, y: 78, r: 0 }, side: "in", dur: 3.9 },

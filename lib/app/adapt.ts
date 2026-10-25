@@ -15,9 +15,9 @@
  * DB → UI direction. Nothing here invents or discards information.
  */
 
-import type { Campaign, Channel, Lead, LeadStage } from "@/lib/data/types";
+import type { Strategy, Channel, Audience, AudienceStage } from "@/lib/data/types";
 import type { ChannelKey } from "./channels";
-import type { Stage } from "./leads";
+import type { Stage } from "./audiences";
 
 /* -------------------------------------------------------------- channels -- */
 
@@ -42,7 +42,7 @@ export const toChannel = (key: ChannelKey): Channel => KEY_TO_CHANNEL[key];
 
 /* ----------------------------------------------------------------- stage -- */
 
-const STAGE_TO_LABEL: Record<LeadStage, Stage> = {
+const STAGE_TO_LABEL: Record<AudienceStage, Stage> = {
   new: "New",
   reaching: "Reaching",
   engaged: "Engaged",
@@ -54,7 +54,7 @@ const STAGE_TO_LABEL: Record<LeadStage, Stage> = {
   closed: "Closed",
 };
 
-const LABEL_TO_STAGE: Record<Stage, LeadStage> = {
+const LABEL_TO_STAGE: Record<Stage, AudienceStage> = {
   New: "new",
   Reaching: "reaching",
   Engaged: "engaged",
@@ -66,17 +66,17 @@ const LABEL_TO_STAGE: Record<Stage, LeadStage> = {
   Closed: "closed",
 };
 
-export const toStageLabel = (stage: LeadStage): Stage => STAGE_TO_LABEL[stage];
-export const toStage = (label: Stage): LeadStage => LABEL_TO_STAGE[label];
+export const toStageLabel = (stage: AudienceStage): Stage => STAGE_TO_LABEL[stage];
+export const toStage = (label: Stage): AudienceStage => LABEL_TO_STAGE[label];
 
-/* ------------------------------------------------------------------ lead -- */
+/* ------------------------------------------------------------------ audience -- */
 
 /**
- * What the leads table renders. Identical to the demo layer's `Lead` except `id` is the
+ * What the audiences table renders. Identical to the demo layer's `Audience` except `id` is the
  * database's string id — the screens need it to address API endpoints, and a numeric id would
  * have to be invented and mapped back on every write.
  */
-export type AppLead = {
+export type AppAudience = {
   id: string;
   n: string;
   t: string;
@@ -100,14 +100,14 @@ export type AppLead = {
   email: string;
   li: string;
   /** Raw values the table does not render but the editor needs, so an edit preserves them. */
-  campaignId: string | null;
+  strategyId: string | null;
   ownerId: string;
-  source: Lead["source"];
+  source: Audience["source"];
   /** Invented at signup; the table labels it so it is never mistaken for a real contact. */
   isSample: boolean;
 };
 
-const SOURCE_LABEL: Record<Lead["source"], string> = {
+const SOURCE_LABEL: Record<Audience["source"], string> = {
   form: "Form",
   csv: "CSV",
   linkedin: "LinkedIn",
@@ -145,55 +145,55 @@ export function relativeTime(iso: string): string {
  * Tags shown in the table: the stored tags, plus the derived "Title: …" chip the demo layer
  * appended. `tagColors()` keys off that prefix, so it has to keep the same shape.
  */
-export function toAppLead(lead: Lead): AppLead {
-  const tags = [...lead.tags];
-  const titleTag = `Title: ${lead.title}`;
-  // Seeded leads already carry this tag; pushing it again gave the table two identical React keys.
-  if (lead.title && !tags.includes(titleTag)) tags.push(titleTag);
+export function toAppAudience(audience: Audience): AppAudience {
+  const tags = [...audience.tags];
+  const titleTag = `Title: ${audience.title}`;
+  // Seeded audiences already carry this tag; pushing it again gave the table two identical React keys.
+  if (audience.title && !tags.includes(titleTag)) tags.push(titleTag);
 
   return {
-    id: lead.id,
-    n: lead.name,
-    t: lead.title,
-    c: lead.company,
-    // Per-lead engagement signals live on threads, not leads; the table does not read this.
+    id: audience.id,
+    n: audience.name,
+    t: audience.title,
+    c: audience.company,
+    // Per-audience engagement signals live on threads, not audiences; the table does not read this.
     sig: [],
-    stage: toStageLabel(lead.stage),
-    step: lead.nextStep,
-    last: relativeTime(lead.updatedAt),
+    stage: toStageLabel(audience.stage),
+    step: audience.nextStep,
+    last: relativeTime(audience.updatedAt),
     lastCh: "mail",
-    next: lead.nextStep || "—",
-    own: ownerInitials(lead.ownerName),
-    ph: lead.phone ?? undefined,
-    score: lead.score,
-    src: SOURCE_LABEL[lead.source],
+    next: audience.nextStep || "—",
+    own: ownerInitials(audience.ownerName),
+    ph: audience.phone ?? undefined,
+    score: audience.score,
+    src: SOURCE_LABEL[audience.source],
     tags,
-    calls: lead.callCount,
-    avgCall: lead.avgCallSeconds,
-    msgs: lead.messageCount,
-    consent: lead.consent,
-    fav: lead.starred,
-    email: lead.email ?? "",
+    calls: audience.callCount,
+    avgCall: audience.avgCallSeconds,
+    msgs: audience.messageCount,
+    consent: audience.consent,
+    fav: audience.starred,
+    email: audience.email ?? "",
     // The stored profile URL only. This used to be a slug made up from the name, which showed a
     // LinkedIn address nobody had given us.
-    li: lead.linkedin ?? "",
-    campaignId: lead.campaignId,
-    ownerId: lead.ownerId,
-    source: lead.source,
-    isSample: lead.isSample ?? false,
+    li: audience.linkedin ?? "",
+    strategyId: audience.strategyId,
+    ownerId: audience.ownerId,
+    source: audience.source,
+    isSample: audience.isSample ?? false,
   };
 }
 
-/* -------------------------------------------------------------- campaign -- */
+/* -------------------------------------------------------------- strategy -- */
 
-/** The campaigns table's row shape, with the database's string id. */
-export type AppCampaign = {
+/** The strategies table's row shape, with the database's string id. */
+export type AppStrategy = {
   id: string;
   name: string;
   type: "single" | "multi";
   status: "live" | "scheduled" | "paused" | "draft" | "completed";
   channels: ChannelKey[];
-  leads: number;
+  audiences: number;
   ver: number;
   startedAt?: string;
   scheduledAt?: string;
@@ -208,31 +208,31 @@ export type AppCampaign = {
 
 const DATE_LABEL = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
 
-export function toAppCampaign(campaign: Campaign): AppCampaign {
-  const started = new Date(campaign.startedAt);
+export function toAppStrategy(strategy: Strategy): AppStrategy {
+  const started = new Date(strategy.startedAt);
   const isFuture = started.getTime() > Date.now();
   // "v2" -> 2; a draft has no published version, which the table renders as "—".
-  const version = campaign.version ? Number.parseInt(campaign.version.replace(/^v/, ""), 10) || 0 : 0;
+  const version = strategy.version ? Number.parseInt(strategy.version.replace(/^v/, ""), 10) || 0 : 0;
 
   return {
-    id: campaign.id,
-    name: campaign.name,
-    type: campaign.type === "multichannel" ? "multi" : "single",
-    status: campaign.status,
-    channels: campaign.channels.map(toChannelKey),
-    leads: campaign.leads,
+    id: strategy.id,
+    name: strategy.name,
+    type: strategy.type === "multichannel" ? "multi" : "single",
+    status: strategy.status,
+    channels: strategy.channels.map(toChannelKey),
+    audiences: strategy.audiences,
     ver: version,
-    // A scheduled campaign shows when it goes out; a running one shows when it started.
+    // A scheduled strategy shows when it goes out; a running one shows when it started.
     startedAt: isFuture ? undefined : DATE_LABEL.format(started),
     scheduledAt: isFuture ? DATE_LABEL.format(started) : undefined,
-    sent: campaign.sent,
-    delivered: campaign.delivered,
-    openRate: campaign.openRate,
-    replyRate: campaign.replyRate,
-    clicks: campaign.clicks,
-    isSample: campaign.isSample ?? false,
+    sent: strategy.sent,
+    delivered: strategy.delivered,
+    openRate: strategy.openRate,
+    replyRate: strategy.replyRate,
+    clicks: strategy.clicks,
+    isSample: strategy.isSample ?? false,
   };
 }
 
-/** A campaign has run once it has a published version and a start date in the past. */
-export const hasRun = (campaign: AppCampaign) => campaign.ver > 0 && !campaign.scheduledAt;
+/** A strategy has run once it has a published version and a start date in the past. */
+export const hasRun = (strategy: AppStrategy) => strategy.ver > 0 && !strategy.scheduledAt;

@@ -11,10 +11,10 @@ import type {
   Analytics,
   Badges,
   ChannelAccount,
-  Campaign,
+  Strategy,
   ConnectSession,
-  CampaignStatus,
-  Lead,
+  StrategyStatus,
+  Audience,
   Message,
   Overview,
   Paged,
@@ -26,11 +26,11 @@ import type {
   WorkflowRecord,
   WorkspaceSettings,
 } from "@/lib/data/types";
-import type { CampaignTotals, SettingsPatch } from "@/lib/data/repository";
+import type { StrategyTotals, SettingsPatch } from "@/lib/data/repository";
 import type { WorkflowGraph } from "@/lib/app/workflow";
-import type { AccountSettingsPatch, CampaignPatch, LeadPatch } from "@/lib/data/validate";
-import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
-import type { Mapping } from "@/lib/leads/validation";
+import type { AccountSettingsPatch, StrategyPatch, AudiencePatch } from "@/lib/data/validate";
+import type { MappingReport, Segment, UploadPreview } from "@/lib/audiences/segments";
+import type { Mapping } from "@/lib/audiences/validation";
 
 /** Field errors a 422 carries, keyed by field name — what the forms render inline. */
 export type FieldErrors = Record<string, string>;
@@ -103,45 +103,45 @@ export const api = {
   completeTask: (id: string) =>
     request<{ task: Task }>(`/api/tasks/${encodeURIComponent(id)}/complete`, { method: "POST" }),
 
-  campaigns: (params: { q?: string; status?: string; type?: string; channel?: string } = {}) =>
-    request<{ items: Campaign[]; totals: CampaignTotals }>(`/api/campaigns${qs(params)}`),
+  strategies: (params: { q?: string; status?: string; type?: string; channel?: string } = {}) =>
+    request<{ items: Strategy[]; totals: StrategyTotals }>(`/api/strategies${qs(params)}`),
 
-  setCampaignStatus: (id: string, status: CampaignStatus) =>
-    request<{ campaign: Campaign }>(`/api/campaigns/${encodeURIComponent(id)}`, {
+  setStrategyStatus: (id: string, status: StrategyStatus) =>
+    request<{ strategy: Strategy }>(`/api/strategies/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
 
-  createCampaign: (input: CampaignPatch) =>
-    request<{ campaign: Campaign }>("/api/campaigns", {
+  createStrategy: (input: StrategyPatch) =>
+    request<{ strategy: Strategy }>("/api/strategies", {
       method: "POST",
       body: JSON.stringify(input),
     }),
 
-  updateCampaign: (id: string, patch: CampaignPatch) =>
-    request<{ campaign: Campaign }>(`/api/campaigns/${encodeURIComponent(id)}`, {
+  updateStrategy: (id: string, patch: StrategyPatch) =>
+    request<{ strategy: Strategy }>(`/api/strategies/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
 
-  deleteCampaign: (id: string) =>
-    request<{ deleted: string }>(`/api/campaigns/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  deleteStrategy: (id: string) =>
+    request<{ deleted: string }>(`/api/strategies/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
-  workflow: (campaignId: string) =>
-    request<{ workflow: WorkflowRecord }>(`/api/campaigns/${encodeURIComponent(campaignId)}/workflow`),
+  workflow: (strategyId: string) =>
+    request<{ workflow: WorkflowRecord }>(`/api/strategies/${encodeURIComponent(strategyId)}/workflow`),
 
   /** Replaces the workflow. The server validates the graph and answers 422 with the reason. */
-  saveWorkflow: (campaignId: string, input: { name: string; graph: WorkflowGraph }) =>
-    request<{ workflow: WorkflowRecord }>(`/api/campaigns/${encodeURIComponent(campaignId)}/workflow`, {
+  saveWorkflow: (strategyId: string, input: { name: string; graph: WorkflowGraph }) =>
+    request<{ workflow: WorkflowRecord }>(`/api/strategies/${encodeURIComponent(strategyId)}/workflow`, {
       method: "PUT",
       body: JSON.stringify(input),
     }),
 
   workflows: () => request<{ items: WorkflowRecord[] }>("/api/workflows"),
 
-  /** Deletes the sample campaign, workflow and leads the workspace started with. */
+  /** Deletes the sample strategy, workflow and audiences the workspace started with. */
   removeSampleData: () =>
-    request<{ removed: { campaigns: number; leads: number } }>("/api/workspace/sample", {
+    request<{ removed: { strategies: number; audiences: number } }>("/api/workspace/sample", {
       method: "DELETE",
     }),
 
@@ -153,10 +153,10 @@ export const api = {
       body: JSON.stringify(patch),
     }),
 
-  setAccountCampaigns: (id: string, campaignIds: string[]) =>
-    request<{ account: ChannelAccount }>(`/api/accounts/${encodeURIComponent(id)}/campaigns`, {
+  setAccountStrategies: (id: string, strategyIds: string[]) =>
+    request<{ account: ChannelAccount }>(`/api/accounts/${encodeURIComponent(id)}/strategies`, {
       method: "PUT",
-      body: JSON.stringify({ campaignIds }),
+      body: JSON.stringify({ strategyIds }),
     }),
 
   deleteAccount: (id: string) =>
@@ -192,36 +192,36 @@ export const api = {
       body: JSON.stringify(patch),
     }),
 
-  leads: (
+  audiences: (
     params: {
       q?: string;
       stage?: string;
       ownerId?: string;
-      campaignId?: string;
+      strategyId?: string;
       segmentId?: string;
       sort?: string;
       dir?: string;
       page?: number;
       pageSize?: number;
     } = {},
-  ) => request<Paged<Lead>>(`/api/leads${qs(params)}`),
+  ) => request<Paged<Audience>>(`/api/audiences${qs(params)}`),
 
-  lead: (id: string) => request<{ lead: Lead }>(`/api/leads/${encodeURIComponent(id)}`),
+  audience: (id: string) => request<{ audience: Audience }>(`/api/audiences/${encodeURIComponent(id)}`),
 
   prospect: (id: string) =>
-    request<{ profile: ProspectProfile }>(`/api/leads/${encodeURIComponent(id)}/profile`),
+    request<{ profile: ProspectProfile }>(`/api/audiences/${encodeURIComponent(id)}/profile`),
 
-  createLead: (input: LeadPatch) =>
-    request<{ lead: Lead }>("/api/leads", { method: "POST", body: JSON.stringify(input) }),
+  createAudience: (input: AudiencePatch) =>
+    request<{ audience: Audience }>("/api/audiences", { method: "POST", body: JSON.stringify(input) }),
 
-  updateLead: (id: string, patch: LeadPatch) =>
-    request<{ lead: Lead }>(`/api/leads/${encodeURIComponent(id)}`, {
+  updateAudience: (id: string, patch: AudiencePatch) =>
+    request<{ audience: Audience }>(`/api/audiences/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
 
-  deleteLead: (id: string) =>
-    request<{ deleted: string }>(`/api/leads/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  deleteAudience: (id: string) =>
+    request<{ deleted: string }>(`/api/audiences/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   /**
    * Built by hand, not through `qs()`: that helper drops the value "all" as a default, but for
@@ -246,19 +246,19 @@ export const api = {
     request<Analytics>(`/api/analytics${qs(params)}`),
 
   /** Sends the file itself; the server parses it and returns the preview. */
-  uploadLeadFile: (file: File) => {
+  uploadAudienceFile: (file: File) => {
     const form = new FormData();
     form.set("file", file);
-    return request<UploadPreview>("/api/leads/uploads", { method: "POST", body: form });
+    return request<UploadPreview>("/api/audiences/uploads", { method: "POST", body: form });
   },
 
   validateUpload: (uploadId: string, mapping: Mapping) =>
-    request<MappingReport>(`/api/leads/uploads/${encodeURIComponent(uploadId)}/validate`, {
+    request<MappingReport>(`/api/audiences/uploads/${encodeURIComponent(uploadId)}/validate`, {
       method: "POST",
       body: JSON.stringify({ mapping }),
     }),
 
-  segments: () => request<{ segments: Segment[] }>("/api/leads/segments"),
+  segments: () => request<{ segments: Segment[] }>("/api/audiences/segments"),
 
   createSegment: (input: {
     uploadId: string;
@@ -268,7 +268,7 @@ export const api = {
     /** The user's attestation that the people in the file may be contacted. */
     consent: boolean;
   }) =>
-    request<{ segment: Segment; profilesCreated: number; profilesMerged: number; excluded: number }>("/api/leads/segments", {
+    request<{ segment: Segment; profilesCreated: number; profilesMerged: number; excluded: number }>("/api/audiences/segments", {
       method: "POST",
       body: JSON.stringify(input),
     }),

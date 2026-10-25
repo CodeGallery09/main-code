@@ -9,7 +9,7 @@ import { DemoWorkflow } from "@/components/demo/DemoWorkflow";
 export const metadata: Metadata = {
   title: "Book a demo — Flightpath",
   description:
-    "See how Flightpath coordinates your outreach, responds to lead engagement, and helps your team understand what works.",
+    "See how Flightpath coordinates your outreach, responds to audience engagement, and helps your team understand what works.",
 };
 
 // Rendered per request so the setup note always reflects the server's current delivery config.
@@ -49,7 +49,7 @@ export default function BookDemoPage() {
               Let&rsquo;s find the right GTM motion <em>for your team.</em>
             </h1>
             <p className="intro mx-auto mt-6 max-w-xl text-[17px] leading-relaxed text-ink-2/85" style={d(260)}>
-              See how Flightpath coordinates your outreach, responds to lead engagement, and helps your team understand
+              See how Flightpath coordinates your outreach, responds to audience engagement, and helps your team understand
               what works.
             </p>
             <DemoWorkflow />
