@@ -15,6 +15,9 @@ import { fail, json, readJson } from "@/lib/http";
  *
  * Idempotent on the provider's message id — Unipile retries a delivery five times if it does not
  * get a 200 within 30 seconds, so a duplicate must not become a second message in the thread.
+ *
+ * Authenticated the same way as `/accounts` — header or `?token=` query param. See
+ * `lib/channels/webhookAuth.ts`.
  */
 export async function POST(request: Request) {
   if (!webhookSecret()) return fail("not_configured", "No webhook secret is set.", 503);

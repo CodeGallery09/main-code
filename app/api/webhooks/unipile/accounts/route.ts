@@ -13,8 +13,11 @@ import { fail, json, readJson } from "@/lib/http";
  * The state it writes is what the Configuration screen and the setup checks report, so a signed
  * out or restricted seat says so in the UI within a delivery.
  *
- * Authenticated by the shared secret header Unipile was asked to send back (Unipile does not sign
- * bodies). Without `UNIPILE_WEBHOOK_SECRET` set, every call is refused.
+ * Authenticated by the shared secret: a header Unipile was asked to send back when registered via
+ * the API/script (Unipile does not sign bodies), or — because Unipile's dashboard UI has no header
+ * field for an "Account" webhook — the same secret as a `?token=` query param on this URL, for a
+ * webhook created by hand. See `lib/channels/webhookAuth.ts`. Without `UNIPILE_WEBHOOK_SECRET` set,
+ * every call is refused regardless of which form it arrives in.
  */
 export async function POST(request: Request) {
   if (!webhookSecret()) return fail("not_configured", "No webhook secret is set.", 503);

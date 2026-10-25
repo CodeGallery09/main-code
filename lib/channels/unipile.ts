@@ -110,4 +110,4 @@ export class UnipileAdapter implements LinkedInChannelAdapter {
   }
 }
 
-export { WEBHOOK_HEADER, WEBHOOK_SOURCES } from "./webhookConfig";
+export { WEBHOOK_HEADER, WEBHOOK_QUERY_PARAM, WEBHOOK_SOURCES } from "./webhookConfig";

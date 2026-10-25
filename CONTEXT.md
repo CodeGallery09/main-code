@@ -123,8 +123,8 @@ interface so the vendor can be replaced without touching a route, a screen or a 
 | `unipile.ts` | The one implementation. `https://{DSN}/api/v1`, `X-API-KEY`, 15 s timeout. Server-only: the key can read every connected account. |
 | `unipileRequests.ts` | The **pure** half — `unipileBaseUrl`, `hostedAuthBody`, `readHostedAuthUrl`, `readAccount`, `readWebhooks`. Import-free, so `tests/unipile.test.mjs` pins the request contract with no network and no key. |
 | `events.ts` | Normalises the webhook payloads. Import-free, tested. |
-| `webhookConfig.ts` | The header name and the two `source` values, in a module with no value imports so the registration **script** can import them too. |
-| `webhookAuth.ts` | Constant-time check of the shared-secret header. |
+| `webhookConfig.ts` | The webhook contract: `WEBHOOK_HEADER`, `WEBHOOK_QUERY_PARAM`, `WEBHOOK_SOURCES`, and the pure, tested `authorizeFromCarriers()` match. No value imports but `node:crypto`, so the registration **script** and `tests/webhookConfig.test.mjs` can both load it directly. |
+| `webhookAuth.ts` | Untested glue: pulls the header and query-param candidates out of a `Request` and `UNIPILE_WEBHOOK_SECRET` out of the environment, then calls `authorizeFromCarriers()`. |
 | `connect.ts` | Opens a connect session, asks for a hosted link, returns the URL. Shared by connect and reconnect. |
 | `index.ts` | `getLinkedInAdapter()` → `null` until `UNIPILE_DSN` + `UNIPILE_API_KEY` are set, and `appOrigin()`. |
 | `components/app/integrations/ConnectLinkedIn.tsx` | `useLinkedInConnect()` — popup + poll, and the one status line. |
@@ -148,8 +148,13 @@ Five things about this that are not obvious:
 - **The notify callback cannot carry a secret** (`notify_url` takes no headers), so it proves
   nothing on its own: the reference must be an unexpired pending session, and the account's
   identity is read back from the provider with our own key rather than taken from the body.
-  The other two webhooks *are* authenticated, by a shared-secret header Unipile is asked to send
-  back — Unipile does not sign bodies. No `UNIPILE_WEBHOOK_SECRET`, no deliveries accepted.
+  The other two webhooks *are* authenticated, by `UNIPILE_WEBHOOK_SECRET` sent back on every
+  delivery — Unipile does not sign bodies. Two carriers, either sufficient: a header (registered
+  via the API by `npm run unipile:webhooks`) or a `?token=` query param on the callback URL
+  (needed because Unipile's dashboard UI has no header field when an "Account" webhook is created
+  by hand). The comparison is the pure half in `webhookConfig.ts` (`authorizeFromCarriers`,
+  tested); `webhookAuth.ts` pulls the candidates out of the `Request`. No `UNIPILE_WEBHOOK_SECRET`,
+  no deliveries accepted on either carrier.
 - **Unipile's v1 and v2 docs disagree on webhook field names** (`AccountStatus` wrapper vs
   `{event,data}`; `message_received` vs `message.created` vs `message.new`). `events.ts` reads
   every documented spelling and refuses a payload missing what it needs, rather than betting on
@@ -398,7 +403,8 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 `dataQuery.test.mjs` · `demoRequest.test.mjs` · `workflow.test.mjs` · `validate.test.mjs` ·
 `adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `setup.test.mjs` · `workflowPersist.test.mjs` · `leadsValidation` `leadsMerge` `leadsJourney` `leadsProfile` `leadsImportPlan` `prospect` `workflowSegment` ·
 `unipile.test.mjs` (the Unipile request contract + response readers) · `unipileEvents.test.mjs`
-(both documented webhook envelopes) — **210 tests**
+(both documented webhook envelopes) · `webhookConfig.test.mjs` (the header/query-param match) —
+**217 tests**
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).
