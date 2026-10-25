@@ -13,7 +13,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "node --experimental-strip-types scripts/seed-db.ts",
     "db:studio": "drizzle-kit studio",
-    "db:set-password": "node --experimental-strip-types scripts/set-password.ts"
+    "db:set-password": "node --experimental-strip-types scripts/set-password.ts",
+    "unipile:webhooks": "node --experimental-strip-types scripts/register-unipile-webhooks.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",

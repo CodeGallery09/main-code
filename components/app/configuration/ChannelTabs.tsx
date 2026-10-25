@@ -19,9 +19,10 @@ import {
   LINKEDIN_NUMBER_RULES,
 } from "@/lib/app/configuration";
 import { api, fieldErrorsOf } from "@/lib/api";
-import { missingRecords } from "@/lib/data/setup";
+import { linkedInNeedsAction, linkedInStateNote, missingRecords } from "@/lib/data/setup";
 import { EMAIL_CAP_MAX, LINKEDIN_LIMITS, type AccountSettingsPatch } from "@/lib/data/validate";
 import type {
+  AccountActivity,
   AccountsSnapshot,
   Campaign,
   ChannelAccount,
@@ -30,6 +31,7 @@ import type {
   SendingDomain,
 } from "@/lib/data/types";
 import { Avatar, Segmented, Switch } from "../ui";
+import { ConnectStatus, useLinkedInConnect } from "../integrations/ConnectLinkedIn";
 import { CheckIcon, Glyph } from "../icons";
 import {
   DemoNote,
@@ -50,6 +52,13 @@ type TabProps = {
   campaigns: Campaign[];
   /** Re-reads the workspace after a change that other tabs depend on. */
   onChange: () => void;
+};
+
+type LinkedInTabProps = TabProps & {
+  /** Real per-account counts from the event log. Empty while they are still loading. */
+  activity?: AccountActivity[];
+  /** Whether this deployment can open a hosted sign-in at all. */
+  linkedInConfigured?: boolean;
 };
 
 /* ---------- saving ---------------------------------------------------------- */
@@ -170,6 +179,46 @@ function UsedBy({
 
 const SampleTag = () => <span className="tag">Sample</span>;
 
+/**
+ * Shown when a workspace has no LinkedIn account. Unlike the mailbox case this one can actually
+ * connect — through the provider's hosted sign-in — but only where the deployment has a provider
+ * configured, so the button is offered on that condition and the note says which case it is in.
+ */
+function NoLinkedInAccount({
+  configured,
+  onConnected,
+}: {
+  configured: boolean;
+  onConnected: () => void;
+}) {
+  const connect = useLinkedInConnect(onConnected);
+  return (
+    <Panel title="No LinkedIn account connected">
+      <p className="cf-nocontent">
+        LinkedIn steps have no account to send from. Signing in happens on LinkedIn&apos;s own page in
+        a new window — Flightpath never sees the password. Campaigns you build now will use any
+        account you connect.
+      </p>
+      <button
+        type="button"
+        className="btn sm pri"
+        disabled={!configured || connect.busy}
+        title={configured ? undefined : "Connecting isn't configured on this deployment"}
+        onClick={() => void connect.start()}
+      >
+        {connect.busy ? "Connecting…" : "Connect LinkedIn account"}
+      </button>
+      <ConnectStatus phase={connect.phase} />
+      {!configured && (
+        <small className="muted">
+          This deployment has no LinkedIn provider configured, so a sign-in can&apos;t be opened here
+          yet.
+        </small>
+      )}
+    </Panel>
+  );
+}
+
 /** Shown when a workspace has no account on a channel. Connecting is not built yet, and says so. */
 function NothingConnected({ what }: { what: string }) {
   return (
@@ -188,26 +237,54 @@ function NothingConnected({ what }: { what: string }) {
 
 /* ========== LinkedIn ====================================================== */
 
-export function LinkedInTab({ snapshot, campaigns, onChange }: TabProps) {
+export function LinkedInTab({
+  snapshot,
+  campaigns,
+  onChange,
+  activity = [],
+  linkedInConfigured = false,
+}: LinkedInTabProps) {
   const rules = useToggles(LINKEDIN_ACCOUNT_RULES);
   const [numbers, setNumbers] = useState(() =>
     Object.fromEntries(LINKEDIN_NUMBER_RULES.map((r) => [r.id, r.value])),
   );
   const accounts = snapshot.accounts.filter((a): a is LinkedInAccount => a.channel === "linkedin");
+  const byAccount = new Map(activity.map((a) => [a.accountId, a]));
+  const connect = useLinkedInConnect(onChange);
 
   return (
     <div className="cf-stack">
       {accounts.length === 0 ? (
-        <NothingConnected what="LinkedIn account" />
+        <NoLinkedInAccount configured={linkedInConfigured} onConnected={onChange} />
       ) : (
         <>
-          <p className="cf-nocontent">
-            These accounts belong to your workspace. Any campaign can send from any of them, and one
-            account can run several campaigns at once.
-          </p>
+          <div className="cf-head between">
+            <p className="cf-nocontent" style={{ margin: 0 }}>
+              These accounts belong to your workspace. Any campaign can send from any of them, and one
+              account can run several campaigns at once.
+            </p>
+            <span className="row" style={{ gap: 8 }}>
+              <ConnectStatus phase={connect.phase} />
+              <button
+                type="button"
+                className="btn sm"
+                disabled={!linkedInConfigured || connect.busy}
+                title={linkedInConfigured ? undefined : "Connecting isn't configured on this deployment"}
+                onClick={() => void connect.start()}
+              >
+                {connect.busy ? "Connecting…" : "Connect another"}
+              </button>
+            </span>
+          </div>
           <div className="cf-cardgrid">
             {accounts.map((account) => (
-              <Seat key={account.id} account={account} campaigns={campaigns} onChange={onChange} />
+              <Seat
+                key={account.id}
+                account={account}
+                campaigns={campaigns}
+                onChange={onChange}
+                activity={byAccount.get(account.id)}
+              />
             ))}
           </div>
         </>
@@ -246,12 +323,20 @@ function Seat({
   account,
   campaigns,
   onChange,
+  activity,
 }: {
   account: LinkedInAccount;
   campaigns: Campaign[];
   onChange: () => void;
+  activity?: AccountActivity;
 }) {
-  const out = account.state === "signed_out";
+  const out = linkedInNeedsAction(account.state);
+  // Only a real connection can be repaired or disconnected at the provider. A row typed in or
+  // seeded has nothing behind it, so it is not offered either action.
+  const connected = Boolean(account.connection.providerAccountId);
+  const reconnect = useLinkedInConnect(onChange);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const patch = (body: AccountSettingsPatch) => api.updateAccount(account.id, body);
   const connections = useSavedSetting(account.settings.connections, (v) => patch({ connections: v }));
   const messages = useSavedSetting(account.settings.messages, (v) => patch({ messages: v }));
@@ -264,12 +349,19 @@ function Seat({
         <Avatar name={account.name} size="sm" />
         <span className="cf-tilename">
           <b>{account.name}</b>
-          <span className={"tag " + (out ? "alert" : "pos")}>{out ? "Log in again" : "Healthy"}</span>
+          <span className={"tag " + (out ? "alert" : "pos")}>
+            {out ? SEAT_TAG[account.state] : "Healthy"}
+          </span>
           {account.isSample && <SampleTag />}
         </span>
-        {out && (
-          <button type="button" className="btn xs pri" disabled title="Reconnecting isn't available yet">
-            Reconnect
+        {out && connected && (
+          <button
+            type="button"
+            className="btn xs pri"
+            disabled={reconnect.busy}
+            onClick={() => void reconnect.start(account.id)}
+          >
+            {reconnect.busy ? "Reconnecting…" : "Reconnect"}
           </button>
         )}
       </div>
@@ -279,8 +371,16 @@ function Seat({
         {account.handle}
       </a>
 
-      {out && <Issue>Signed out. Steps that use this account are paused until it reconnects.</Issue>}
+      {out && (
+        <Issue>
+          {account.connection.statusDetail ||
+            `${linkedInStateNote(account.state)[0].toUpperCase()}${linkedInStateNote(account.state).slice(1)}.`}{" "}
+          Steps that use this account are paused.
+        </Issue>
+      )}
+      <ConnectStatus phase={reconnect.phase} />
       {failed && <Issue>{failed}</Issue>}
+      {removeError && <Issue>{removeError}</Issue>}
 
       <div className="cf-tilegrid">
         <TileLimit
@@ -313,7 +413,77 @@ function Seat({
 
         <UsedBy account={account} campaigns={campaigns} onChange={onChange} />
       </div>
+
+      {connected && <SeatActivity account={account} activity={activity} />}
+
+      {connected && (
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
+          <button
+            type="button"
+            className="btn xs"
+            disabled={removing}
+            onClick={() => void disconnect()}
+            title="Disconnects this account at the provider and removes it from the workspace"
+          >
+            {removing ? "Disconnecting…" : "Disconnect"}
+          </button>
+        </div>
+      )}
     </section>
+  );
+
+  async function disconnect() {
+    // Irreversible and it affects every campaign using the seat, so it asks first.
+    const using = account.campaignIds.length;
+    const warning = using
+      ? `Disconnect ${account.name}? ${using === 1 ? "1 campaign uses" : `${using} campaigns use`} this account and will have nothing to send from.`
+      : `Disconnect ${account.name}?`;
+    if (!window.confirm(warning)) return;
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      await api.deleteAccount(account.id);
+      onChange();
+    } catch (caught) {
+      setRemoveError(caught instanceof Error ? caught.message : "Couldn't disconnect that account.");
+    } finally {
+      setRemoving(false);
+    }
+  }
+}
+
+/** What each blocked state is called on the seat's pill. */
+const SEAT_TAG: Record<LinkedInAccount["state"], string> = {
+  healthy: "Healthy",
+  signed_out: "Log in again",
+  restricted: "Restricted",
+  connecting: "Finishing sign-in",
+};
+
+/**
+ * What has actually happened on one connected seat.
+ *
+ * Every figure is a count of a real delivery from the provider, over the last 30 days. Nothing
+ * here is an estimate, so a seat that has done nothing reads zero — which is the useful answer
+ * while there is no sender.
+ */
+function SeatActivity({ account, activity }: { account: LinkedInAccount; activity?: AccountActivity }) {
+  const since = account.connection.connectedAt;
+  return (
+    <div className="cf-tilegrid" style={{ marginTop: 10 }}>
+      <TileFigure label="Replies in" unit={`last ${activity?.windowDays ?? 30}d`} value={activity?.messagesReceived ?? 0} />
+      <TileFigure label="Status changes" unit={`last ${activity?.windowDays ?? 30}d`} value={activity?.statusChanges ?? 0} />
+      <div className="cf-list cf-span2">
+        <TileLabel label="Connection" />
+        <small className="muted">
+          {since ? `Connected ${new Date(since).toLocaleDateString()}` : "Connected"} via{" "}
+          {account.connection.provider}
+          {activity?.lastMessageAt
+            ? ` · last message ${new Date(activity.lastMessageAt).toLocaleString()}`
+            : " · no messages received yet"}
+        </small>
+      </div>
+    </div>
   );
 }
 

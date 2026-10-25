@@ -119,7 +119,7 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - `lib/signup.ts` is the shared contract (validation, allowlist, `SignupResponse`). Import-free like `lib/demoRequest.ts`, so the form, the route and `node --test` all use it. `SignupForm` validates first but moves on **only** when the server answers `{ ok: true }` — never present success on its own say-so.
 - Sign-out is a labelled "Sign out" item at the foot of the rail (`SignOutItem`) plus an icon in `TopBar` (the rail is hidden on phones). Both use `useSignOut()` in `components/app/AppShell.tsx`, which calls `api.logout()` → `POST /api/logout` (deletes the session row) and navigates only after the server confirms, **with a full page load** (`window.location.assign`): `app.css` is unscoped and survives client-side navigation, so a soft navigation left `/login` unstyled.
 - **Sample data.** Every new workspace starts with one paused multichannel campaign and 8 leads, all flagged `is_sample`, labelled "Sample" in the UI, and removable via `DELETE /api/workspace/sample` ("Remove sample data" banner). Everything in it is invented and says so: emails use the reserved `.example` domain and phones the fictional 555-01xx range, so a sample lead can never be a real person (`tests/sample.test.mjs` enforces both).
-- **Migration order.** `0002_sample_flag` and `0003_workspace_data_model` add columns and tables the code reads, so each must be applied to Neon **before** code that needs it is promoted to `main`. Check generated migration SQL statement order by hand (0003 needed one fix).
+- **Migration order.** `0002_sample_flag`, `0003_workspace_data_model` and `0005_channel_connections` add columns and tables the code reads, so each must be applied to Neon **before** code that needs it is promoted to `main`. Check generated migration SQL statement order by hand (0003 needed one fix).
 - **Environments.** Production (`main`) has `DATABASE_URL` set; `dev` deliberately has **no database** and runs in demo mode (hardcoded demo account, in-memory data, signup says it is unavailable). Do not create a database or Neon branch for `dev`. Vercel deploys only `main` and `dev` (`vercel.json`).
 - There is no email sending, so **no password reset or verification**. The recovery path is `npm run db:set-password` (password from `NEW_PASSWORD`, never argv), which also revokes that user's sessions. No login rate limiting yet.
 - `/dashboard` redirects to `/login` without a valid session; a signed-in visitor to `/login` or `/signup` is sent to the dashboard.
@@ -151,9 +151,42 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - `/dashboard/workflows` is the library: `.wfgrid` cards and a `.tplgrid` template picker. Picking a template creates a draft multichannel campaign and its workflow, then opens the builder (never create rows on a GET: link prefetch would run it).
 - **Nothing sends.** `lib/capabilities.ts` `SENDING_ENABLED = false` disables Launch/Test in the builder and refuses to switch a campaign "live" anywhere. Do not mark invented or unsent work as live; flip the flag only in the commit that lands a sender.
 
+**Connecting LinkedIn (`lib/channels/` + `/api/integrations|webhooks/*`)**
+- Driving LinkedIn is **rented, not built**: every call goes through `LinkedInChannelAdapter`
+  (`lib/channels/adapter.ts`), with Unipile as the one implementation (`unipile.ts`, server-only —
+  `UNIPILE_DSN` + `UNIPILE_API_KEY`). `getLinkedInAdapter()` returns `null` until both are set, and
+  the screens then say connecting is not configured instead of offering a button that 503s.
+- **Hosted auth only.** Custom auth would put the member's LinkedIn password and 2FA in our
+  servers; the hosted wizard keeps them at the provider. Add custom auth as another adapter method
+  if it is ever wanted — not by widening the routes.
+- **`connect_sessions` is what makes a webhook tenant-safe.** Its id goes to the provider as `name`
+  and comes back on `notify_url`; it is the only thing tying a provider account to a workspace, so
+  it is `randomBytes` (not `newId`'s `Math.random`), short-lived, and **never the workspace id**.
+- `lib/channels/inbound.ts` is the **one place that writes workspace rows without a `Ctx`** — a
+  webhook has no session. The workspace is derived from `channel_accounts.provider_account_id`,
+  unique across the whole table, so the caller cannot steer the lookup. It never takes a workspace,
+  lead or account id from a body. Read its header comment before changing it.
+- The notify callback carries no secret (Unipile's `notify_url` takes no headers), so it proves
+  nothing by itself: the reference must be an unexpired pending session, and the account identity is
+  read back from the provider with our key. The account-status and messages webhooks **are**
+  authenticated, by a shared-secret header Unipile is asked to send back (it does not sign bodies) —
+  `UNIPILE_WEBHOOK_SECRET`, registered by `npm run unipile:webhooks`. Unset ⇒ every delivery refused.
+- **Unipile's v1 and v2 docs disagree on webhook field names**, so `lib/channels/events.ts` reads
+  every documented spelling and refuses a payload missing what it needs. An unrecognised status is
+  `error`, never `ok`. `event: "account.status"` is an event name, not a status — do not read it as
+  one. `tests/unipileEvents.test.mjs` pins each shape; add a case rather than loosening a reader.
+- Inbound messages reach the Inbox **only** when the sender is already a lead (matched on their
+  LinkedIn handle). A stranger's message is an `events` row and nothing more: never invent a lead
+  from a webhook. Deliveries are idempotent on the provider's message id — Unipile retries five
+  times without a 200 in 30 s.
+- LinkedIn account state is now four values (`healthy`, `signed_out`, `restricted`, `connecting`).
+  **A restriction is a product state, not a bug report** — use `linkedInNeedsAction()` /
+  `linkedInStateNote()` in `lib/data/setup.ts` rather than comparing to `signed_out`.
+- `SENDING_ENABLED` stays **false**. Connecting an account is not sending, and the UI says so.
+
 **Integrations (`/dashboard/integrations`)**
 - `lib/app/integrations.ts` is the static provider catalogue. A provider's *state* is derived from the workspace's own accounts and domains by `providerView()`; the page is one card of collapsible category sections with a **Connected** section on top (connected/needs-attention providers are pulled out of their category); account and domain detail lives in Configuration.
-- **LinkedIn and email are the only providers that can connect**, and connecting is not built yet (the drawer's Connect button is disabled and says so). WhatsApp Business, Twilio, calendar, the CRMs and webhooks are `planned`, which shows a Planned pill and says so in the drawer. That is the content rule below, not a styling choice: never offer a connection the product cannot honour.
+- **LinkedIn and email are the only providers that can connect.** LinkedIn now genuinely connects (see "Connecting LinkedIn" above) wherever a provider is configured — `providerView()` takes that as an argument, so a deployment without a key shows "Not configured" rather than a dead button. Connecting a mailbox is still not built. WhatsApp Business, Twilio, calendar, the CRMs and webhooks are `planned`, which shows a Planned pill and says so in the drawer. That is the content rule below, not a styling choice: never offer a connection the product cannot honour.
 - Reached from the rail (below the main nav, next to Settings) via `INTEGRATIONS_HREF` in `lib/nav.ts`.
 
 **Wallpaper is load-bearing.** Glass only reads as glass when there is colour behind it — the app wallpaper on `.app-shell`, and `body::before` on the marketing pages. Flattening either makes every panel look like a plain white card, so check `--tint` / `--g-tint` and the blur before touching them.

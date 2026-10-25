@@ -36,6 +36,13 @@
       "when": 1792351280129,
       "tag": "0004_workspace_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792924419866,
+      "tag": "0005_channel_connections",
+      "breakpoints": true
     }
   ]
 }

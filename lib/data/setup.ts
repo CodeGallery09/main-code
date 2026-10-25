@@ -40,6 +40,21 @@ export function missingRecords(d: { spf: boolean; dkim: boolean; dmarc: boolean 
   return [!d.spf && "SPF", !d.dkim && "DKIM", !d.dmarc && "DMARC"].filter(Boolean) as string[];
 }
 
+/**
+ * A LinkedIn account that cannot send until someone acts: the session lapsed, LinkedIn restricted
+ * it, or a sign-in was started and never finished. Shared with the Integrations screen so both
+ * read the same rule.
+ */
+export const linkedInNeedsAction = (state: string): boolean =>
+  state === "signed_out" || state === "restricted" || state === "connecting";
+
+/** The wording each blocked state deserves. A restriction is not a sign-out and must not say so. */
+export function linkedInStateNote(state: string): string {
+  if (state === "restricted") return "LinkedIn has restricted this account";
+  if (state === "connecting") return "sign-in not finished";
+  return "needs to log in again";
+}
+
 export function setupChecks(snapshot: AccountsSnapshot): SetupCheck[] {
   const checks: SetupCheck[] = [];
   const linkedin = snapshot.accounts.filter((a) => a.channel === "linkedin");
@@ -51,18 +66,18 @@ export function setupChecks(snapshot: AccountsSnapshot): SetupCheck[] {
       id: "li-accounts",
       tone: "bad",
       title: "No LinkedIn account connected",
-      detail: "LinkedIn steps have no account to send from. Connecting an account isn't available yet.",
+      detail: "LinkedIn steps have no account to send from. Connect one on the Integrations screen.",
       goes: "li",
     });
   } else {
-    const out = linkedin.filter((a) => a.state === "signed_out");
+    const out = linkedin.filter((a) => linkedInNeedsAction(a.state));
     checks.push(
       out.length
         ? {
             id: "li-accounts",
             tone: "bad",
             title: "LinkedIn accounts connected",
-            detail: `${list(out.map((a) => a.name))} ${out.length === 1 ? "needs" : "need"} to log in again. Steps that use ${out.length === 1 ? "it" : "them"} are paused.`,
+            detail: `${list(out.map((a) => `${a.name} (${linkedInStateNote(a.state)})`))}. Steps that use ${out.length === 1 ? "it" : "them"} are paused.`,
             action: "Reconnect",
             goes: "li",
           }

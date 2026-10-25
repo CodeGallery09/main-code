@@ -32,7 +32,7 @@ test("a healthy account and a verified domain pass", () => {
 test("a signed-out LinkedIn account blocks, and names the account", () => {
   const check = byId(setupChecks({ accounts: [li({ state: "signed_out" })], domains: [] }), "li-accounts");
   assert.equal(check.tone, "bad");
-  assert.match(check.detail, /Maya Reyes needs to log in again/);
+  assert.match(check.detail, /Maya Reyes \(needs to log in again\)/);
 });
 
 test("an unauthenticated domain blocks and says which records are missing", () => {

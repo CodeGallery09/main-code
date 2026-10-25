@@ -6,11 +6,13 @@
  */
 
 import type {
+  AccountActivity,
   AccountsSnapshot,
   Analytics,
   Badges,
   ChannelAccount,
   Campaign,
+  ConnectSession,
   CampaignStatus,
   Lead,
   Message,
@@ -155,6 +157,27 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ campaignIds }),
     }),
+
+  deleteAccount: (id: string) =>
+    request<{ deleted: string }>(`/api/accounts/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  /** What has actually happened on each connected account, counted from the event log. */
+  accountActivity: (days = 30) => request<{ activity: AccountActivity[] }>(`/api/accounts/activity${qs({ days })}`),
+
+  /**
+   * Opens a hosted LinkedIn sign-in and returns its URL. With an account id it repairs that
+   * connection instead of making a new one. 503 `not_configured` when the deployment has no
+   * provider key — the caller shows that, rather than a generic failure.
+   */
+  connectLinkedIn: (accountId?: string) =>
+    request<{ url: string; sessionId: string; expiresAt: string }>("/api/integrations/linkedin/connect", {
+      method: "POST",
+      body: JSON.stringify(accountId ? { accountId } : {}),
+    }),
+
+  /** How a connect attempt is going. The provider's callback lands on the server, so this polls. */
+  connectSession: (id: string) =>
+    request<{ session: ConnectSession }>(`/api/integrations/linkedin/connect/${encodeURIComponent(id)}`),
 
   badges: () => request<Badges>("/api/badges"),
 

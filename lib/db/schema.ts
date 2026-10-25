@@ -361,8 +361,25 @@ export const channelAccounts = pgTable(
     name: text("name").notNull(),
     /** Profile URL for LinkedIn, address for email. */
     handle: text("handle").notNull(),
-    /** `healthy`, `signed_out`, `warming`, `warm`: what the Configuration screen reports. */
+    /**
+     * LinkedIn: `connecting`, `healthy`, `signed_out`, `restricted`. Email: `warm`, `warming`.
+     * What the Configuration screen reports; a restriction is a product state, not a bug report.
+     */
     state: text("state").notNull().default("healthy"),
+    /**
+     * Who drives this connection: `manual` for a row typed in or seeded, `unipile` for one
+     * connected through the LinkedIn adapter (`lib/channels/`). Stored so a vendor change does not
+     * orphan a workspace's accounts.
+     */
+    provider: text("provider").notNull().default("manual"),
+    /** The provider's own account id. Globally unique: it is how a webhook finds the workspace. */
+    providerAccountId: text("provider_account_id"),
+    /** The provider's last word on the account's state, shown verbatim. "" when it said nothing. */
+    statusDetail: text("status_detail").notNull().default(""),
+    /** When the connection was made, as opposed to when the row was created. */
+    connectedAt: timestamp("connected_at", { withTimezone: true }),
+    /** Last time the provider told us anything about this account (status or message). */
+    lastEventAt: timestamp("last_event_at", { withTimezone: true }),
     settings: jsonb("settings").notNull().default({}),
     /** Invented at signup alongside the sample campaign; removed with it. */
     isSample: boolean("is_sample").notNull().default(false),
@@ -371,7 +388,48 @@ export const channelAccounts = pgTable(
   (t) => [
     index("channel_accounts_workspace_idx").on(t.workspaceId),
     uniqueIndex("channel_accounts_handle_key").on(t.workspaceId, t.channel, t.handle),
+    // One provider account belongs to exactly one workspace. Without this a second workspace
+    // could claim a connection and read its messages.
+    uniqueIndex("channel_accounts_provider_key").on(t.provider, t.providerAccountId),
   ],
+);
+
+/**
+ * One attempt to connect a channel account through a provider's hosted sign-in.
+ *
+ * It exists for one reason: the provider's callback arrives with the provider's account id and
+ * nothing else of ours, so something has to say which workspace asked. The row's id is the
+ * unguessable reference we hand the provider and it hands back — never a workspace id, which would
+ * let anyone who guessed one attach an account to someone else's workspace.
+ *
+ * Rows are short-lived (`expires_at`, minutes) and swept like `uploads`.
+ */
+export const connectSessions = pgTable(
+  "connect_sessions",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    channel: channelEnum("channel").notNull(),
+    provider: text("provider").notNull(),
+    /** `create` or `reconnect`. */
+    kind: text("kind").notNull().default("create"),
+    /** The account being repaired, on a reconnect. */
+    accountId: text("account_id").references(() => channelAccounts.id, { onDelete: "cascade" }),
+    /** `pending` → `connected` | `failed` | `expired`. */
+    state: text("state").notNull().default("pending"),
+    /** Why it failed, when it did. Shown to the user as-is. */
+    detail: text("detail").notNull().default(""),
+    /** Set once the provider's callback names an account. */
+    providerAccountId: text("provider_account_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("connect_sessions_workspace_idx").on(t.workspaceId), index("connect_sessions_expires_idx").on(t.expiresAt)],
 );
 
 /** Which campaigns send from which account. Many to many, for both channels. */

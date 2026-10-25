@@ -19,6 +19,7 @@
  * as "12.4" where a number is expected.
  */
 
+import { randomBytes } from "node:crypto";
 import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb } from "@/lib/db/client";
@@ -27,6 +28,8 @@ import {
   campaigns as campaignsTable,
   channelAccounts,
   channelQuotas,
+  connectSessions,
+  events as eventsTable,
   dailyRollups,
   leads as leadsTable,
   memberships,
@@ -57,6 +60,7 @@ import type {
 import type { WorkflowGraph } from "@/lib/app/workflow";
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
 import { setupChecks, blockingCount } from "@/lib/data/setup";
+import { ACCOUNT_EVENT } from "@/lib/data/accountEvents";
 import { findInJourney, mergeLeads, type InJourneyRow, type LeadProfile } from "@/lib/leads/merge";
 import { leadIdentity } from "@/lib/leads/profile";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
@@ -64,6 +68,7 @@ import { suggestMapping, type Mapping, type ParsedLead } from "@/lib/leads/valid
 import type { Table } from "@/lib/leads/table";
 import type { AccountSettingsPatch, CampaignPatch, LeadPatch } from "@/lib/data/validate";
 import type {
+  AccountActivity,
   AccountsSnapshot,
   Analytics,
   Badges,
@@ -73,10 +78,13 @@ import type {
   ChannelAccount,
   ChannelBreakdown,
   ChannelQuota,
+  ConnectSession,
+  ConnectSessionState,
   EmailSettings,
   FunnelStage,
   Lead,
   LeadQuery,
+  LinkedInAccount,
   LinkedInSettings,
   Message,
   Metric,
@@ -112,6 +120,38 @@ function initialsOf(name: string): string {
 /** Prefixed, sortable, collision-resistant enough for a single-writer insert. */
 const newId = (prefix: string) =>
   `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+
+/**
+ * A connect-session id. Unlike `newId`, this one is a **capability**: whoever holds it can attach
+ * a provider account to the workspace that opened it, so it must not be guessable — hence
+ * `randomBytes` rather than `Math.random`.
+ */
+const newConnectId = () => `cx_${randomBytes(18).toString("base64url")}`;
+
+/** A stored LinkedIn state, narrowed to the four the type allows. Anything else reads as healthy. */
+function linkedInState(stored: string): LinkedInAccount["state"] {
+  return stored === "signed_out" || stored === "restricted" || stored === "connecting" ? stored : "healthy";
+}
+
+/** A stored connect-session row as the API shape. The provider's own id is never exposed. */
+function toConnectSession(row: typeof connectSessions.$inferSelect): ConnectSession {
+  const state: ConnectSessionState =
+    row.state === "connected" || row.state === "failed" || row.state === "expired"
+      ? row.state
+      : row.expiresAt.getTime() < Date.now()
+        ? "expired"
+        : "pending";
+  return {
+    id: row.id,
+    channel: row.channel,
+    provider: row.provider,
+    kind: row.kind === "reconnect" ? "reconnect" : "create",
+    state,
+    detail: row.detail,
+    accountId: row.accountId ?? null,
+    expiresAt: row.expiresAt.toISOString(),
+  };
+}
 
 /** `YYYY-MM-DD` in UTC — matches the grain of `daily_rollups.day`. */
 const dayKey = (date: Date): string => date.toISOString().slice(0, 10);
@@ -669,13 +709,20 @@ export class PgRepository implements Repository {
       handle: row.handle,
       campaignIds,
       isSample: row.isSample,
+      connection: {
+        provider: row.provider,
+        providerAccountId: row.providerAccountId ?? null,
+        statusDetail: row.statusDetail,
+        connectedAt: row.connectedAt?.toISOString() ?? null,
+        lastEventAt: row.lastEventAt?.toISOString() ?? null,
+      },
     };
     if (row.channel === "linkedin") {
       const raw = row.settings as Partial<LinkedInSettings>;
       return {
         ...base,
         channel: "linkedin",
-        state: row.state === "signed_out" ? "signed_out" : "healthy",
+        state: linkedInState(row.state),
         settings: {
           connections: raw.connections ?? 0,
           messages: raw.messages ?? 0,
@@ -789,6 +836,100 @@ export class PgRepository implements Repository {
       }
     });
     return this.accountById(ctx, id);
+  }
+
+  async deleteAccount(ctx: Ctx, id: string): Promise<{ deleted: string } | null> {
+    const current = await this.accountById(ctx, id);
+    if (!current) return null;
+    // `campaign_accounts` and `connect_sessions` cascade from the row.
+    await this.db
+      .delete(channelAccounts)
+      .where(and(eq(channelAccounts.id, id), this.ws(channelAccounts.workspaceId, ctx)));
+    return { deleted: id };
+  }
+
+  async accountActivity(ctx: Ctx, windowDays: number): Promise<AccountActivity[]> {
+    const days = Math.max(1, Math.min(365, Math.trunc(windowDays)));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const [accounts, rows] = await Promise.all([
+      this.db
+        .select({ id: channelAccounts.id })
+        .from(channelAccounts)
+        .where(this.ws(channelAccounts.workspaceId, ctx)),
+      // Account events carry the account id in the payload: `events` has no account column, and
+      // adding one would mean a migration for a figure a grouped jsonb read answers just as well.
+      this.db
+        .select({
+          accountId: sql<string>`${eventsTable.payload} ->> 'accountId'`,
+          kind: eventsTable.kind,
+          occurredAt: eventsTable.occurredAt,
+        })
+        .from(eventsTable)
+        .where(
+          and(
+            this.ws(eventsTable.workspaceId, ctx),
+            gte(eventsTable.occurredAt, since),
+            inArray(eventsTable.kind, [ACCOUNT_EVENT.message, ACCOUNT_EVENT.status]),
+          ),
+        ),
+    ]);
+
+    const blank = (accountId: string): AccountActivity => ({
+      accountId,
+      messagesReceived: 0,
+      statusChanges: 0,
+      lastMessageAt: null,
+      lastStatusAt: null,
+      windowDays: days,
+    });
+    const by = new Map(accounts.map((a) => [a.id, blank(a.id)]));
+    for (const row of rows) {
+      const entry = row.accountId ? by.get(row.accountId) : undefined;
+      if (!entry) continue;
+      const at = row.occurredAt.toISOString();
+      if (row.kind === ACCOUNT_EVENT.message) {
+        entry.messagesReceived += 1;
+        if (!entry.lastMessageAt || at > entry.lastMessageAt) entry.lastMessageAt = at;
+      } else {
+        entry.statusChanges += 1;
+        if (!entry.lastStatusAt || at > entry.lastStatusAt) entry.lastStatusAt = at;
+      }
+    }
+    return [...by.values()];
+  }
+
+  /* ----------------------------------------- connecting a channel account -- */
+
+  async createConnectSession(
+    ctx: Ctx,
+    input: { channel: Channel; provider: string; kind: "create" | "reconnect"; accountId?: string; ttlMinutes: number },
+  ): Promise<ConnectSession | null> {
+    if (input.accountId && !(await this.accountById(ctx, input.accountId))) return null;
+    const expiresAt = new Date(Date.now() + Math.max(1, input.ttlMinutes) * 60 * 1000);
+    const [row] = await this.db
+      .insert(connectSessions)
+      .values({
+        id: newConnectId(),
+        workspaceId: ctx.workspaceId,
+        userId: ctx.userId,
+        channel: input.channel,
+        provider: input.provider,
+        kind: input.kind,
+        accountId: input.accountId ?? null,
+        state: "pending",
+        expiresAt,
+      })
+      .returning();
+    return toConnectSession(row);
+  }
+
+  async getConnectSession(ctx: Ctx, id: string): Promise<ConnectSession | null> {
+    const [row] = await this.db
+      .select()
+      .from(connectSessions)
+      .where(and(eq(connectSessions.id, id), this.ws(connectSessions.workspaceId, ctx)))
+      .limit(1);
+    return row ? toConnectSession(row) : null;
   }
 
   /* ------------------------------------------------- workspace settings -- */
