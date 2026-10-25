@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { Screen } from "./AppShell";
-import { SampleBanner } from "./SampleBanner";
-import { CheckIcon, Glyph, SearchIcon } from "./icons";
+import { CheckIcon, Glyph, SearchIcon } from "../icons";
 import { api } from "@/lib/api";
 import {
   GROUPS,
@@ -14,8 +11,8 @@ import {
   type ProviderKey,
   type ProviderView,
 } from "@/lib/app/integrations";
-import { CONFIGURATION_HREF, INTEGRATIONS_HREF, SETTINGS_HREF } from "@/lib/nav";
-import { ConnectStatus, useLinkedInConnect } from "./integrations/ConnectLinkedIn";
+import type { ConfigTab } from "@/lib/app/configuration";
+import { ConnectStatus, useLinkedInConnect } from "../integrations/ConnectLinkedIn";
 import type { AccountsSnapshot } from "@/lib/data/types";
 
 const EMPTY: AccountsSnapshot = { accounts: [], domains: [] };
@@ -32,12 +29,6 @@ const TILE: Record<ProviderKey, { bg: string; glyph?: string; text?: string }> =
   webhooks: { bg: "#111418", text: "WH" },
 };
 
-const TABS: [string, string][] = [
-  [CONFIGURATION_HREF, "Configuration"],
-  [INTEGRATIONS_HREF, "Integrations"],
-  [SETTINGS_HREF, "Settings"],
-];
-
 function Tile({ view }: { view: ProviderView }) {
   const t = TILE[view.provider.k];
   return (
@@ -47,8 +38,18 @@ function Tile({ view }: { view: ProviderView }) {
   );
 }
 
-function Row({ view, onOpen }: { view: ProviderView; onOpen: (v: ProviderView) => void }) {
+function Row({
+  view,
+  onOpen,
+  go,
+}: {
+  view: ProviderView;
+  onOpen: (v: ProviderView) => void;
+  go: (tab: ConfigTab) => void;
+}) {
   const live = view.state === "connected" || view.state === "attention";
+  /** A connected provider is managed on its own channel tab, which is one tab away now. */
+  const manageTab: ConfigTab = view.provider.k === "email" ? "mail" : "li";
   return (
     <li className="intg-row">
       <Tile view={view} />
@@ -61,9 +62,9 @@ function Row({ view, onOpen }: { view: ProviderView; onOpen: (v: ProviderView) =
         <small>{live ? view.detail : view.provider.blurb}</small>
       </span>
       {live ? (
-        <Link className="intg-manage" href={CONFIGURATION_HREF}>
+        <button type="button" className="intg-manage" onClick={() => go(manageTab)}>
           Manage
-        </Link>
+        </button>
       ) : (
         <button type="button" className="intg-plus" onClick={() => onOpen(view)} aria-label={`${view.provider.name}: details`}>
           <Glyph n="plus" />
@@ -79,12 +80,14 @@ function Section({
   collapsed,
   onToggle,
   onOpen,
+  go,
 }: {
   title: string;
   rows: ProviderView[];
   collapsed: boolean;
   onToggle: () => void;
   onOpen: (v: ProviderView) => void;
+  go: (tab: ConfigTab) => void;
 }) {
   return (
     <section className="intg-sec">
@@ -97,7 +100,7 @@ function Section({
       {!collapsed && (
         <ul className="intg-grid">
           {rows.map((v) => (
-            <Row key={v.provider.k} view={v} onOpen={onOpen} />
+            <Row key={v.provider.k} view={v} onOpen={onOpen} go={go} />
           ))}
         </ul>
       )}
@@ -106,13 +109,25 @@ function Section({
 }
 
 /**
- * Where a workspace sees what Flightpath can connect to: one card, a workspace-id row on top, then
- * collapsible sections of two-column rows. Everything already wired up sits in "Connected" first;
- * the rest is grouped by category below. LinkedIn and email are the two that can connect
- * (connecting itself is not built yet, and says so); the rest are marked Planned rather than
- * offered as if they worked today. State is read from the workspace's own accounts and domains.
+ * Setup · Connections — what Flightpath can connect to.
+ *
+ * This was its own rail destination ("Integrations"), with a tab strip across Configuration,
+ * Integrations and Settings that gave away that the three were one subject. It is now a tab of
+ * Setup, so "Manage" switches tab rather than navigating to another screen.
+ *
+ * A workspace-id row on top, then collapsible sections of two-column rows. Everything already
+ * wired up sits in "Connected" first; the rest is grouped by category below. LinkedIn is the one
+ * provider that genuinely connects; the rest are marked Planned or say connecting is not built,
+ * rather than offered as if they worked today. State is read from the workspace's own accounts
+ * and domains.
  */
-export function IntegrationsScreen({ linkedInConfigured = false }: { linkedInConfigured?: boolean }) {
+export function Connections({
+  linkedInConfigured = false,
+  go,
+}: {
+  linkedInConfigured?: boolean;
+  go: (tab: ConfigTab) => void;
+}) {
   const [open, setOpen] = useState<ProviderView | null>(null);
   const [snapshot, setSnapshot] = useState<AccountsSnapshot>(EMPTY);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -199,17 +214,8 @@ export function IntegrationsScreen({ linkedInConfigured = false }: { linkedInCon
   }
 
   return (
-    <Screen title="Integrations">
-      <SampleBanner onRemoved={() => void load()} />
-
+    <>
       <div className="intg-top">
-        <nav className="intg-tabs" aria-label="Workspace">
-          {TABS.map(([href, label]) => (
-            <Link key={href} href={href} className={href === INTEGRATIONS_HREF ? "on" : ""} aria-current={href === INTEGRATIONS_HREF ? "page" : undefined}>
-              {label}
-            </Link>
-          ))}
-        </nav>
         <label className="intg-search">
           <SearchIcon />
           <input
@@ -259,6 +265,7 @@ export function IntegrationsScreen({ linkedInConfigured = false }: { linkedInCon
               collapsed={!!collapsed[s.title]}
               onToggle={() => toggle(s.title)}
               onOpen={setOpen}
+              go={go}
             />
           ))}
           {!sections.length && <p className="empty">Nothing matches &ldquo;{query}&rdquo;.</p>}
@@ -266,7 +273,7 @@ export function IntegrationsScreen({ linkedInConfigured = false }: { linkedInCon
       )}
 
       {open && <ProviderDrawer view={open} onClose={() => setOpen(null)} onConnected={() => void load()} />}
-    </Screen>
+    </>
   );
 }
 

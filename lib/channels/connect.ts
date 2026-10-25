@@ -10,7 +10,7 @@
 
 import { getRepository, type Ctx } from "@/lib/data";
 import { appOrigin, getLinkedInAdapter } from "@/lib/channels";
-import { INTEGRATIONS_HREF } from "@/lib/nav";
+import { SETUP_HREF } from "@/lib/nav";
 
 /** A hosted link is a bearer token for attaching an account, so it lives for minutes. */
 export const CONNECT_TTL_MINUTES = 15;
@@ -82,8 +82,8 @@ export async function startLinkedInConnect(ctx: Ctx, accountId?: string): Promis
       kind: accountId ? "reconnect" : "create",
       reference: session.id,
       providerAccountId,
-      successUrl: `${origin}${INTEGRATIONS_HREF}?connected=${encodeURIComponent(session.id)}`,
-      failureUrl: `${origin}${INTEGRATIONS_HREF}?failed=${encodeURIComponent(session.id)}`,
+      successUrl: `${origin}${SETUP_HREF}?connected=${encodeURIComponent(session.id)}`,
+      failureUrl: `${origin}${SETUP_HREF}?failed=${encodeURIComponent(session.id)}`,
       notifyUrl: `${origin}/api/webhooks/unipile/notify`,
       expiresAt: new Date(session.expiresAt),
     });

@@ -5,24 +5,18 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  AnalyticsIcon,
-  BellIcon,
   CampaignsIcon,
   ConfigurationIcon,
   HomeIcon,
   InboxIcon,
-  IntegrationsIcon,
   LeadsIcon,
   Mark,
   PanelIcon,
-  SearchIcon,
-  SettingsIcon,
   SignOutIcon,
-  WorkflowsIcon,
 } from "./icons";
 import { api } from "@/lib/api";
 import { LOGIN_HREF } from "@/lib/site";
-import { CONFIGURATION_HREF, DASHBOARD_NAV, INTEGRATIONS_HREF, SETTINGS_HREF } from "@/lib/nav";
+import { DASHBOARD_NAV } from "@/lib/nav";
 import type { Badges } from "@/lib/data/types";
 import { avatarTint, initials } from "@/lib/app/leads";
 import { Thumb } from "./ui";
@@ -34,8 +28,7 @@ const ICONS = {
   inbox: InboxIcon,
   leads: LeadsIcon,
   campaigns: CampaignsIcon,
-  workflows: WorkflowsIcon,
-  analytics: AnalyticsIcon,
+  configuration: ConfigurationIcon,
 } as const;
 
 /**
@@ -68,6 +61,7 @@ export function AppShell({ user, children }: { user: { name: string; org: string
   const BADGES: Record<string, number> = {
     "/dashboard": badges.tasks,
     "/dashboard/inbox": badges.inbox,
+    "/dashboard/configuration": badges.config,
   };
 
   // The deepest matching route wins, so /dashboard only lights up on Home itself.
@@ -124,35 +118,6 @@ export function AppShell({ user, children }: { user: { name: string; org: string
         <span className="grow" />
 
         <nav className="navlist foot" aria-label="Workspace">
-          <Thumb selector=".navi.on" deps={[pathname]} axis="y" variant="navthumb" />
-          <Link
-            className={"navi" + (isCurrent(CONFIGURATION_HREF) ? " on" : "")}
-            href={CONFIGURATION_HREF}
-            aria-current={isCurrent(CONFIGURATION_HREF) ? "page" : undefined}
-          >
-            <ConfigurationIcon />
-            <span className="lbl">Configuration</span>
-            {badges.config ? <span className="bdg">{badges.config}</span> : null}
-          </Link>
-
-          <Link
-            className={"navi" + (isCurrent(INTEGRATIONS_HREF) ? " on" : "")}
-            href={INTEGRATIONS_HREF}
-            aria-current={isCurrent(INTEGRATIONS_HREF) ? "page" : undefined}
-          >
-            <IntegrationsIcon />
-            <span className="lbl">Integrations</span>
-          </Link>
-
-          <Link
-            className={"navi" + (isCurrent(SETTINGS_HREF) ? " on" : "")}
-            href={SETTINGS_HREF}
-            aria-current={isCurrent(SETTINGS_HREF) ? "page" : undefined}
-          >
-            <SettingsIcon />
-            <span className="lbl">Settings</span>
-          </Link>
-
           <SignOutItem />
         </nav>
 
@@ -260,15 +225,6 @@ export function TopBar({ title }: { title: string }) {
       </Link>
       <h1>{title}</h1>
       <div className="top-r">
-        <button className="search" aria-label="Search">
-          <SearchIcon />
-          <span>Search</span>
-          <kbd>⌘K</kbd>
-        </button>
-        <button className="ib" aria-label="Notifications">
-          <BellIcon />
-          <span className="dotp" />
-        </button>
         <SignOutButton />
       </div>
     </header>

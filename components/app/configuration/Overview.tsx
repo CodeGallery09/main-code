@@ -119,8 +119,16 @@ export function Overview({
           ]}
           onOpen={() => go("mail")}
         />
+        {/* Planned channels have nothing to configure, so they open the Connections list rather
+            than a tab of their own saying there is nothing here. */}
         {(["wa", "call", "sms"] as const).map((k) => (
-          <ChannelTile key={k} channel={k} planned lines={["Planned", "Not available yet"]} onOpen={() => go(k)} />
+          <ChannelTile
+            key={k}
+            channel={k}
+            planned
+            lines={["Planned", "Not available yet"]}
+            onOpen={() => go("connections")}
+          />
         ))}
       </div>
 

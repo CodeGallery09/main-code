@@ -1,24 +1,33 @@
 "use client";
 
+/**
+ * Campaigns: every campaign in the workspace, and the only place one is created.
+ *
+ * A multichannel campaign *is* a workflow — the builder route takes the campaign id and the graph
+ * is one row per campaign — so there is no separate Workflows section and no "type" to choose.
+ * "New campaign" picks a template, which creates the campaign and its workflow together and opens
+ * the builder. Clicking a row opens the builder on it.
+ *
+ * Older standalone (single-channel) campaigns still list and still open their editor; they just
+ * cannot be created any more.
+ */
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Screen } from "./AppShell";
 import { SearchIcon } from "./icons";
-import { Dot, fmt, Kpi, Segmented, Switch, Tabs } from "./ui";
-import { CampaignEditor, type CampaignDraft } from "./CampaignEditor";
-import { SampleBanner } from "./SampleBanner";
-import { api, fieldErrorsOf } from "@/lib/api";
+import { Dot, fmt, Kpi, Tabs } from "./ui";
+import { RenameCampaign } from "./CampaignEditor";
+import { TemplatePicker } from "./campaigns/TemplatePicker";
+import { api } from "@/lib/api";
 import { toAppCampaign, toChannel, type AppCampaign } from "@/lib/app/adapt";
 import { CHANNEL, CHANNELS, type ChannelKey } from "@/lib/app/channels";
 import { STATUS_TAG } from "@/lib/app/campaigns";
-import { graphFromTemplate } from "@/lib/app/workflow";
-import { SENDING_ENABLED, SENDING_OFF_NOTE } from "@/lib/capabilities";
 import type { CampaignStatus } from "@/lib/data/types";
 import type { CampaignTotals } from "@/lib/data/repository";
 
 type StatusFilter = "all" | CampaignStatus;
-type TypeFilter = "all" | "single" | "multi";
 
 /** Only multichannel campaigns have a workflow to open in the builder, which lives
  *  under /dashboard/workflows — campaign ids and workflow ids are the same. */
@@ -35,19 +44,9 @@ function scheduleLabel(c: AppCampaign) {
 /** A draft or an unpublished schedule has no numbers to show yet. */
 const hasRun = (c: AppCampaign) => c.status !== "draft" && !c.scheduledAt;
 
-const EMPTY_DRAFT: CampaignDraft = {
-  id: null,
-  name: "",
-  type: "single",
-  status: "draft",
-  channels: ["mail"],
-  startedAt: "",
-};
-
 export function CampaignsScreen() {
   const router = useRouter();
   const [status, setStatus] = useState<StatusFilter>("all");
-  const [type, setType] = useState<TypeFilter>("all");
   const [channel, setChannel] = useState<ChannelKey | "all">("all");
   const [query, setQuery] = useState("");
 
@@ -69,7 +68,8 @@ export function CampaignsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [editing, setEditing] = useState<CampaignDraft | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [starting, setStarting] = useState(false);
 
   const [debouncedQuery, setDebouncedQuery] = useState("");
   useEffect(() => {
@@ -89,12 +89,10 @@ export function CampaignsScreen() {
         api.campaigns({
           q: debouncedQuery || undefined,
           status: status === "all" ? undefined : status,
-          type: type === "all" ? undefined : type === "multi" ? "multichannel" : "standalone",
           channel: channel === "all" ? undefined : toChannel(channel),
         }),
         api.campaigns({
           q: debouncedQuery || undefined,
-          type: type === "all" ? undefined : type === "multi" ? "multichannel" : "standalone",
           channel: channel === "all" ? undefined : toChannel(channel),
         }),
       ]);
@@ -119,27 +117,21 @@ export function CampaignsScreen() {
     } finally {
       if (id === requestId.current) setLoading(false);
     }
-  }, [debouncedQuery, status, type, channel]);
+  }, [debouncedQuery, status, channel]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  /** The on/off switch writes a real status change, rather than tracking paused ids locally. */
-  async function toggleOn(c: AppCampaign) {
-    const next: CampaignStatus = c.status === "paused" ? "live" : "paused";
-    // Nothing sends yet, so switching a campaign on would be a false claim. Switching off is fine.
-    if (next === "live" && !SENDING_ENABLED) {
-      setError(SENDING_OFF_NOTE);
-      return;
-    }
+  /** Pausing is the only status change the product can honour: stopping is never a false claim. */
+  async function pause(c: AppCampaign) {
     setBusyId(c.id);
-    setRows((current) => current.map((r) => (r.id === c.id ? { ...r, status: next } : r)));
+    setRows((current) => current.map((r) => (r.id === c.id ? { ...r, status: "paused" } : r)));
     try {
-      await api.setCampaignStatus(c.id, next);
+      await api.setCampaignStatus(c.id, "paused");
     } catch {
       setRows((current) => current.map((r) => (r.id === c.id ? { ...r, status: c.status } : r)));
-      setError("Could not change that campaign's status.");
+      setError("Could not pause that campaign.");
     } finally {
       setBusyId(null);
       void load();
@@ -156,34 +148,6 @@ export function CampaignsScreen() {
       setError(caught instanceof Error ? caught.message : "Could not delete that campaign.");
     } finally {
       setBusyId(null);
-    }
-  }
-
-  async function save(draft: CampaignDraft) {
-    const payload = {
-      name: draft.name,
-      type: draft.type === "multi" ? ("multichannel" as const) : ("standalone" as const),
-      status: draft.status,
-      channels: draft.channels.map(toChannel),
-      startedAt: draft.startedAt || null,
-    };
-    try {
-      if (draft.id) {
-        await api.updateCampaign(draft.id, payload);
-      } else {
-        const { campaign } = await api.createCampaign(payload);
-        if (payload.type === "multichannel") {
-          // A multichannel campaign is its workflow: give it an empty one and open the builder.
-          await api.saveWorkflow(campaign.id, { name: campaign.name, graph: graphFromTemplate("blank") });
-          router.push(`/dashboard/workflows/${campaign.id}`);
-          return null;
-        }
-      }
-      setEditing(null);
-      await load();
-      return null;
-    } catch (caught) {
-      return fieldErrorsOf(caught) ?? { _: caught instanceof Error ? caught.message : "Could not save." };
     }
   }
 
@@ -205,8 +169,8 @@ export function CampaignsScreen() {
             ["draft", "Draft", counts.draft],
           ]}
         />
-        <button className="btn pri" onClick={() => setEditing({ ...EMPTY_DRAFT })}>
-          Create campaign
+        <button className="btn pri" onClick={() => setStarting(true)}>
+          New campaign
         </button>
       </div>
 
@@ -221,16 +185,6 @@ export function CampaignsScreen() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
-
-        <Segmented<TypeFilter>
-          value={type}
-          onChange={setType}
-          items={[
-            ["all", "All types"],
-            ["single", "Standalone"],
-            ["multi", "Multichannel"],
-          ]}
-        />
 
         <select
           className="sel pill"
@@ -256,8 +210,6 @@ export function CampaignsScreen() {
         </p>
       )}
 
-      <SampleBanner onRemoved={() => void load()} />
-
       <div className="kpis">
         <Kpi label="Leads" value={fmt(totals.leads)} />
         <Kpi label="Delivered" value={fmt(totals.delivered)} />
@@ -270,9 +222,6 @@ export function CampaignsScreen() {
           <table className="tbl leads camps">
             <thead>
               <tr>
-                <th style={{ width: 64 }}>
-                  <span className="sr">On</span>
-                </th>
                 <th>Campaign</th>
                 <th>Status</th>
                 <th className="r">Leads</th>
@@ -288,6 +237,7 @@ export function CampaignsScreen() {
               {rows.map((c) => {
                 const tag = STATUS_TAG[c.status];
                 const href = builderHref(c);
+                const running = c.status === "live" || c.status === "scheduled";
                 return (
                   <tr
                     className={href ? "click" : ""}
@@ -295,16 +245,6 @@ export function CampaignsScreen() {
                     aria-busy={busyId === c.id}
                     onClick={href ? () => router.push(href) : undefined}
                   >
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <span>
-                        <Switch
-                          on={c.status === "live" || c.status === "scheduled"}
-                          disabled={c.status === "completed" || c.status === "draft" || busyId === c.id}
-                          label={`${c.name} on`}
-                          onChange={() => void toggleOn(c)}
-                        />
-                      </span>
-                    </td>
                     <td>
                       <div className="two">
                         <span style={{ fontWeight: 600 }}>
@@ -318,22 +258,13 @@ export function CampaignsScreen() {
                           {c.isSample && <span className="tag" style={{ marginLeft: 8 }}>Sample</span>}
                         </span>
                         <small>
-                          {c.type === "single" ? (
-                            <>
-                              {c.channels[0] && <Dot k={c.channels[0]} />}
-                              {c.channels[0] ? `${CHANNEL[c.channels[0]].name} · ` : ""}Standalone ·{" "}
-                              {scheduleLabel(c)}
-                            </>
-                          ) : (
-                            <>
-                              <span className="dots">
-                                {c.channels.map((k) => (
-                                  <Dot k={k} key={k} />
-                                ))}
-                              </span>
-                              Multichannel{c.ver ? ` · v${c.ver}` : ""} · {scheduleLabel(c)}
-                            </>
-                          )}
+                          <span className="dots">
+                            {c.channels.map((k) => (
+                              <Dot k={k} key={k} />
+                            ))}
+                          </span>
+                          {c.channels.length ? `${c.channels.map((k) => CHANNEL[k].name).join(" · ")} · ` : ""}
+                          {scheduleLabel(c)}
                         </small>
                       </div>
                     </td>
@@ -354,8 +285,22 @@ export function CampaignsScreen() {
                     </td>
                     <td className="r" onClick={(e) => e.stopPropagation()}>
                       <span className="fu">
-                        <button className="sortb" aria-label={`Edit ${c.name}`} onClick={() => setEditing(draftOf(c))}>
-                          Edit
+                        {running && (
+                          <button
+                            className="sortb"
+                            aria-label={`Pause ${c.name}`}
+                            disabled={busyId === c.id}
+                            onClick={() => void pause(c)}
+                          >
+                            Pause
+                          </button>
+                        )}
+                        <button
+                          className="sortb"
+                          aria-label={`Rename ${c.name}`}
+                          onClick={() => setRenaming({ id: c.id, name: c.name })}
+                        >
+                          Rename
                         </button>
                         <button
                           className="sortb"
@@ -377,29 +322,29 @@ export function CampaignsScreen() {
             failed load is not an empty list, and an empty workspace is not a filter that matched
             nothing. The error banner above already covers the first, so say nothing here. */}
         {rows.length === 0 && !loading && !error &&
-          (status !== "all" || type !== "all" || channel !== "all" || debouncedQuery ? (
+          (status !== "all" || channel !== "all" || debouncedQuery ? (
             <p className="empty">No campaigns match those filters.</p>
           ) : (
             <p className="empty">
               <b>No campaigns yet</b>
-              <span>Create your first campaign to get started.</span>
+              <span>Start one from a template and edit every step in the builder.</span>
             </p>
           ))}
         {loading && rows.length === 0 && <p className="empty">Loading campaigns…</p>}
       </div>
 
-      {editing && <CampaignEditor draft={editing} onCancel={() => setEditing(null)} onSave={save} />}
+      {starting && <TemplatePicker onClose={() => setStarting(false)} />}
+      {renaming && (
+        <RenameCampaign
+          id={renaming.id}
+          name={renaming.name}
+          onCancel={() => setRenaming(null)}
+          onSaved={() => {
+            setRenaming(null);
+            void load();
+          }}
+        />
+      )}
     </Screen>
   );
-}
-
-function draftOf(c: AppCampaign): CampaignDraft {
-  return {
-    id: c.id,
-    name: c.name,
-    type: c.type,
-    status: c.status,
-    channels: c.channels,
-    startedAt: "",
-  };
 }

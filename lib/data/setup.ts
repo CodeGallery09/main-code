@@ -17,8 +17,8 @@ import type { AccountsSnapshot } from "./types";
 
 export type CheckTone = "bad" | "info" | "ok";
 
-/** The Configuration tab a check's button should open. */
-export type CheckTab = "li" | "mail" | "wa" | "call" | "sms";
+/** The Setup tab a check's button should open. */
+export type CheckTab = "li" | "mail";
 
 export type SetupCheck = {
   id: string;
@@ -66,7 +66,7 @@ export function setupChecks(snapshot: AccountsSnapshot): SetupCheck[] {
       id: "li-accounts",
       tone: "bad",
       title: "No LinkedIn account connected",
-      detail: "LinkedIn steps have no account to send from. Connect one on the Integrations screen.",
+      detail: "LinkedIn steps have no account to send from. Connect one under Connections.",
       goes: "li",
     });
   } else {
@@ -92,12 +92,14 @@ export function setupChecks(snapshot: AccountsSnapshot): SetupCheck[] {
 
   /* Email */
   if (!mailboxes.length) {
+    // Information, not a failure: connecting a mailbox is not built, so there is nothing the user
+    // can do about it. Scoring it would leave every workspace permanently short of full marks
+    // with a red row and no action — a score nobody can complete is not a score.
     checks.push({
       id: "mail-accounts",
-      tone: "bad",
-      title: "No mailbox connected",
-      detail: "Email steps have no mailbox to send from. Connecting a mailbox isn't available yet.",
-      goes: "mail",
+      tone: "info",
+      title: "Connecting a mailbox isn't available yet",
+      detail: "Email steps will have no mailbox to send from until it is. Nothing to do here today.",
     });
   } else {
     checks.push({

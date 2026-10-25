@@ -2,14 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { TopBar } from "./AppShell";
 import { BackIcon } from "./icons";
-import { SampleBanner } from "./SampleBanner";
 import { Avatar, Dot, Segmented } from "./ui";
 import { api } from "@/lib/api";
 import { relativeTime, toChannelKey, toStageLabel } from "@/lib/app/adapt";
 import { CHANNEL } from "@/lib/app/channels";
 import { scoreBand, STAGE_COLOR } from "@/lib/app/leads";
+import { LEADS_HREF } from "@/lib/nav";
 import { SENDING_ENABLED, SENDING_OFF_NOTE } from "@/lib/capabilities";
 import type { Message, Thread } from "@/lib/data/types";
 
@@ -32,6 +33,8 @@ function when(iso: string): string {
 type Detail = { messages: Message[] } | { error: string };
 
 export function InboxScreen() {
+  /** Home's to-dos link here with the lead they are about, so the right conversation opens. */
+  const wantedLead = useSearchParams().get("lead");
   const [filter, setFilter] = useState<"needs" | "all">("needs");
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,7 +71,8 @@ export function InboxScreen() {
 
   const needing = threads.filter((t) => t.needsReply);
   const shown = filter === "needs" ? needing : threads;
-  const thread = shown.find((t) => t.id === selected) ?? shown[0] ?? null;
+  const asked = wantedLead ? threads.find((t) => t.leadId === wantedLead) : undefined;
+  const thread = shown.find((t) => t.id === selected) ?? asked ?? shown[0] ?? null;
   const threadId = thread?.id ?? null;
   const detail = threadId ? details[threadId] : undefined;
 
@@ -113,11 +117,7 @@ export function InboxScreen() {
     <div className="main">
       <TopBar title="Inbox" />
       <div className="scroll">
-        {/* A column, so the sample banner takes its height and the panes share what is left. */}
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-          <div style={{ padding: "6px var(--g) 0", flex: "none" }}>
-            <SampleBanner onRemoved={() => void load()} />
-          </div>
           <div
             className={"full inbox" + (open && thread ? " thread" : "")}
             style={{ flex: "1 1 0", minHeight: 0, height: "auto" }}
@@ -200,7 +200,7 @@ export function InboxScreen() {
                       </small>
                     </div>
                     <div className="acts">
-                      <Link className="btn sm line" href="/dashboard/leads">
+                      <Link className="btn sm line" href={`${LEADS_HREF}?lead=${encodeURIComponent(thread.leadId)}`}>
                         Open lead
                       </Link>
                     </div>
@@ -236,25 +236,21 @@ export function InboxScreen() {
                       ))}
                   </div>
 
-                  <div className="composer">
-                    <textarea
-                      className="ta"
-                      aria-label="Reply"
-                      placeholder="Replying isn't available yet."
-                      disabled={!SENDING_ENABLED}
-                    />
-                    <div className="f">
-                      {!SENDING_ENABLED && (
-                        <span className="muted" style={{ fontSize: 12.5 }}>
-                          {SENDING_OFF_NOTE}
-                        </span>
-                      )}
-                      <span className="sp" />
-                      <button className="btn pri" disabled={!SENDING_ENABLED}>
-                        Send
-                      </button>
+                  {SENDING_ENABLED ? (
+                    <div className="composer">
+                      <textarea className="ta" aria-label="Reply" placeholder="Write a reply…" />
+                      <div className="f">
+                        <span className="sp" />
+                        <button className="btn pri">Send</button>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="composer">
+                      <p className="muted" style={{ fontSize: 12.5, padding: "10px 2px" }}>
+                        {SENDING_OFF_NOTE}
+                      </p>
+                    </div>
+                  )}
                 </>
               ) : (
                 threads.length > 0 && <p className="empty">Select a conversation to read it.</p>
@@ -264,13 +260,6 @@ export function InboxScreen() {
             <aside className="ctx pane">
               {thread && (
                 <>
-                  <div style={{ display: "grid", gap: 6, justifyItems: "start" }}>
-                    <Avatar name={thread.leadName} size="lg" />
-                    <b style={{ fontSize: 15 }}>{thread.leadName}</b>
-                    <span className="muted" style={{ fontSize: 12.5 }}>
-                      {thread.role} · {thread.company}
-                    </span>
-                  </div>
                   <dl>
                     <dt>Score</dt>
                     <dd>
@@ -301,9 +290,6 @@ export function InboxScreen() {
                       ))}
                     </ul>
                   )}
-                  <Link className="btn line block" href="/dashboard/leads">
-                    Open lead
-                  </Link>
                 </>
               )}
             </aside>

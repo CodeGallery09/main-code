@@ -62,9 +62,17 @@ export const STEPS: Record<StepKind, Step> = {
   exit: { label: "Exit", icon: "exit", group: "end", ports: [] },
 };
 
-/** The palette, in the order the reference shows it. Audience is never added. */
+/**
+ * The palette. Audience is never added.
+ *
+ * **Only steps that can actually run are offered.** WhatsApp and SMS need a business number and
+ * approved templates that do not exist, so offering them let a user build a sequence that could
+ * never send with nothing on the canvas saying so. `STEPS` still describes them, because a stored
+ * graph may contain one and has to keep rendering; they are simply not on offer. A call step does
+ * run today — it becomes a to-do for a person — so it stays.
+ */
 export const PALETTE: [group: string, kinds: StepKind[]][] = [
-  ["Channels", ["li_invite", "li_msg", "email", "wa", "call", "sms"]],
+  ["Channels", ["li_invite", "li_msg", "email", "call"]],
   ["Logic", ["wait", "cond", "split"]],
   ["End", ["goal", "exit"]],
 ];
@@ -85,6 +93,13 @@ export const CHECKS: Record<CheckKey, string> = {
   read: "Read WhatsApp",
   score: "Score reached",
 };
+
+/**
+ * The checks a condition step offers. "Read WhatsApp" is left out for the same reason the
+ * WhatsApp step is: nothing can observe it. It stays in `CHECKS` above so a stored graph that
+ * already uses it still validates and still reads correctly on the canvas.
+ */
+export const OFFERED_CHECKS: CheckKey[] = ["replied", "accepted", "opened", "clicked", "score"];
 
 export const GOALS: Record<GoalKey, string> = {
   meeting: "Meeting booked",
@@ -143,8 +158,6 @@ export const WA_TEMPLATES: Record<string, string> = {
   event: "Event recap · approved",
 };
 
-export const SIZES = ["Any", "1–10", "11–200", "201–1000", "1000+"];
-export const GEOS = ["Any", "India", "US", "UK", "UAE", "SEA"];
 export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export const MERGE_VARS = ["{first_name}", "{company}", "{title}"];
 
@@ -212,7 +225,7 @@ export const NODE_H = 88;
 export function defaults(kind: StepKind): StepData {
   switch (kind) {
     case "audience":
-      return { list: "q4", titles: "Founder, Head of Sales", geo: "Any", size: "11–200" };
+      return { list: "q4" };
     case "li_invite":
       return {
         note: "Hi {first_name}, I work with sales teams at companies like {company}. Would love to connect.",
@@ -426,6 +439,11 @@ export type StepStat = [value: string, label: string];
 /**
  * Walks the audience count down the tree and turns it into the two figures on
  * each card. A draft has never run, so it gets none.
+ *
+ * **Every figure here is a projection, not a measurement**: the audience size multiplied by the
+ * typical rates in `PASS` and `RATE` above. They read like results, so rates are prefixed with a
+ * "~" and the canvas carries a line saying they are estimates. Replace this with real counts in
+ * the commit that lands a sender, not before.
  */
 export function stepStats(
   nodes: StepNode[],
@@ -481,7 +499,7 @@ export function stepStats(
     const count = n.toLocaleString("en-US");
     const rate = RATE[node.kind];
     if (node.kind === "audience") stats[node.id] = [[count, "leads"]];
-    else if (rate) stats[node.id] = [[count, node.kind === "call" ? "tasks" : "sent"], [asPct(rate[0]), rate[1]]];
+    else if (rate) stats[node.id] = [[count, node.kind === "call" ? "tasks" : "sent"], ["~" + asPct(rate[0]), rate[1]]];
     else if (node.kind === "wait") stats[node.id] = [[Math.round(exact * 0.08).toLocaleString("en-US"), "waiting"]];
     else if (node.kind === "goal") stats[node.id] = [[Math.round(exact * 0.4).toLocaleString("en-US"), "reached"]];
     else if (node.kind === "exit") stats[node.id] = [[count, "exited"]];
@@ -590,7 +608,7 @@ const OUTBOUND: Spec = [
 
 const INBOUND: Spec = [
   "audience",
-  { list: "inbound", titles: "Any", size: "Any" },
+  { list: "inbound" },
   {
     out: [
       "email",
@@ -609,8 +627,8 @@ const INBOUND: Spec = [
               {
                 yes: ["goal"],
                 no: [
-                  "wa",
-                  { template: "followup" },
+                  "li_msg",
+                  {},
                   {
                     out: [
                       "cond",
@@ -630,7 +648,7 @@ const INBOUND: Spec = [
 
 const REENGAGE: Spec = [
   "audience",
-  { list: "lost", titles: "Any" },
+  { list: "lost" },
   {
     out: [
       "email",
@@ -648,32 +666,8 @@ const REENGAGE: Spec = [
               { check: "opened", within: 4 },
               {
                 yes: ["li_invite", {}, { out: ["wait", { days: 3 }, { out: ["exit"] }] }],
-                no: ["sms", {}, { out: ["exit"] }],
+                no: ["exit"],
               },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-];
-
-const WA_FIRST: Spec = [
-  "audience",
-  { list: "event" },
-  {
-    out: [
-      "wa",
-      { template: "event" },
-      {
-        out: [
-          "wait",
-          { days: 1 },
-          {
-            out: [
-              "cond",
-              { check: "replied", within: 1 },
-              { yes: ["call", {}, { out: ["goal"] }], no: ["email", {}, { out: ["exit"] }] },
             ],
           },
         ],
@@ -686,9 +680,8 @@ const WA_FIRST: Spec = [
 export const TEMPLATES: { k: string; name: string; ch: StepChannel[]; steps: number; spec: Spec }[] = [
   { k: "blank", name: "Blank", ch: [], steps: 1, spec: ["audience"] },
   { k: "outbound", name: "Cold outbound", ch: ["li", "mail", "call"], steps: 9, spec: OUTBOUND },
-  { k: "inbound", name: "Inbound follow-up", ch: ["mail", "wa", "call"], steps: 8, spec: INBOUND },
-  { k: "reengage", name: "Re-engage lost deals", ch: ["mail", "li", "sms"], steps: 8, spec: REENGAGE },
-  { k: "wafirst", name: "WhatsApp first", ch: ["wa", "call", "mail"], steps: 7, spec: WA_FIRST },
+  { k: "inbound", name: "Inbound follow-up", ch: ["mail", "li", "call"], steps: 8, spec: INBOUND },
+  { k: "reengage", name: "Re-engage lost deals", ch: ["mail", "li"], steps: 7, spec: REENGAGE },
 ];
 
 const WINDOW = { days: ["Mon", "Tue", "Wed", "Thu", "Fri"], from: "09:00", to: "18:00", skipOther: true };
@@ -726,7 +719,7 @@ export const WORKFLOWS: Workflow[] = (() => {
     build(1, "Net-new outbound", "outbound", "live", { started: "12 Sep" }),
     build(2, "Inbound follow-up", "inbound", "live", { started: "3 Aug", daily: 60 }),
     build(3, "Closed-lost re-engage", "reengage", "live", { started: "20 Sep", daily: 30 }),
-    build(4, "Event follow-up", "wafirst", "paused", { started: "2 Jul", daily: 25 }),
+    build(4, "Event follow-up", "inbound", "paused", { started: "2 Jul", daily: 25 }),
     draft,
   ];
 })();
