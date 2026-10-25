@@ -11,13 +11,13 @@ import {
   validateWorkflowGraph,
   type WorkflowStatus,
 } from "@/lib/app/workflow";
-import type { CampaignStatus } from "@/lib/data/types";
+import type { StrategyStatus } from "@/lib/data/types";
 import { LOGIN_HREF } from "@/lib/site";
 
 type Params = { params: Promise<{ id: string }>; searchParams: Promise<{ template?: string }> };
 
-/** The builder knows three states; a campaign has six. Finished and scheduled ones read as the nearest. */
-const STATUS_OF: Record<CampaignStatus, WorkflowStatus> = {
+/** The builder knows three states; a strategy has six. Finished and scheduled ones read as the nearest. */
+const STATUS_OF: Record<StrategyStatus, WorkflowStatus> = {
   live: "live",
   paused: "paused",
   completed: "paused",
@@ -35,29 +35,29 @@ async function context() {
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { id } = await params;
-  const campaign = await getRepository().getCampaign(await context(), id);
-  return { title: campaign ? campaign.name : "Workflow" };
+  const strategy = await getRepository().getStrategy(await context(), id);
+  return { title: strategy ? strategy.name : "Workflow" };
 }
 
 /**
- * The builder for one campaign's workflow. The route id is the campaign id; a workflow is stored
- * per multichannel campaign, so an unknown id, another workspace's id, or a standalone campaign
+ * The builder for one strategy's workflow. The route id is the strategy id; a workflow is stored
+ * per multichannel strategy, so an unknown id, another workspace's id, or a standalone strategy
  * all read as "not found" — the repository filters by workspace, so there is nothing to leak.
  */
 export default async function WorkflowBuilderPage({ params, searchParams }: Params) {
   const { id } = await params;
-  // Older links and the library's "new" route have no campaign to open: send them to the library,
-  // where a template creates a campaign first.
+  // Older links and the library's "new" route have no strategy to open: send them to the library,
+  // where a template creates a strategy first.
   if (id === "new" || /^\d+$/.test(id)) redirect("/dashboard/workflows");
 
   const ctx = await context();
   const repo = getRepository();
-  const campaign = await repo.getCampaign(ctx, id);
-  if (!campaign || campaign.type !== "multichannel") notFound();
+  const strategy = await repo.getStrategy(ctx, id);
+  if (!strategy || strategy.type !== "multichannel") notFound();
 
   const [record, { items }] = await Promise.all([
     repo.getWorkflow(ctx, id),
-    repo.listCampaigns(ctx, { type: "multichannel" }),
+    repo.listStrategies(ctx, { type: "multichannel" }),
   ]);
 
   let graph;
@@ -71,12 +71,12 @@ export default async function WorkflowBuilderPage({ params, searchParams }: Para
     graph = graphFromTemplate(TEMPLATES.some((t) => t.k === template) ? template : "blank");
   }
 
-  const status = STATUS_OF[campaign.status];
+  const status = STATUS_OF[strategy.status];
   const workflow = fromGraph(graph, {
-    id: campaign.id,
-    name: record?.name ?? campaign.name,
+    id: strategy.id,
+    name: record?.name ?? strategy.name,
     status,
-    started: status === "draft" ? null : DATE.format(new Date(campaign.startedAt)),
+    started: status === "draft" ? null : DATE.format(new Date(strategy.startedAt)),
   });
 
   return (
@@ -84,8 +84,8 @@ export default async function WorkflowBuilderPage({ params, searchParams }: Para
       workflow={workflow}
       // No row yet: the builder saves the starting graph straight away so a reload finds it.
       stored={Boolean(record)}
-      isSample={Boolean(campaign.isSample)}
-      campaigns={items.map((c) => ({ id: c.id, name: c.name }))}
+      isSample={Boolean(strategy.isSample)}
+      strategies={items.map((c) => ({ id: c.id, name: c.name }))}
     />
   );
 }

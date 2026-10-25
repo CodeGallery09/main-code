@@ -18,24 +18,24 @@
  * guessable key, so a missing workspace predicate is an access-control hole, not an optimisation.
  */
 
-import type { InJourneyRow } from "@/lib/leads/merge";
-import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
-import type { Mapping, ParsedLead } from "@/lib/leads/validation";
-import type { Table } from "@/lib/leads/table";
+import type { InJourneyRow } from "@/lib/audiences/merge";
+import type { MappingReport, Segment, UploadPreview } from "@/lib/audiences/segments";
+import type { Mapping, ParsedAudience } from "@/lib/audiences/validation";
+import type { Table } from "@/lib/audiences/table";
 
 import type {
   AccountActivity,
   AccountsSnapshot,
   Analytics,
   Badges,
-  Campaign,
-  CampaignStatus,
-  CampaignType,
+  Strategy,
+  StrategyStatus,
+  StrategyType,
   Channel,
   ChannelAccount,
   ConnectSession,
-  Lead,
-  LeadQuery,
+  Audience,
+  AudienceQuery,
   Message,
   Overview,
   Paged,
@@ -51,9 +51,9 @@ import type {
 } from "@/lib/data/types";
 import type {
   AccountSettingsPatch,
-  CampaignPatch,
+  StrategyPatch,
   CompliancePatch,
-  LeadPatch,
+  AudiencePatch,
   SendingRulesPatch,
   VariableFallbacksPatch,
 } from "@/lib/data/validate";
@@ -68,10 +68,10 @@ export type Ctx = {
   userId: string;
 };
 
-export type CampaignQuery = {
+export type StrategyQuery = {
   q?: string;
-  status?: CampaignStatus | "all";
-  type?: CampaignType | "all";
+  status?: StrategyStatus | "all";
+  type?: StrategyType | "all";
   channel?: Channel | "all";
   range?: RangeKey;
 };
@@ -111,16 +111,16 @@ export interface Repository {
   listTasks(ctx: Ctx, query: TaskQuery): Promise<Task[]>;
   completeTask(ctx: Ctx, id: string): Promise<Task | null>;
 
-  listCampaigns(ctx: Ctx, query: CampaignQuery): Promise<{ items: Campaign[]; totals: CampaignTotals }>;
-  getCampaign(ctx: Ctx, id: string): Promise<Campaign | null>;
+  listStrategies(ctx: Ctx, query: StrategyQuery): Promise<{ items: Strategy[]; totals: StrategyTotals }>;
+  getStrategy(ctx: Ctx, id: string): Promise<Strategy | null>;
 
-  listLeads(ctx: Ctx, query: LeadQuery): Promise<Paged<Lead>>;
-  getLead(ctx: Ctx, id: string): Promise<Lead | null>;
+  listAudiences(ctx: Ctx, query: AudienceQuery): Promise<Paged<Audience>>;
+  getAudience(ctx: Ctx, id: string): Promise<Audience | null>;
 
   /**
-   * One prospect with everything recorded about them: company, journey (campaign and workflow
+   * One prospect with everything recorded about them: company, journey (strategy and workflow
    * run), audiences, conversations, events, to-dos, and the timeline built from those rows by
-   * `buildProspect` (lib/leads/prospect.ts). `null` when the lead is not in this workspace.
+   * `buildProspect` (lib/audiences/prospect.ts). `null` when the audience is not in this workspace.
    */
   getProspect(ctx: Ctx, id: string): Promise<ProspectProfile | null>;
 
@@ -143,50 +143,50 @@ export interface Repository {
   /**
    * Inputs are the validated patches from lib/data/validate.ts — already shape-checked, so an
    * implementation only has to enforce what needs the database: references and uniqueness.
-   * A create whose `campaignId` names a campaign in another workspace must fail, not silently
+   * A create whose `strategyId` names a strategy in another workspace must fail, not silently
    * null the field, so the caller learns the reference was rejected.
    */
-  createLead(ctx: Ctx, input: LeadPatch): Promise<Lead | WriteError>;
-  updateLead(ctx: Ctx, id: string, patch: LeadPatch): Promise<Lead | WriteError | null>;
-  deleteLead(ctx: Ctx, id: string): Promise<boolean>;
+  createAudience(ctx: Ctx, input: AudiencePatch): Promise<Audience | WriteError>;
+  updateAudience(ctx: Ctx, id: string, patch: AudiencePatch): Promise<Audience | WriteError | null>;
+  deleteAudience(ctx: Ctx, id: string): Promise<boolean>;
 
-  createCampaign(ctx: Ctx, input: CampaignPatch): Promise<Campaign | WriteError>;
-  updateCampaign(ctx: Ctx, id: string, patch: CampaignPatch): Promise<Campaign | WriteError | null>;
-  deleteCampaign(ctx: Ctx, id: string): Promise<boolean>;
-  /** Sugar over `updateCampaign`; kept because pausing is a one-click action in the UI. */
-  setCampaignStatus(ctx: Ctx, id: string, status: CampaignStatus): Promise<Campaign | null>;
+  createStrategy(ctx: Ctx, input: StrategyPatch): Promise<Strategy | WriteError>;
+  updateStrategy(ctx: Ctx, id: string, patch: StrategyPatch): Promise<Strategy | WriteError | null>;
+  deleteStrategy(ctx: Ctx, id: string): Promise<boolean>;
+  /** Sugar over `updateStrategy`; kept because pausing is a one-click action in the UI. */
+  setStrategyStatus(ctx: Ctx, id: string, status: StrategyStatus): Promise<Strategy | null>;
 
   sendMessage(ctx: Ctx, input: SendMessageInput): Promise<Message | null>;
 
   /* ----------------------------------------------------------- workflows -- */
 
-  /** The campaign's workflow, or null when it has none yet (or the campaign is not yours). */
-  getWorkflow(ctx: Ctx, campaignId: string): Promise<WorkflowRecord | null>;
+  /** The strategy's workflow, or null when it has none yet (or the strategy is not yours). */
+  getWorkflow(ctx: Ctx, strategyId: string): Promise<WorkflowRecord | null>;
   /** Every workflow in the workspace, for the library. */
   listWorkflows(ctx: Ctx): Promise<WorkflowRecord[]>;
   /**
-   * Creates or replaces a campaign's workflow (one per campaign). `null` means the campaign does
+   * Creates or replaces a strategy's workflow (one per strategy). `null` means the strategy does
    * not exist in this workspace; a `WriteError` means it exists but cannot have one — only a
-   * multichannel campaign has a workflow. The graph must already have passed
+   * multichannel strategy has a workflow. The graph must already have passed
    * `validateWorkflowGraph`.
    */
   saveWorkflow(
     ctx: Ctx,
-    campaignId: string,
+    strategyId: string,
     input: { name: string; graph: WorkflowGraph },
   ): Promise<WorkflowRecord | WriteError | null>;
 
   /**
-   * Deletes everything seeded at signup as an example: the sample campaign (its workflow goes with
-   * it), the sample leads (their threads, messages and to-dos go with them), the sample LinkedIn
-   * account, mailbox and sending domain, and the sample figures. Returns how many campaigns and
-   * leads were removed; never touches anything the user created.
+   * Deletes everything seeded at signup as an example: the sample strategy (its workflow goes with
+   * it), the sample audiences (their threads, messages and to-dos go with them), the sample LinkedIn
+   * account, mailbox and sending domain, and the sample figures. Returns how many strategies and
+   * audiences were removed; never touches anything the user created.
    */
-  removeSampleData(ctx: Ctx): Promise<{ campaigns: number; leads: number }>;
+  removeSampleData(ctx: Ctx): Promise<{ strategies: number; audiences: number }>;
 
   /* ------------------------------------------------- org-level channel accounts -- */
 
-  /** Every LinkedIn account and mailbox the workspace has, with the campaigns that use each. */
+  /** Every LinkedIn account and mailbox the workspace has, with the strategies that use each. */
   listAccounts(ctx: Ctx): Promise<AccountsSnapshot>;
   /**
    * Changes the dials of one account (daily caps, rotation). `null` when it is not yours; a
@@ -194,11 +194,11 @@ export interface Repository {
    */
   updateAccount(ctx: Ctx, id: string, patch: AccountSettingsPatch): Promise<ChannelAccount | WriteError | null>;
   /**
-   * Replaces the set of campaigns that send from an account. Accounts belong to the workspace,
-   * not to a campaign, so this is many to many for both channels. A campaign id from another
+   * Replaces the set of strategies that send from an account. Accounts belong to the workspace,
+   * not to a strategy, so this is many to many for both channels. A strategy id from another
    * workspace is a `WriteError`, never silently dropped.
    */
-  setAccountCampaigns(ctx: Ctx, id: string, campaignIds: string[]): Promise<ChannelAccount | WriteError | null>;
+  setAccountStrategies(ctx: Ctx, id: string, strategyIds: string[]): Promise<ChannelAccount | WriteError | null>;
   /**
    * Removes an account from the workspace. The caller disconnects it at the provider first, so
    * this is the local half only. `null` when the account is not yours.
@@ -227,7 +227,7 @@ export interface Repository {
   /** The numbers on the rail badges. One cheap read, called on every navigation. */
   getBadges(ctx: Ctx): Promise<Badges>;
 
-  /* ------------------------------------------------ lead uploads and segments -- */
+  /* ------------------------------------------------ audience uploads and segments -- */
 
   /**
    * Parks a parsed file so the mapping and summary steps don't have to upload it again. Stored in
@@ -238,30 +238,30 @@ export interface Repository {
   getUpload(ctx: Ctx, id: string): Promise<{ fileName: string; fileSize: number; table: Table } | null>;
 
   /**
-   * Which of these rows are people already in a journey in another campaign: a match on any of
-   * email, mobile, WhatsApp or LinkedIn with a lead who has a campaign. `campaignNames` resolves
+   * Which of these rows are people already in a journey in another strategy: a match on any of
+   * email, mobile, WhatsApp or LinkedIn with an audience who has a strategy. `strategyNames` resolves
    * the ids for the warning.
    */
   findInJourney(
     ctx: Ctx,
-    leads: ParsedLead[],
-  ): Promise<{ hits: InJourneyRow[]; campaignNames: Record<string, string> }>;
+    audiences: ParsedAudience[],
+  ): Promise<{ hits: InJourneyRow[]; strategyNames: Record<string, string> }>;
 
   /**
-   * Every lead's name and contact keys, so the upload preview can say which rows match a prospect
+   * Every audience's name and contact keys, so the upload preview can say which rows match a prospect
    * the workspace already has — the same comparison `createSegment` makes when it saves.
    */
-  listLeadKeys(ctx: Ctx): Promise<{ id: string; name: string; email: string | null; mobile: string | null; whatsapp: string | null; linkedin: string | null }[]>;
+  listAudienceKeys(ctx: Ctx): Promise<{ id: string; name: string; email: string | null; mobile: string | null; whatsapp: string | null; linkedin: string | null }[]>;
 
-  /** Newest first, each with its live `leadCount`. */
+  /** Newest first, each with its live `audienceCount`. */
   listSegments(ctx: Ctx): Promise<Segment[]>;
   getSegment(ctx: Ctx, id: string): Promise<Segment | null>;
 
   /**
    * Saves a validated upload as a segment. Rows already in a journey elsewhere are left out
-   * (recomputed here, not trusted from the browser); the rest are merged into the workspace's leads
-   * by email, mobile, WhatsApp or LinkedIn, and linked to the segment. `consent` applies to leads
-   * this upload *creates*; it never upgrades the consent of a lead that already existed.
+   * (recomputed here, not trusted from the browser); the rest are merged into the workspace's audiences
+   * by email, mobile, WhatsApp or LinkedIn, and linked to the segment. `consent` applies to audiences
+   * this upload *creates*; it never upgrades the consent of an audience that already existed.
    */
   createSegment(
     ctx: Ctx,
@@ -271,7 +271,7 @@ export interface Repository {
       description: string;
       mapping: Mapping;
       report: MappingReport;
-      leads: ParsedLead[];
+      audiences: ParsedAudience[];
       consent: boolean;
     },
   ): Promise<{ segment: Segment; profilesCreated: number; profilesMerged: number; excluded: number } | null>;
@@ -287,8 +287,8 @@ export type WriteError = { error: { field: string; message: string } };
 export const isWriteError = (value: unknown): value is WriteError =>
   typeof value === "object" && value !== null && "error" in value;
 
-export type CampaignTotals = {
-  leads: number;
+export type StrategyTotals = {
+  audiences: number;
   delivered: number;
   openRate: number | null;
   replyRate: number | null;

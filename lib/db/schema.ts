@@ -10,7 +10,7 @@
  *    prototype's workflow ids keep working and the seed ports across unchanged. Prefixed ids are
  *    also self-describing in logs and URLs.
  * 3. **The engine tables exist before the engine does.** A workflow is a graph with waits and
- *    conditions, run per-lead. `workflowRuns` and `stepJobs` are the durable spine for that, and
+ *    conditions, run per-audience. `workflowRuns` and `stepJobs` are the durable spine for that, and
  *    `stepJobs.runAt` + `SELECT … FOR UPDATE SKIP LOCKED` is the whole job queue — no Redis, no
  *    SQS. They are unused by the CRUD in this phase and shaped so the runner needs no migration.
  *
@@ -37,21 +37,21 @@ import {
  * keep bad values out of the database rather than trusting the application. */
 
 export const channelEnum = pgEnum("channel", ["linkedin", "email", "whatsapp", "call", "sms"]);
-export const campaignStatusEnum = pgEnum("campaign_status", [
+export const strategyStatusEnum = pgEnum("strategy_status", [
   "live",
   "scheduled",
   "paused",
   "draft",
   "completed",
 ]);
-export const campaignTypeEnum = pgEnum("campaign_type", ["standalone", "multichannel"]);
+export const strategyTypeEnum = pgEnum("strategy_type", ["standalone", "multichannel"]);
 /**
  * The union of both vocabularies the app grew: lib/data used 6 stages, the workspace screens
  * used 8. Widening the database to the superset keeps the mapping in lib/app/adapt.ts lossless —
  * squeezing "new"/"paused"/"stopped" into "reaching"/"nurture"/"closed" would silently destroy
- * the distinction between a lead who never got touched and one who asked to be left alone.
+ * the distinction between an audience who never got touched and one who asked to be left alone.
  */
-export const leadStageEnum = pgEnum("lead_stage", [
+export const audienceStageEnum = pgEnum("audience_stage", [
   "new",
   "reaching",
   "engaged",
@@ -62,7 +62,7 @@ export const leadStageEnum = pgEnum("lead_stage", [
   "stopped",
   "closed",
 ]);
-export const leadSourceEnum = pgEnum("lead_source", ["form", "csv", "linkedin", "crm", "event"]);
+export const audienceSourceEnum = pgEnum("audience_source", ["form", "csv", "linkedin", "crm", "event"]);
 export const taskKindEnum = pgEnum("task_kind", ["reply", "call", "review"]);
 export const threadIntentEnum = pgEnum("thread_intent", [
   "interested",
@@ -145,22 +145,22 @@ export const sessions = pgTable(
 
 /* -------------------------------------------------------------- domain -- */
 
-export const campaigns = pgTable(
-  "campaigns",
+export const strategies = pgTable(
+  "strategies",
   {
     id: text("id").primaryKey(),
     workspaceId: text("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    status: campaignStatusEnum("status").notNull().default("draft"),
-    type: campaignTypeEnum("type").notNull().default("standalone"),
+    status: strategyStatusEnum("status").notNull().default("draft"),
+    type: strategyTypeEnum("type").notNull().default("standalone"),
     /** A 5-value set; an array beats a join table until per-channel config exists. */
     channels: channelEnum("channels").array().notNull().default([]),
     version: text("version"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     /** Counters denormalised for the table view. The engine owns them once it exists. */
-    leads: integer("leads").notNull().default(0),
+    audiences: integer("audiences").notNull().default(0),
     sent: integer("sent"),
     delivered: integer("delivered"),
     openRate: numeric("open_rate", { precision: 5, scale: 1 }),
@@ -175,13 +175,13 @@ export const campaigns = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    index("campaigns_workspace_idx").on(t.workspaceId),
-    index("campaigns_workspace_status_idx").on(t.workspaceId, t.status),
+    index("strategies_workspace_idx").on(t.workspaceId),
+    index("strategies_workspace_status_idx").on(t.workspaceId, t.status),
   ],
 );
 
-export const leads = pgTable(
-  "leads",
+export const audiences = pgTable(
+  "audiences",
   {
     id: text("id").primaryKey(),
     workspaceId: text("workspace_id")
@@ -189,7 +189,7 @@ export const leads = pgTable(
       .references(() => workspaces.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     company: text("company").notNull().default(""),
-    /** Job title. The leads table shows it and derives a "Title: …" tag from it. */
+    /** Job title. The audiences table shows it and derives a "Title: …" tag from it. */
     title: text("title").notNull().default(""),
     phone: text("phone"),
     email: text("email"),
@@ -198,9 +198,9 @@ export const leads = pgTable(
     linkedin: text("linkedin"),
     /** Columns of an uploaded file with no field of their own, kept so nothing is dropped. */
     extra: jsonb("extra").notNull().default({}),
-    stage: leadStageEnum("stage").notNull().default("reaching"),
+    stage: audienceStageEnum("stage").notNull().default("reaching"),
     score: integer("score").notNull().default(0),
-    source: leadSourceEnum("source").notNull().default("form"),
+    source: audienceSourceEnum("source").notNull().default("form"),
     tags: text("tags").array().notNull().default([]),
     /** Outreach consent. No send may happen on a false value — a legal requirement, not a flag. */
     consent: boolean("consent").notNull().default(false),
@@ -209,22 +209,22 @@ export const leads = pgTable(
     callCount: integer("call_count").notNull().default(0),
     nextStep: text("next_step").notNull().default(""),
     ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
-    campaignId: text("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+    strategyId: text("strategy_id").references(() => strategies.id, { onDelete: "set null" }),
     starred: boolean("starred").notNull().default(false),
-    /** A dummy lead seeded at signup; see `campaigns.isSample`. */
+    /** A dummy audience seeded at signup; see `strategies.isSample`. */
     isSample: boolean("is_sample").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    index("leads_workspace_idx").on(t.workspaceId),
-    index("leads_workspace_stage_idx").on(t.workspaceId, t.stage),
-    index("leads_workspace_score_idx").on(t.workspaceId, t.score),
-    index("leads_campaign_idx").on(t.campaignId),
+    index("audiences_workspace_idx").on(t.workspaceId),
+    index("audiences_workspace_stage_idx").on(t.workspaceId, t.stage),
+    index("audiences_workspace_score_idx").on(t.workspaceId, t.score),
+    index("audiences_strategy_idx").on(t.strategyId),
   ],
 );
 
-/** The builder's graph. One current row per campaign; `version` is bumped on publish. */
+/** The builder's graph. One current row per strategy; `version` is bumped on publish. */
 export const workflows = pgTable(
   "workflows",
   {
@@ -232,9 +232,9 @@ export const workflows = pgTable(
     workspaceId: text("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
-    campaignId: text("campaign_id")
+    strategyId: text("strategy_id")
       .notNull()
-      .references(() => campaigns.id, { onDelete: "cascade" }),
+      .references(() => strategies.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     version: text("version").notNull().default("v1"),
     /** `{ nodes, edges, settings }` as lib/app/workflow.ts already models it. */
@@ -245,7 +245,7 @@ export const workflows = pgTable(
   },
   (t) => [
     index("workflows_workspace_idx").on(t.workspaceId),
-    uniqueIndex("workflows_campaign_key").on(t.campaignId),
+    uniqueIndex("workflows_strategy_key").on(t.strategyId),
   ],
 );
 
@@ -274,7 +274,7 @@ export const uploads = pgTable(
   (t) => [index("uploads_workspace_idx").on(t.workspaceId), index("uploads_created_idx").on(t.createdAt)],
 );
 
-/** One saved upload. The leads it brought in are linked through `segment_leads`. */
+/** One saved upload. The audiences it brought in are linked through `segment_audiences`. */
 export const segments = pgTable(
   "segments",
   {
@@ -294,7 +294,7 @@ export const segments = pgTable(
     channels: jsonb("channels").notNull().default([]),
     profilesCreated: integer("profiles_created").notNull().default(0),
     profilesMerged: integer("profiles_merged").notNull().default(0),
-    /** Rows left out because the person is already in a journey in another campaign. */
+    /** Rows left out because the person is already in a journey in another strategy. */
     excludedInJourney: integer("excluded_in_journey").notNull().default(0),
     errorCount: integer("error_count").notNull().default(0),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
@@ -304,8 +304,8 @@ export const segments = pgTable(
 );
 
 /** A person can belong to several segments without being stored twice. */
-export const segmentLeads = pgTable(
-  "segment_leads",
+export const segmentAudiences = pgTable(
+  "segment_audiences",
   {
     workspaceId: text("workspace_id")
       .notNull()
@@ -313,11 +313,11 @@ export const segmentLeads = pgTable(
     segmentId: text("segment_id")
       .notNull()
       .references(() => segments.id, { onDelete: "cascade" }),
-    leadId: text("lead_id")
+    audienceId: text("audience_id")
       .notNull()
-      .references(() => leads.id, { onDelete: "cascade" }),
+      .references(() => audiences.id, { onDelete: "cascade" }),
   },
-  (t) => [primaryKey({ columns: [t.segmentId, t.leadId] }), index("segment_leads_lead_idx").on(t.leadId)],
+  (t) => [primaryKey({ columns: [t.segmentId, t.audienceId] }), index("segment_audiences_audience_idx").on(t.audienceId)],
 );
 
 /**
@@ -344,7 +344,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
 
 /**
  * A LinkedIn account or a mailbox the **workspace** owns. Accounts belong to the org, not to a
- * campaign: any number of campaigns can send from the same one, through `campaign_accounts`. The
+ * strategy: any number of strategies can send from the same one, through `strategy_accounts`. The
  * channel-specific knobs (daily caps, warm-up day, health, provider) live in `settings` because
  * they differ per channel and change often; what every account has is typed.
  */
@@ -381,7 +381,7 @@ export const channelAccounts = pgTable(
     /** Last time the provider told us anything about this account (status or message). */
     lastEventAt: timestamp("last_event_at", { withTimezone: true }),
     settings: jsonb("settings").notNull().default({}),
-    /** Invented at signup alongside the sample campaign; removed with it. */
+    /** Invented at signup alongside the sample strategy; removed with it. */
     isSample: boolean("is_sample").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -432,21 +432,21 @@ export const connectSessions = pgTable(
   (t) => [index("connect_sessions_workspace_idx").on(t.workspaceId), index("connect_sessions_expires_idx").on(t.expiresAt)],
 );
 
-/** Which campaigns send from which account. Many to many, for both channels. */
-export const campaignAccounts = pgTable(
-  "campaign_accounts",
+/** Which strategies send from which account. Many to many, for both channels. */
+export const strategyAccounts = pgTable(
+  "strategy_accounts",
   {
     workspaceId: text("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
-    campaignId: text("campaign_id")
+    strategyId: text("strategy_id")
       .notNull()
-      .references(() => campaigns.id, { onDelete: "cascade" }),
+      .references(() => strategies.id, { onDelete: "cascade" }),
     accountId: text("account_id")
       .notNull()
       .references(() => channelAccounts.id, { onDelete: "cascade" }),
   },
-  (t) => [primaryKey({ columns: [t.campaignId, t.accountId] }), index("campaign_accounts_account_idx").on(t.accountId)],
+  (t) => [primaryKey({ columns: [t.strategyId, t.accountId] }), index("strategy_accounts_account_idx").on(t.accountId)],
 );
 
 /** A domain the workspace sends email from, with the DNS authentication state of each record. */
@@ -474,9 +474,9 @@ export const threads = pgTable(
     workspaceId: text("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
-    leadId: text("lead_id")
+    audienceId: text("audience_id")
       .notNull()
-      .references(() => leads.id, { onDelete: "cascade" }),
+      .references(() => audiences.id, { onDelete: "cascade" }),
     channel: channelEnum("channel").notNull(),
     intent: threadIntentEnum("intent").notNull().default("question"),
     role: text("role").notNull().default(""),
@@ -484,15 +484,15 @@ export const threads = pgTable(
     unread: boolean("unread").notNull().default(false),
     needsReply: boolean("needs_reply").notNull().default(false),
     lastAt: timestamp("last_at", { withTimezone: true }).notNull().defaultNow(),
-    campaignId: text("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+    strategyId: text("strategy_id").references(() => strategies.id, { onDelete: "set null" }),
     ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
-    /** Why the lead scores what it does: `[{ label, points }]`. Display-only. */
+    /** Why the audience scores what it does: `[{ label, points }]`. Display-only. */
     signals: jsonb("signals").notNull().default([]),
   },
   (t) => [
     index("threads_workspace_idx").on(t.workspaceId),
     index("threads_workspace_needs_reply_idx").on(t.workspaceId, t.needsReply),
-    index("threads_lead_idx").on(t.leadId),
+    index("threads_audience_idx").on(t.audienceId),
   ],
 );
 
@@ -526,9 +526,9 @@ export const tasks = pgTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
     kind: taskKindEnum("kind").notNull(),
-    leadId: text("lead_id")
+    audienceId: text("audience_id")
       .notNull()
-      .references(() => leads.id, { onDelete: "cascade" }),
+      .references(() => audiences.id, { onDelete: "cascade" }),
     summary: text("summary").notNull().default(""),
     channel: channelEnum("channel").notNull(),
     /** Pre-formatted for display ("35m", "Today"). The engine will compute this from a due date. */
@@ -538,7 +538,7 @@ export const tasks = pgTable(
   },
   (t) => [
     index("tasks_workspace_done_idx").on(t.workspaceId, t.done),
-    index("tasks_lead_idx").on(t.leadId),
+    index("tasks_audience_idx").on(t.audienceId),
   ],
 );
 
@@ -580,7 +580,7 @@ export const dailyRollups = pgTable(
     positive: integer("positive").notNull().default(0),
     meetings: integer("meetings").notNull().default(0),
     /**
-     * Illustrative figures belonging to the sample campaign. Part of the key so the engine's real
+     * Illustrative figures belonging to the sample strategy. Part of the key so the engine's real
      * counts for the same day and channel never merge into (or get deleted with) the sample's.
      */
     isSample: boolean("is_sample").notNull().default(false),
@@ -602,8 +602,8 @@ export const events = pgTable(
     /** "sent" | "delivered" | "opened" | "replied" | "meeting_booked" | … */
     kind: text("kind").notNull(),
     channel: channelEnum("channel"),
-    leadId: text("lead_id").references(() => leads.id, { onDelete: "set null" }),
-    campaignId: text("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+    audienceId: text("audience_id").references(() => audiences.id, { onDelete: "set null" }),
+    strategyId: text("strategy_id").references(() => strategies.id, { onDelete: "set null" }),
     payload: jsonb("payload").notNull().default({}),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -613,7 +613,7 @@ export const events = pgTable(
 /* ------------------------------------------------- engine (not yet live) --
  * Shaped now so the runner lands without a migration. Nothing in this phase writes to them. */
 
-/** One lead's journey through one workflow. */
+/** One audience's journey through one workflow. */
 export const workflowRuns = pgTable(
   "workflow_runs",
   {
@@ -624,9 +624,9 @@ export const workflowRuns = pgTable(
     workflowId: text("workflow_id")
       .notNull()
       .references(() => workflows.id, { onDelete: "cascade" }),
-    leadId: text("lead_id")
+    audienceId: text("audience_id")
       .notNull()
-      .references(() => leads.id, { onDelete: "cascade" }),
+      .references(() => audiences.id, { onDelete: "cascade" }),
     state: runStateEnum("state").notNull().default("active"),
     /** Node id the run is sitting on. */
     currentStepId: text("current_step_id"),
@@ -634,7 +634,7 @@ export const workflowRuns = pgTable(
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
   (t) => [
-    uniqueIndex("workflow_runs_once_per_lead").on(t.workflowId, t.leadId),
+    uniqueIndex("workflow_runs_once_per_audience").on(t.workflowId, t.audienceId),
     index("workflow_runs_workspace_state_idx").on(t.workspaceId, t.state),
   ],
 );

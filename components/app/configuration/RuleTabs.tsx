@@ -108,7 +108,7 @@ export function VariablesTab() {
 
       <Panel
         title={`${name} variables`}
-        sub={`Write {first_name} in any message on this channel. The fallback is used when a lead has no value.`}
+        sub={`Write {first_name} in any message on this channel. The fallback is used when an audience has no value.`}
         action={
           <button type="button" className="btn sm line" disabled title="Not available yet">
             Add variable
@@ -244,12 +244,12 @@ export function SendingRulesTab() {
             value={rules.timezone}
             onChange={(timezone) => patch({ timezone })}
             items={[
-              ["lead", "Lead's local time"],
+              ["audience", "Audience's local time"],
               ["workspace", "Workspace (IST)"],
             ]}
           />
         </Row>
-        <Row label="Skip public holidays" hint="No sends to leads in a country on its holidays">
+        <Row label="Skip public holidays" hint="No sends to audiences in a country on its holidays">
           <div className="days">
             {HOLIDAY_COUNTRIES.map((c) => (
               <button
@@ -267,13 +267,13 @@ export function SendingRulesTab() {
       </Panel>
 
       <Panel
-        title="Contact limit per lead"
-        sub="Counts every touch across standalone and multichannel campaigns"
+        title="Contact limit per audience"
+        sub="Counts every touch across standalone and multichannel strategies"
       >
-        <Row label="Limit how often a lead is contacted">
+        <Row label="Limit how often an audience is contacted">
           <Switch
             on={rules.limitOn}
-            label="Limit how often a lead is contacted"
+            label="Limit how often an audience is contacted"
             onChange={(limitOn) => patch({ limitOn })}
           />
         </Row>
@@ -289,7 +289,7 @@ export function SendingRulesTab() {
         )}
       </Panel>
 
-      <Panel title="Stop rules" sub="When a campaign stops for a lead">
+      <Panel title="Stop rules" sub="When a strategy stops for an audience">
         {STOP_RULES.map((r) => (
           <ToggleRowView key={r.id} {...r} on={rules.stops[r.id] ?? r.on} onChange={toggleStop} />
         ))}
@@ -330,10 +330,10 @@ export function SendingRulesTab() {
         {AUDIENCE_RULES.map((r) => (
           <ToggleRowView key={r.id} {...r} on={rules.audience[r.id] ?? r.on} onChange={toggleAudience} />
         ))}
-        <Row label="Wait before contacting a lead again">
+        <Row label="Wait before contacting an audience again">
           <span className="row" style={{ gap: 8 }}>
             <Stepper value={rules.cooloff} max={365} step={30} onChange={(cooloff) => patch({ cooloff })} />
-            <span className="muted">days after a campaign ends</span>
+            <span className="muted">days after a strategy ends</span>
           </span>
         </Row>
       </Panel>
@@ -438,7 +438,7 @@ export function ComplianceTab() {
         })}
       </Panel>
 
-      <Panel title="Regional rules" sub="Applied by each lead's country">
+      <Panel title="Regional rules" sub="Applied by each audience's country">
         {REGIONAL_RULES.map((r) => (
           <ToggleRowView
             key={r.id}
@@ -450,10 +450,10 @@ export function ComplianceTab() {
       </Panel>
 
       <Panel title="Data retention">
-        <Row label="Delete inactive lead data after">
+        <Row label="Delete inactive audience data after">
           <select
             className="sel cf-in"
-            aria-label="Delete inactive lead data after"
+            aria-label="Delete inactive audience data after"
             value={compliance.retention}
             onChange={(e) => patch({ retention: e.target.value })}
           >
@@ -462,7 +462,7 @@ export function ComplianceTab() {
             ))}
           </select>
         </Row>
-        <Row label="Export a lead's data on request" hint="Everything Flightpath holds, as a CSV">
+        <Row label="Export an audience's data on request" hint="Everything Flightpath holds, as a CSV">
           <button type="button" className="btn sm line">
             <Glyph n="users" />
             Export

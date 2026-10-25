@@ -1,5 +1,5 @@
 /**
- * The multichannel workflow model behind the campaign builder.
+ * The multichannel workflow model behind the strategy builder.
  *
  * A workflow is a tree of steps: one Audience at the root, channel sends and
  * logic in the middle, a Goal or an Exit at every leaf. Everything here is
@@ -110,24 +110,24 @@ export const GOALS: Record<GoalKey, string> = {
 /**
  * An audience a workflow can start from. The demo lists below are illustrative;
  * a segment uploaded from a file arrives in the same shape, with `reach`
- * carrying the leads it can actually reach per channel, so the canvas counts
- * reachable leads rather than raw rows.
+ * carrying the audiences it can actually reach per channel, so the canvas counts
+ * reachable audiences rather than raw rows.
  */
 export type AudienceList = {
   k: string;
   name: string;
   n: number;
   src: string;
-  reach?: Partial<Record<LeadAttribute, number>>;
+  reach?: Partial<Record<AudienceAttribute, number>>;
   /** Which uploaded column feeds each attribute, for the line on a channel card. */
-  columns?: Partial<Record<LeadAttribute, string>>;
+  columns?: Partial<Record<AudienceAttribute, string>>;
 };
 
-/** The lead attributes a channel step sends to — mirrors AttributeKey in lib/leads. */
-export type LeadAttribute = "email" | "mobile" | "whatsapp" | "linkedin";
+/** The audience attributes a channel step sends to — mirrors AttributeKey in lib/audiences. */
+export type AudienceAttribute = "email" | "mobile" | "whatsapp" | "linkedin";
 
 /** Which attribute each channel step reads off the segment. */
-export const STEP_ATTRIBUTE: Partial<Record<StepKind, LeadAttribute>> = {
+export const STEP_ATTRIBUTE: Partial<Record<StepKind, AudienceAttribute>> = {
   email: "email",
   wa: "whatsapp",
   sms: "mobile",
@@ -136,7 +136,7 @@ export const STEP_ATTRIBUTE: Partial<Record<StepKind, LeadAttribute>> = {
   li_msg: "linkedin",
 };
 
-export const ATTRIBUTE_LABEL: Record<LeadAttribute, string> = {
+export const ATTRIBUTE_LABEL: Record<AudienceAttribute, string> = {
   email: "Email",
   mobile: "Mobile number",
   whatsapp: "WhatsApp number",
@@ -200,7 +200,7 @@ export type FlowEdge = {
 };
 
 export type Workflow = {
-  /** The campaign id (a string) for a stored workflow; a small number for the demo library. */
+  /** The strategy id (a string) for a stored workflow; a small number for the demo library. */
   id: number | string;
   name: string;
   status: WorkflowStatus;
@@ -237,7 +237,7 @@ export function defaults(kind: StepKind): StepData {
     case "email":
       return {
         subject: "Quick question, {first_name}",
-        body: "Hi {first_name},\n\nWhen teams grow, LinkedIn and email end up on different clocks and leads fall through.\n\nWorth a 20-minute look?\n\n[Your name]",
+        body: "Hi {first_name},\n\nWhen teams grow, LinkedIn and email end up on different clocks and audiences fall through.\n\nWorth a 20-minute look?\n\n[Your name]",
         thread: true,
       };
     case "wa":
@@ -281,7 +281,7 @@ export function stepLabel(kind: StepKind, d: StepData, lists: AudienceList[] = L
         ? WA_TEMPLATES[d.template || ""].split(" ·")[0] + " template"
         : "Choose template";
     case "call":
-      return d.assign === "rr" ? "Round robin" : "Lead owner";
+      return d.assign === "rr" ? "Round robin" : "Audience owner";
     case "wait":
       return `${d.days} ${d.biz ? "business " : ""}day${d.days === 1 ? "" : "s"}`;
     case "cond":
@@ -412,7 +412,7 @@ export function layout(nodes: StepNode[], edges: FlowEdge[]): StepNode[] {
 
 /* ---------- funnel figures ------------------------------------------------ */
 
-/** Share of leads taking the Yes branch of each condition. */
+/** Share of audiences taking the Yes branch of each condition. */
 const PASS: Record<CheckKey, number> = {
   accepted: 0.48,
   replied: 0.13,
@@ -467,7 +467,7 @@ export function stepStats(
     const next = queue.shift();
     if (!next) break;
     const [id, raw] = next;
-    // A channel step can only reach leads whose mapped column held a usable
+    // A channel step can only reach audiences whose mapped column held a usable
     // entry, so a segment's per-channel reachable count caps the step.
     const attribute = STEP_ATTRIBUTE[byId[id] ? byId[id].kind : "audience"];
     const cap = attribute && list && list.reach ? list.reach[attribute] : undefined;
@@ -498,7 +498,7 @@ export function stepStats(
     if (!n) continue;
     const count = n.toLocaleString("en-US");
     const rate = RATE[node.kind];
-    if (node.kind === "audience") stats[node.id] = [[count, "leads"]];
+    if (node.kind === "audience") stats[node.id] = [[count, "audiences"]];
     else if (rate) stats[node.id] = [[count, node.kind === "call" ? "tasks" : "sent"], ["~" + asPct(rate[0]), rate[1]]];
     else if (node.kind === "wait") stats[node.id] = [[Math.round(exact * 0.08).toLocaleString("en-US"), "waiting"]];
     else if (node.kind === "goal") stats[node.id] = [[Math.round(exact * 0.4).toLocaleString("en-US"), "reached"]];
@@ -698,14 +698,14 @@ function build(
   return { id, name, status, ...graph, ...WINDOW, daily: 40, started: null, ...extra };
 }
 
-/** A blank workflow, used by "New campaign". */
+/** A blank workflow, used by "New strategy". */
 export function blankWorkflow(template = "blank"): Workflow {
   const spec = TEMPLATES.find((t) => t.k === template) || TEMPLATES[0];
   return build(0, spec.k === "blank" ? "Untitled workflow" : spec.name, spec.k, "draft");
 }
 
 /**
- * The workflow behind each multichannel campaign in lib/app/campaigns.ts. The
+ * The workflow behind each multichannel strategy in lib/app/strategies.ts. The
  * Q1 founders draft carries a stray SMS step with no message, so the builder
  * has something real to flag.
  */
@@ -729,7 +729,7 @@ export const getWorkflow = (id: number) => WORKFLOWS.find((w) => w.id === id);
 /** Channel order, matching ALL_CHANNELS in ./channels. */
 const CHANNEL_ORDER: StepChannel[] = ["li", "mail", "wa", "call", "sms"];
 
-/** Channels a workflow actually sends on, for the campaign list. */
+/** Channels a workflow actually sends on, for the strategy list. */
 export const workflowChannels = (w: Workflow): StepChannel[] =>
   CHANNEL_ORDER.filter((ch) => w.nodes.some((n) => STEPS[n.kind].ch === ch));
 
@@ -738,19 +738,19 @@ export const workflowChannels = (w: Workflow): StepChannel[] =>
 /** The sending window and pace, stored with the steps. */
 export type WorkflowSettings = Pick<Workflow, "days" | "from" | "to" | "daily" | "skipOther">;
 
-/** What is stored per campaign: the steps, how they connect, and the sending window. */
+/** What is stored per strategy: the steps, how they connect, and the sending window. */
 export type WorkflowGraph = { nodes: StepNode[]; edges: FlowEdge[]; settings: WorkflowSettings };
 
 export const DEFAULT_SETTINGS: WorkflowSettings = { ...WINDOW, daily: 40 };
 
 /**
- * Audience keys that mean "the workspace's own leads" rather than a stored list. The builder turns
- * them into live counts, so a workflow that starts from one always reflects the leads that exist.
+ * Audience keys that mean "the workspace's own audiences" rather than a stored list. The builder turns
+ * them into live counts, so a workflow that starts from one always reflects the audiences that exist.
  */
-export const AUDIENCE_CAMPAIGN = "campaign";
+export const AUDIENCE_CAMPAIGN = "strategy";
 export const AUDIENCE_WORKSPACE = "workspace";
 
-/** A fresh graph from one of the templates, starting from the campaign's own leads by default. */
+/** A fresh graph from one of the templates, starting from the strategy's own audiences by default. */
 export function graphFromTemplate(template = "blank", audience: string = AUDIENCE_CAMPAIGN): WorkflowGraph {
   const spec = TEMPLATES.find((t) => t.k === template) || TEMPLATES[0];
   const { nodes, edges } = fromSpec(spec.spec);
@@ -769,7 +769,7 @@ export const toGraph = (
   settings: { days: w.days, from: w.from, to: w.to, daily: w.daily, skipOther: w.skipOther },
 });
 
-/** The builder's `Workflow` from a stored graph plus what only the campaign knows. */
+/** The builder's `Workflow` from a stored graph plus what only the strategy knows. */
 export function fromGraph(
   graph: WorkflowGraph,
   meta: { id: number | string; name: string; status: WorkflowStatus; started: string | null },
@@ -890,7 +890,7 @@ export function validateWorkflowGraph(input: unknown): GraphValidation {
     }
     // One socket leads to one step; the builder replaces the old connection when a new one is made.
     const socket = `${source}:${port}`;
-    if (seenSocket.has(socket)) return { ok: false, error: `${where}: that socket already leads somewhere.` };
+    if (seenSocket.has(socket)) return { ok: false, error: `${where}: that socket already audiences somewhere.` };
     seenEdge.add(id);
     seenSocket.add(socket);
     edges.push({ id, source, target, port: port as Port });

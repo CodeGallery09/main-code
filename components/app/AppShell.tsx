@@ -5,11 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  CampaignsIcon,
+  StrategiesIcon,
   ConfigurationIcon,
   HomeIcon,
   InboxIcon,
-  LeadsIcon,
+  AudiencesIcon,
   Mark,
   PanelIcon,
   SignOutIcon,
@@ -18,16 +18,16 @@ import { api } from "@/lib/api";
 import { LOGIN_HREF } from "@/lib/site";
 import { DASHBOARD_NAV } from "@/lib/nav";
 import type { Badges } from "@/lib/data/types";
-import { avatarTint, initials } from "@/lib/app/leads";
+import { avatarTint, initials } from "@/lib/app/audiences";
 import { Thumb } from "./ui";
-import { UploadLeads } from "./leads/UploadLeads";
+import { UploadAudiences } from "./audiences/UploadAudiences";
 import { segmentSaved } from "@/lib/app/segments";
 
 const ICONS = {
   home: HomeIcon,
   inbox: InboxIcon,
-  leads: LeadsIcon,
-  campaigns: CampaignsIcon,
+  audiences: AudiencesIcon,
+  strategies: StrategiesIcon,
   configuration: ConfigurationIcon,
 } as const;
 
@@ -103,12 +103,12 @@ export function AppShell({ user, children }: { user: { name: string; org: string
                 {badge ? <span className="bdg">{badge}</span> : null}
               </Link>
             );
-            // Leads carries a dropdown; hovering or focusing it opens straight away.
-            if (item.icon === "leads") {
+            // Audiences carries a dropdown; hovering or focusing it opens straight away.
+            if (item.icon === "audiences") {
               return (
-                <LeadsNav key={item.href} href={item.href} onUpload={() => setUploading(true)}>
+                <AudiencesNav key={item.href} href={item.href} onUpload={() => setUploading(true)}>
                   {link}
-                </LeadsNav>
+                </AudiencesNav>
               );
             }
             return <div key={item.href}>{link}</div>;
@@ -135,7 +135,7 @@ export function AppShell({ user, children }: { user: { name: string; org: string
       {children}
 
       {uploading && (
-        <UploadLeads
+        <UploadAudiences
           onClose={() => setUploading(false)}
           onSaved={(segment) => segmentSaved(segment)}
         />
@@ -147,12 +147,12 @@ export function AppShell({ user, children }: { user: { name: string; org: string
 }
 
 /**
- * The Leads row and its dropdown, which opens the moment the row is hovered or
+ * The Audiences row and its dropdown, which opens the moment the row is hovered or
  * focused. The menu is rendered into the document body rather than the rail:
  * the rail scrolls and sits in its own stacking context, so a menu inside it is
  * both clipped and painted under the page.
  */
-function LeadsNav({ href, onUpload, children }: { href: string; onUpload: () => void; children: React.ReactNode }) {
+function AudiencesNav({ href, onUpload, children }: { href: string; onUpload: () => void; children: React.ReactNode }) {
   const row = useRef<HTMLDivElement>(null);
   const shut = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [at, setAt] = useState<{ top: number; left: number } | null>(null);
@@ -175,13 +175,13 @@ function LeadsNav({ href, onUpload, children }: { href: string; onUpload: () => 
     <div
       className="qmenu navmenu"
       role="menu"
-      aria-label="Leads"
+      aria-label="Audiences"
       style={{ top: at.top, left: at.left }}
       onMouseEnter={open}
       onMouseLeave={close}
     >
       <Link className="navmi" role="menuitem" href={href} onClick={() => setAt(null)}>
-        All leads
+        All audiences
       </Link>
       <button
         className="navmi"

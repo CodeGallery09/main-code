@@ -69,7 +69,7 @@ const OUTCOMES = [
 ];
 
 const ROWS: { icon: ReactNode; title: string; meta: string }[] = [
-  { icon: <Zap size={15} aria-hidden="true" />, title: "Enters Net-new outbound", meta: "Day 1 · from a lead list" },
+  { icon: <Zap size={15} aria-hidden="true" />, title: "Enters Net-new outbound", meta: "Day 1 · from an audience list" },
   { icon: <ChannelIcon channel="linkedin" size={14} />, title: "LinkedIn connection request", meta: "Day 1" },
   { icon: <MessageSquare size={15} aria-hidden="true" />, title: "LinkedIn message", meta: "Day 2 · once she accepts" },
   { icon: <Mail size={15} aria-hidden="true" />, title: "Follow-up email", meta: "Day 4 · only if there's no reply" },
@@ -187,7 +187,7 @@ export function Journey() {
         <Reveal>
           <p className="eyebrow">The customer journey</p>
           <h2 id="journey-title" className="display mt-4 text-[2.4rem] text-ink sm:text-5xl lg:text-[3.2rem]">
-            A lead&rsquo;s whole journey, <em>on one clock.</em>
+            An audience&rsquo;s whole journey, <em>on one clock.</em>
           </h2>
           <p className="mt-5 max-w-md text-[18px] leading-relaxed text-ink-2">
             Pick how Maya responds. Flightpath reads every signal, skips what&rsquo;s no longer needed and routes her next
@@ -227,7 +227,7 @@ export function Journey() {
             })}
           </div>
           <p className="mt-6 max-w-md text-[12.5px] text-muted">
-            Sample lead: Maya Reyes, Head of RevOps at Example Co. Illustrative data and example routing rules.
+            Sample audience: Maya Reyes, Head of RevOps at Example Co. Illustrative data and example routing rules.
           </p>
         </Reveal>
 

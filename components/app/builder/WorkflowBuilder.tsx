@@ -34,9 +34,9 @@ import {
 import { api, fieldErrorsOf } from "@/lib/api";
 import { SENDING_ENABLED, SENDING_OFF_NOTE } from "@/lib/capabilities";
 import { onSegmentSaved } from "@/lib/app/segments";
-import type { Segment } from "@/lib/leads/segments";
+import type { Segment } from "@/lib/audiences/segments";
 
-const CAMPAIGNS_HREF = "/dashboard/campaigns";
+const CAMPAIGNS_HREF = "/dashboard/strategies";
 
 /** How long the editor waits after the last change before saving. */
 const AUTOSAVE_MS = 800;
@@ -68,28 +68,28 @@ type Toast = { id: number; text: string; undo?: () => void };
 type Snapshot = { nodes: StepNode[]; edges: FlowEdge[] };
 
 /**
- * The campaign builder: a workflow on a pannable canvas, with the step palette
+ * The strategy builder: a workflow on a pannable canvas, with the step palette
  * on the left and the settings for the selected step on the right.
  *
- * Edits save themselves to the campaign's stored workflow a moment after you stop typing, and once
+ * Edits save themselves to the strategy's stored workflow a moment after you stop typing, and once
  * more when you leave. Nothing sends: see lib/capabilities.ts.
  */
 export function WorkflowBuilder({
   workflow,
   stored,
   isSample = false,
-  campaigns,
+  strategies,
   channelsOff = [],
 }: {
   workflow: Workflow;
-  /** False when the campaign has no workflow row yet, so the starting graph is saved on mount. */
+  /** False when the strategy has no workflow row yet, so the starting graph is saved on mount. */
   stored: boolean;
   isSample?: boolean;
-  /** The workspace's multichannel campaigns, for the switcher. */
-  campaigns: { id: string; name: string }[];
+  /** The workspace's multichannel strategies, for the switcher. */
+  strategies: { id: string; name: string }[];
   channelsOff?: StepChannel[];
 }) {
-  const campaignId = String(workflow.id);
+  const strategyId = String(workflow.id);
   const router = useRouter();
   const [meta, setMeta] = useState<Workflow>(workflow);
   const [nodes, setNodes] = useState<StepNode[]>(workflow.nodes);
@@ -135,22 +135,22 @@ export function WorkflowBuilder({
     return onSegmentSaved(() => loadSegments());
   }, [loadSegments]);
 
-  // The workspace's own leads, counted live: the campaign's, and all of them.
-  const [counts, setCounts] = useState<{ campaign: number; workspace: number } | null>(null);
+  // The workspace's own audiences, counted live: the strategy's, and all of them.
+  const [counts, setCounts] = useState<{ strategy: number; workspace: number } | null>(null);
   useEffect(() => {
     let live = true;
-    Promise.all([api.leads({ campaignId, pageSize: 1 }), api.leads({ pageSize: 1 })])
-      .then(([inCampaign, all]) => live && setCounts({ campaign: inCampaign.total, workspace: all.total }))
+    Promise.all([api.audiences({ strategyId, pageSize: 1 }), api.audiences({ pageSize: 1 })])
+      .then(([inStrategy, all]) => live && setCounts({ strategy: inStrategy.total, workspace: all.total }))
       .catch(() => live && setCounts(null));
     return () => {
       live = false;
     };
-  }, [campaignId]);
+  }, [strategyId]);
 
   const lists = useMemo<AudienceList[]>(
     () => [
-      { k: AUDIENCE_CAMPAIGN, name: "Leads in this campaign", n: counts?.campaign ?? 0, src: "This campaign" },
-      { k: AUDIENCE_WORKSPACE, name: "All leads", n: counts?.workspace ?? 0, src: "Workspace" },
+      { k: AUDIENCE_CAMPAIGN, name: "Audiences in this strategy", n: counts?.strategy ?? 0, src: "This strategy" },
+      { k: AUDIENCE_WORKSPACE, name: "All audiences", n: counts?.workspace ?? 0, src: "Workspace" },
       ...uploaded,
     ],
     [uploaded, counts],
@@ -244,7 +244,7 @@ export function WorkflowBuilder({
     setSave("saving");
     const sent = latest.current;
     try {
-      await api.saveWorkflow(campaignId, sent);
+      await api.saveWorkflow(strategyId, sent);
       savedFp.current = JSON.stringify(sent);
       setSaveError(null);
     } catch (caught) {
@@ -260,10 +260,10 @@ export function WorkflowBuilder({
       again.current = false;
       void flush();
     } else setSave(dirty.current ? "dirty" : "saved");
-  }, [campaignId]);
+  }, [strategyId]);
 
   // What the server last accepted, so an unchanged graph (the first render, or Strict Mode's second
-  // one) never triggers a save. Null means the campaign has no workflow row yet.
+  // one) never triggers a save. Null means the strategy has no workflow row yet.
   const savedFp = useRef<string | null>(stored ? JSON.stringify(latest.current) : null);
 
   useEffect(() => {
@@ -282,7 +282,7 @@ export function WorkflowBuilder({
       if (!dirty.current || inflight.current) return;
       dirty.current = false;
       savedFp.current = JSON.stringify(latest.current);
-      void fetch(`/api/campaigns/${encodeURIComponent(campaignId)}/workflow`, {
+      void fetch(`/api/strategies/${encodeURIComponent(strategyId)}/workflow`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(latest.current),
@@ -294,7 +294,7 @@ export function WorkflowBuilder({
       window.removeEventListener("pagehide", send);
       send();
     };
-  }, [campaignId]);
+  }, [strategyId]);
 
   /* ---- derived ------------------------------------------------------------ */
 
@@ -354,7 +354,7 @@ export function WorkflowBuilder({
     addStep(kind, { x: parent.x + offset, y: parent.y + 150 }, { id, port });
   };
 
-  /** The first socket on a step that nothing leads out of yet. */
+  /** The first socket on a step that nothing audiences out of yet. */
   const freePort = (id: string) => {
     const node = nodes.find((n) => n.id === id);
     if (!node) return null;
@@ -465,17 +465,17 @@ export function WorkflowBuilder({
   return (
     <div className="builder">
       <div className="bh">
-        <Link className="ib" href={CAMPAIGNS_HREF} aria-label="Back to campaigns">
+        <Link className="ib" href={CAMPAIGNS_HREF} aria-label="Back to strategies">
           <BackIcon />
         </Link>
         <select
           className="sel pill hide-s"
-          aria-label="Switch campaign"
-          value={campaignId}
+          aria-label="Switch strategy"
+          value={strategyId}
           onChange={(e) => router.push(`/dashboard/workflows/${e.target.value}`)}
         >
-          {!campaigns.some((c) => c.id === campaignId) && <option value={campaignId}>{meta.name}</option>}
-          {campaigns.map((c) => (
+          {!strategies.some((c) => c.id === strategyId) && <option value={strategyId}>{meta.name}</option>}
+          {strategies.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
@@ -536,7 +536,7 @@ export function WorkflowBuilder({
             onClick={() => {
               setMeta((w) => ({ ...w, status: "paused" }));
               api
-                .setCampaignStatus(campaignId, "paused")
+                .setStrategyStatus(strategyId, "paused")
                 .then(() => toast("Paused"))
                 .catch(() => {
                   setMeta((w) => ({ ...w, status: "live" }));
@@ -681,7 +681,7 @@ export function WorkflowBuilder({
             <div className="m-b">
               <div className="trio">
                 <div>
-                  <span className="eyebrow">Leads</span>
+                  <span className="eyebrow">Audiences</span>
                   <b>{list ? list.n : 0}</b>
                 </div>
                 <div>
@@ -705,7 +705,7 @@ export function WorkflowBuilder({
                 onClick={() => {
                   setLaunching(false);
                   api
-                    .setCampaignStatus(campaignId, "live")
+                    .setStrategyStatus(strategyId, "live")
                     .then(() => {
                       setMeta((w) => ({ ...w, status: "live" }));
                       toast(`${meta.name} is live`);

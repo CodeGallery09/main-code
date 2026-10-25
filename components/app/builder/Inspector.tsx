@@ -125,7 +125,7 @@ export function Inspector({
 }) {
   const d = node.data;
   const kind = node.kind;
-  const own = lists.filter((l) => l.src === "This campaign" || l.src === "Workspace");
+  const own = lists.filter((l) => l.src === "This strategy" || l.src === "Workspace");
   const uploaded = lists.filter((l) => l.src === "Uploaded file");
   const attribute = STEP_ATTRIBUTE[kind];
   const audience = lists.find((l) => l.k === (kind === "audience" ? d.list : audienceKey));
@@ -181,7 +181,7 @@ export function Inspector({
                 onChange={(e) => onChange({ list: e.target.value })}
               >
                 {own.length > 0 && (
-                  <optgroup label="Your leads">
+                  <optgroup label="Your audiences">
                     {own.map((l) => (
                       <option value={l.k} key={l.k}>
                         {l.name} · {l.n}
@@ -201,10 +201,10 @@ export function Inspector({
               </select>
               <span className="hint">
                 {audience && audience.src === "Uploaded file"
-                  ? "Counted from the leads that file can actually reach, not its row count."
+                  ? "Counted from the audiences that file can actually reach, not its row count."
                   : audience && own.includes(audience)
-                    ? "Counted live from the leads in your workspace."
-                    : "Pick the leads in this campaign, all your leads, or a file you uploaded from Leads."}
+                    ? "Counted live from the audiences in your workspace."
+                    : "Pick the audiences in this strategy, all your audiences, or a file you uploaded from Audiences."}
               </span>
             </div>
 
@@ -300,7 +300,7 @@ export function Inspector({
                 value={d.assign}
                 onChange={(e) => onChange({ assign: e.target.value as "owner" | "rr" })}
               >
-                <option value="owner">Lead owner</option>
+                <option value="owner">Audience owner</option>
                 <option value="rr">Round robin</option>
               </select>
             </div>
@@ -333,7 +333,7 @@ export function Inspector({
         {kind === "cond" && (
           <>
             <div className="fld">
-              <label htmlFor="ins-check">If the lead</label>
+              <label htmlFor="ins-check">If the audience</label>
               <select
                 id="ins-check"
                 className="sel"
@@ -413,7 +413,7 @@ export function Inspector({
           </div>
         )}
 
-        {kind === "exit" && <p className="muted" style={{ fontSize: 13 }}>Leads leave this workflow here.</p>}
+        {kind === "exit" && <p className="muted" style={{ fontSize: 13 }}>Audiences leave this workflow here.</p>}
       </div>
 
       {kind !== "audience" && (
@@ -507,13 +507,13 @@ export function WorkflowSettings({
         </div>
 
         <div className="trow">
-          <b>New leads per day</b>
+          <b>New audiences per day</b>
           <Stepper
             value={meta.daily}
             min={5}
             max={200}
             step={5}
-            label="leads per day"
+            label="audiences per day"
             onChange={(daily) => setMeta((w) => ({ ...w, daily }))}
           />
         </div>
@@ -529,7 +529,7 @@ export function WorkflowSettings({
         </div>
 
         <div className="trow">
-          <b>Skip leads in other workflows</b>
+          <b>Skip audiences in other workflows</b>
           <Switch on={meta.skipOther} label="Skip" onChange={(skipOther) => setMeta((w) => ({ ...w, skipOther }))} />
         </div>
 

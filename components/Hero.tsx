@@ -37,7 +37,7 @@ type HeroCard = { label: string; scatter: [number, number, number]; value?: Reac
 
 const CARDS: HeroCard[] = [
   {
-    label: "Leads in motion",
+    label: "Audiences in motion",
     scatter: [0.11, 0.21, -4],
     value: <Num to={1284} />,
     viz: <Spark path="M0,24 L11,21 L22,22 L33,16 L44,15 L55,16 L66,10 L77,8 L88,9 L100,4" color="var(--accent)" />,
@@ -72,7 +72,7 @@ const CARDS: HeroCard[] = [
         <span className="absolute -top-1 left-[70%] h-3.5 w-px bg-ink/50" />
       </div>
     ),
-    note: "70+ routes the lead to a call",
+    note: "70+ routes the audience to a call",
   },
   {
     label: "Next action",
@@ -264,7 +264,7 @@ export function Hero() {
                 </em>
               </h1>
               <p className="intro mx-auto mt-6 max-w-[34rem] text-[19px] font-medium leading-relaxed text-ink-2" style={d(560)}>
-                Flightpath runs LinkedIn and email as one workflow, reads how every lead engages, and routes the next step.
+                Flightpath runs LinkedIn and email as one workflow, reads how every audience engages, and routes the next step.
                 Every workflow is benchmarked.
               </p>
               <div

@@ -8,10 +8,10 @@ import { fail, json, readJson } from "@/lib/http";
 /**
  * POST /api/webhooks/unipile/messages — a message arrived on a connected account.
  *
- * It lands in the inbox only when the sender is already a lead in that workspace (matched on their
+ * It lands in the inbox only when the sender is already an audience in that workspace (matched on their
  * LinkedIn handle). A message from someone the workspace has never uploaded is recorded as an
  * event and nothing else: inventing a person out of a webhook payload would put a stranger in
- * someone's lead list.
+ * someone's audience list.
  *
  * Idempotent on the provider's message id — Unipile retries a delivery five times if it does not
  * get a 200 within 30 seconds, so a duplicate must not become a second message in the thread.

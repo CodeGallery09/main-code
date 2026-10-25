@@ -3,7 +3,7 @@
  *
  * It deliberately does the same filtering, sorting and paging work a database would, through the
  * shared helpers in lib/data/query.ts, so swapping in a real store cannot change behaviour.
- * Writes (completing a task, pausing a campaign, sending a reply) mutate module state: they last
+ * Writes (completing a task, pausing a strategy, sending a reply) mutate module state: they last
  * until the server restarts, which is all a prototype needs.
  */
 
@@ -30,8 +30,8 @@ import {
   buildTrend,
 } from "@/lib/data/seed";
 import type {
-  CampaignQuery,
-  CampaignTotals,
+  StrategyQuery,
+  StrategyTotals,
   Ctx,
   Repository,
   SendMessageInput,
@@ -42,28 +42,28 @@ import type {
 } from "@/lib/data/repository";
 import { AUDIENCE_CAMPAIGN, WORKFLOWS, toGraph, type WorkflowGraph } from "@/lib/app/workflow";
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
-import type { AccountSettingsPatch, CampaignPatch, LeadPatch } from "@/lib/data/validate";
-import { findInJourney, mergeLeads, type InJourneyRow, type LeadProfile } from "@/lib/leads/merge";
-import { identityFill, leadIdentity, splitFileFields } from "@/lib/leads/profile";
-import { buildProspect } from "@/lib/leads/prospect";
+import type { AccountSettingsPatch, StrategyPatch, AudiencePatch } from "@/lib/data/validate";
+import { findInJourney, mergeAudiences, type InJourneyRow, type AudienceProfile } from "@/lib/audiences/merge";
+import { identityFill, audienceIdentity, splitFileFields } from "@/lib/audiences/profile";
+import { buildProspect } from "@/lib/audiences/prospect";
 import { blockingCount, setupChecks } from "@/lib/data/setup";
-import type { MappingReport, Segment, UploadPreview } from "@/lib/leads/segments";
-import { suggestMapping, type Mapping, type ParsedLead } from "@/lib/leads/validation";
-import type { Table } from "@/lib/leads/table";
+import type { MappingReport, Segment, UploadPreview } from "@/lib/audiences/segments";
+import { suggestMapping, type Mapping, type ParsedAudience } from "@/lib/audiences/validation";
+import type { Table } from "@/lib/audiences/table";
 import type {
   AccountActivity,
   AccountsSnapshot,
   Analytics,
   Badges,
-  Campaign,
-  CampaignStatus,
+  Strategy,
+  StrategyStatus,
   Channel,
   ChannelAccount,
   ChannelBreakdown,
   ConnectSession,
   FunnelStage,
-  Lead,
-  LeadQuery,
+  Audience,
+  AudienceQuery,
   Message,
   Metric,
   Overview,
@@ -81,9 +81,9 @@ import type {
 
 /**
  * Every piece of mutable state below lives on `globalThis`, not in this module. Next bundles each
- * route handler separately, so a module-level array is a different copy in `/api/leads` than in
- * `/api/leads/[id]`: an upload parked by one route was "no longer available" in the next, and a
- * starred lead looked unstarred in the list. One process, one store — the same fix as the cached
+ * route handler separately, so a module-level array is a different copy in `/api/audiences` than in
+ * `/api/audiences/[id]`: an upload parked by one route was "no longer available" in the next, and a
+ * starred audience looked unstarred in the list. One process, one store — the same fix as the cached
  * pool in lib/db/client.ts. (Serverless instances still don't share it; demo writes are scratch.)
  */
 const globalForMemory = globalThis as unknown as { __fpMemory?: Record<string, unknown> };
@@ -95,16 +95,16 @@ function shared<T>(key: string, init: () => T): T {
 
 /**
  * Uploaded files and saved segments. Module state, so they last until the server restarts, like
- * every other write in this store. Uploaded rows merge into `leadRows`, the same lead list the
- * Leads screen shows, so memory mode behaves like the database.
+ * every other write in this store. Uploaded rows merge into `audienceRows`, the same audience list the
+ * Audiences screen shows, so memory mode behaves like the database.
  */
 const uploads = shared("uploads", () => new Map<string, { fileName: string; fileSize: number; table: Table; at: number }>());
 const segments = shared<Segment[]>("segments", () => []);
 const segmentMembers = shared("segmentMembers", () => new Map<string, Set<string>>());
-/** What the `Lead` shape has no field for: the kept file columns and the creation time. Seed leads
+/** What the `Audience` shape has no field for: the kept file columns and the creation time. Seed audiences
  *  have neither, so their profiles say so rather than invent one. */
-const leadExtra = shared("leadExtra", () => new Map<string, Record<string, string>>());
-const leadCreatedAt = shared("leadCreatedAt", () => new Map<string, string>());
+const audienceExtra = shared("audienceExtra", () => new Map<string, Record<string, string>>());
+const audienceCreatedAt = shared("audienceCreatedAt", () => new Map<string, string>());
 const seq = shared("seq", () => ({ segment: 1, upload: 1 }));
 
 /** Parsed files are scratch space; drop anything older than an hour. */
@@ -114,10 +114,10 @@ function sweepUploads() {
 }
 
 // Mutable copies, so prototype writes are visible on the next read.
-const campaigns = shared<Campaign[]>("campaigns", () => CAMPAIGNS.map((c) => ({ ...c })));
+const strategies = shared<Strategy[]>("strategies", () => CAMPAIGNS.map((c) => ({ ...c })));
 const messages = shared<Message[]>("messages", () => MESSAGES.map((m) => ({ ...m })));
 const threads = shared<Thread[]>("threads", () => THREADS.map((t) => ({ ...t })));
-const leadRows = shared<Lead[]>("leadRows", () => LEADS.map((l) => ({ ...l })));
+const audienceRows = shared<Audience[]>("audienceRows", () => LEADS.map((l) => ({ ...l })));
 const trend = shared<TrendPoint[]>("trend", () => buildTrend(90));
 const accounts = shared<ChannelAccount[]>("accounts", () => ACCOUNTS.map((a) => structuredClone(a)));
 const domains = shared("domains", () => DOMAINS.map((d) => ({ ...d })));
@@ -126,8 +126,8 @@ const domains = shared("domains", () => DOMAINS.map((d) => ({ ...d })));
  * state like everything else here: a save lasts until the server restarts. */
 const settings = shared("settings", () => ({ row: defaultWorkspaceSettings() as WorkspaceSettings }));
 
-/** Monotonic ids for prototype creates, so two leads made in the same millisecond differ. */
-/** Workflows saved in this process, by campaign id. Seed campaigns fall back to the demo graphs. */
+/** Monotonic ids for prototype creates, so two audiences made in the same millisecond differ. */
+/** Workflows saved in this process, by strategy id. Seed strategies fall back to the demo graphs. */
 const workflowRows = shared("workflowRows", () => new Map<string, WorkflowRecord>());
 
 const counters = shared<Record<string, number>>("counters", () => ({}));
@@ -146,8 +146,8 @@ const tasks = shared<Task[]>("tasks", () => [
   {
     id: "tk_omar",
     kind: "reply",
-    leadId: "l_omar",
-    leadName: "Omar Haddad",
+    audienceId: "l_omar",
+    audienceName: "Omar Haddad",
     company: "Brightline Logistics",
     initials: "OH",
     score: 80,
@@ -159,8 +159,8 @@ const tasks = shared<Task[]>("tasks", () => [
   {
     id: "tk_rohan",
     kind: "reply",
-    leadId: "l_rohan",
-    leadName: "Rohan Desai",
+    audienceId: "l_rohan",
+    audienceName: "Rohan Desai",
     company: "Tiffin Labs",
     initials: "RD",
     score: 58,
@@ -172,8 +172,8 @@ const tasks = shared<Task[]>("tasks", () => [
   {
     id: "tk_maya",
     kind: "call",
-    leadId: "l_maya",
-    leadName: "Maya Reyes",
+    audienceId: "l_maya",
+    audienceName: "Maya Reyes",
     company: "Example Co",
     initials: "MR",
     score: 70,
@@ -185,8 +185,8 @@ const tasks = shared<Task[]>("tasks", () => [
   {
     id: "tk_priya",
     kind: "call",
-    leadId: "l_priya",
-    leadName: "Priya Nair",
+    audienceId: "l_priya",
+    audienceName: "Priya Nair",
     company: "Kitebox",
     initials: "PN",
     score: 72,
@@ -198,8 +198,8 @@ const tasks = shared<Task[]>("tasks", () => [
   {
     id: "tk_kenji",
     kind: "reply",
-    leadId: "l_kenji",
-    leadName: "Kenji Watanabe",
+    audienceId: "l_kenji",
+    audienceName: "Kenji Watanabe",
     company: "Quanta Health",
     initials: "KW",
     score: 46,
@@ -211,8 +211,8 @@ const tasks = shared<Task[]>("tasks", () => [
   {
     id: "tk_daniel",
     kind: "review",
-    leadId: "l_daniel",
-    leadName: "Daniel Kim",
+    audienceId: "l_daniel",
+    audienceName: "Daniel Kim",
     company: "Northwind HR",
     initials: "DK",
     score: 10,
@@ -266,10 +266,10 @@ function headlineMetrics(range: RangeKey): Metric[] {
     metric("meetings", "Meetings", meetings, meetingsPrev, "count", 0, spark("meetings")),
     metric("reply-rate", "Reply rate", rate, ratePrev, "percent", 1, spark("replied"), "points"),
     metric(
-      "active-leads",
-      "Active leads",
-      leadRows.filter((l) => l.stage !== "closed").length * 92,
-      leadRows.filter((l) => l.stage !== "closed").length * 88,
+      "active-audiences",
+      "Active audiences",
+      audienceRows.filter((l) => l.stage !== "closed").length * 92,
+      audienceRows.filter((l) => l.stage !== "closed").length * 88,
       "count",
       0,
       spark("engaged"),
@@ -296,13 +296,13 @@ export class MemoryRepository implements Repository {
     const [user, open, live] = await Promise.all([
       this.getUser(ctx),
       this.listTasks(ctx, { kind: "all" }),
-      this.listCampaigns(ctx, { status: "live" }),
+      this.listStrategies(ctx, { status: "live" }),
     ]);
     return {
       user,
       metrics: headlineMetrics(range),
       tasks: open,
-      campaigns: live.items.slice(0, 5),
+      strategies: live.items.slice(0, 5),
       quotas: QUOTAS.map((q) => ({ ...q })),
     };
   }
@@ -320,11 +320,11 @@ export class MemoryRepository implements Repository {
     return { ...found };
   }
 
-  async listCampaigns(
+  async listStrategies(
     _ctx: Ctx,
-    query: CampaignQuery,
-  ): Promise<{ items: Campaign[]; totals: CampaignTotals }> {
-    const items = campaigns.filter(
+    query: StrategyQuery,
+  ): Promise<{ items: Strategy[]; totals: StrategyTotals }> {
+    const items = strategies.filter(
       (c) =>
         matchesText([c.name], query.q) &&
         matchesFacet(c.status, query.status) &&
@@ -335,7 +335,7 @@ export class MemoryRepository implements Repository {
     const sent = items.reduce((sum, c) => sum + (c.sent ?? 0), 0);
     const withOpen = items.filter((c) => c.openRate !== null);
     const withReply = items.filter((c) => c.replyRate !== null);
-    const mean = (rows: Campaign[], key: "openRate" | "replyRate") =>
+    const mean = (rows: Strategy[], key: "openRate" | "replyRate") =>
       rows.length
         ? Number((rows.reduce((sum, c) => sum + (c[key] ?? 0), 0) / rows.length).toFixed(1))
         : null;
@@ -343,7 +343,7 @@ export class MemoryRepository implements Repository {
     return {
       items: items.map((c) => ({ ...c })),
       totals: {
-        leads: items.reduce((sum, c) => sum + c.leads, 0),
+        audiences: items.reduce((sum, c) => sum + c.audiences, 0),
         delivered: delivered || sent,
         openRate: mean(withOpen, "openRate"),
         replyRate: mean(withReply, "replyRate"),
@@ -351,33 +351,33 @@ export class MemoryRepository implements Repository {
     };
   }
 
-  async getCampaign(_ctx: Ctx, id: string): Promise<Campaign | null> {
-    const found = campaigns.find((c) => c.id === id);
+  async getStrategy(_ctx: Ctx, id: string): Promise<Strategy | null> {
+    const found = strategies.find((c) => c.id === id);
     return found ? { ...found } : null;
   }
 
-  async createCampaign(_ctx: Ctx, input: CampaignPatch): Promise<Campaign> {
-    const row: Campaign = {
-      id: `c_${nextId("campaign")}`,
-      name: input.name ?? "Untitled campaign",
+  async createStrategy(_ctx: Ctx, input: StrategyPatch): Promise<Strategy> {
+    const row: Strategy = {
+      id: `c_${nextId("strategy")}`,
+      name: input.name ?? "Untitled strategy",
       status: input.status ?? "draft",
       type: input.type ?? "standalone",
       channels: input.channels ?? [],
       version: input.type === "multichannel" ? "v1" : null,
       startedAt: input.startedAt ?? new Date().toISOString(),
-      leads: 0,
+      audiences: 0,
       sent: null,
       delivered: null,
       openRate: null,
       replyRate: null,
       clicks: null,
     };
-    campaigns.unshift(row);
+    strategies.unshift(row);
     return { ...row };
   }
 
-  async updateCampaign(_ctx: Ctx, id: string, patch: CampaignPatch): Promise<Campaign | null> {
-    const found = campaigns.find((c) => c.id === id);
+  async updateStrategy(_ctx: Ctx, id: string, patch: StrategyPatch): Promise<Strategy | null> {
+    const found = strategies.find((c) => c.id === id);
     if (!found) return null;
     if (patch.name !== undefined) found.name = patch.name;
     if (patch.status !== undefined) found.status = patch.status;
@@ -387,18 +387,18 @@ export class MemoryRepository implements Repository {
     return { ...found };
   }
 
-  async deleteCampaign(_ctx: Ctx, id: string): Promise<boolean> {
-    const at = campaigns.findIndex((c) => c.id === id);
+  async deleteStrategy(_ctx: Ctx, id: string): Promise<boolean> {
+    const at = strategies.findIndex((c) => c.id === id);
     if (at < 0) return false;
-    campaigns.splice(at, 1);
+    strategies.splice(at, 1);
     workflowRows.delete(id);
-    // Mirror the database's ON DELETE SET NULL so a lead never points at a campaign that is gone.
-    for (const lead of leadRows) if (lead.campaignId === id) lead.campaignId = null;
+    // Mirror the database's ON DELETE SET NULL so an audience never points at a strategy that is gone.
+    for (const audience of audienceRows) if (audience.strategyId === id) audience.strategyId = null;
     return true;
   }
 
-  async setCampaignStatus(_ctx: Ctx, id: string, status: CampaignStatus): Promise<Campaign | null> {
-    const found = campaigns.find((c) => c.id === id);
+  async setStrategyStatus(_ctx: Ctx, id: string, status: StrategyStatus): Promise<Strategy | null> {
+    const found = strategies.find((c) => c.id === id);
     if (!found) return null;
     found.status = status;
     return { ...found };
@@ -406,28 +406,28 @@ export class MemoryRepository implements Repository {
 
   /* ----------------------------------------------------------- workflows -- */
 
-  async getWorkflow(_ctx: Ctx, campaignId: string): Promise<WorkflowRecord | null> {
-    const saved = workflowRows.get(campaignId);
+  async getWorkflow(_ctx: Ctx, strategyId: string): Promise<WorkflowRecord | null> {
+    const saved = workflowRows.get(strategyId);
     if (saved) return structuredClone(saved);
-    // The seed's multichannel campaigns each have a demo workflow with the same name.
-    const campaign = campaigns.find((c) => c.id === campaignId);
-    const demo = campaign && WORKFLOWS.find((w) => w.name === campaign.name);
-    if (!campaign || !demo) return null;
+    // The seed's multichannel strategies each have a demo workflow with the same name.
+    const strategy = strategies.find((c) => c.id === strategyId);
+    const demo = strategy && WORKFLOWS.find((w) => w.name === strategy.name);
+    if (!strategy || !demo) return null;
     return structuredClone({
-      campaignId,
+      strategyId,
       name: demo.name,
-      // The demo graphs name invented audience lists; in a workspace they read the campaign's leads.
+      // The demo graphs name invented audience lists; in a workspace they read the strategy's audiences.
       graph: ((g) => ({
         ...g,
         nodes: g.nodes.map((n) => (n.kind === "audience" ? { ...n, data: { ...n.data, list: AUDIENCE_CAMPAIGN } } : n)),
       }))(toGraph(demo)),
-      updatedAt: campaign.startedAt,
+      updatedAt: strategy.startedAt,
     });
   }
 
   async listWorkflows(ctx: Ctx): Promise<WorkflowRecord[]> {
     const out: WorkflowRecord[] = [];
-    for (const c of campaigns) {
+    for (const c of strategies) {
       if (c.type !== "multichannel") continue;
       const found = await this.getWorkflow(ctx, c.id);
       if (found) out.push(found);
@@ -437,43 +437,43 @@ export class MemoryRepository implements Repository {
 
   async saveWorkflow(
     _ctx: Ctx,
-    campaignId: string,
+    strategyId: string,
     input: { name: string; graph: WorkflowGraph },
   ): Promise<WorkflowRecord | WriteError | null> {
-    const campaign = campaigns.find((c) => c.id === campaignId);
-    if (!campaign) return null;
-    if (campaign.type !== "multichannel") {
-      return { error: { field: "campaign", message: "Only multichannel campaigns have a workflow." } };
+    const strategy = strategies.find((c) => c.id === strategyId);
+    if (!strategy) return null;
+    if (strategy.type !== "multichannel") {
+      return { error: { field: "strategy", message: "Only multichannel strategies have a workflow." } };
     }
     const record: WorkflowRecord = {
-      campaignId,
+      strategyId,
       name: input.name,
       graph: structuredClone(input.graph),
       updatedAt: new Date().toISOString(),
     };
-    workflowRows.set(campaignId, record);
+    workflowRows.set(strategyId, record);
     return structuredClone(record);
   }
 
-  async removeSampleData(_ctx: Ctx): Promise<{ campaigns: number; leads: number }> {
-    let removedLeads = 0;
-    for (let i = leadRows.length - 1; i >= 0; i--) {
-      if (leadRows[i].isSample) {
-        leadRows.splice(i, 1);
-        removedLeads++;
+  async removeSampleData(_ctx: Ctx): Promise<{ strategies: number; audiences: number }> {
+    let removedAudiences = 0;
+    for (let i = audienceRows.length - 1; i >= 0; i--) {
+      if (audienceRows[i].isSample) {
+        audienceRows.splice(i, 1);
+        removedAudiences++;
       }
     }
-    let removedCampaigns = 0;
-    for (let i = campaigns.length - 1; i >= 0; i--) {
-      if (campaigns[i].isSample) {
-        workflowRows.delete(campaigns[i].id);
-        campaigns.splice(i, 1);
-        removedCampaigns++;
+    let removedStrategies = 0;
+    for (let i = strategies.length - 1; i >= 0; i--) {
+      if (strategies[i].isSample) {
+        workflowRows.delete(strategies[i].id);
+        strategies.splice(i, 1);
+        removedStrategies++;
       }
     }
     for (let i = accounts.length - 1; i >= 0; i--) if (accounts[i].isSample) accounts.splice(i, 1);
     for (let i = domains.length - 1; i >= 0; i--) if (domains[i].isSample) domains.splice(i, 1);
-    return { campaigns: removedCampaigns, leads: removedLeads };
+    return { strategies: removedStrategies, audiences: removedAudiences };
   }
 
   /* ------------------------------------------- org-level channel accounts -- */
@@ -545,13 +545,13 @@ export class MemoryRepository implements Repository {
     return null;
   }
 
-  async setAccountCampaigns(_ctx: Ctx, id: string, campaignIds: string[]): Promise<ChannelAccount | WriteError | null> {
+  async setAccountStrategies(_ctx: Ctx, id: string, strategyIds: string[]): Promise<ChannelAccount | WriteError | null> {
     const found = accounts.find((a) => a.id === id);
     if (!found) return null;
-    if (campaignIds.some((cid) => !campaigns.some((c) => c.id === cid))) {
-      return { error: { field: "campaignIds", message: "One of those campaigns doesn't exist." } };
+    if (strategyIds.some((cid) => !strategies.some((c) => c.id === cid))) {
+      return { error: { field: "strategyIds", message: "One of those strategies doesn't exist." } };
     }
-    found.campaignIds = [...campaignIds];
+    found.strategyIds = [...strategyIds];
     return this.account(found);
   }
 
@@ -563,52 +563,52 @@ export class MemoryRepository implements Repository {
     };
   }
 
-  async listLeads(_ctx: Ctx, query: LeadQuery): Promise<Paged<Lead>> {
-    const audience =
+  async listAudiences(_ctx: Ctx, query: AudienceQuery): Promise<Paged<Audience>> {
+    const segmentIds =
       query.segmentId && query.segmentId !== "all" ? (segmentMembers.get(query.segmentId) ?? new Set<string>()) : null;
-    const filtered = leadRows.filter(
-      (lead) =>
-        matchesText([lead.name, lead.company, lead.title, lead.email ?? "", ...lead.tags], query.q) &&
-        matchesFacet(lead.stage, query.stage) &&
-        matchesFacet(lead.ownerId, query.ownerId) &&
-        matchesFacet(lead.campaignId, query.campaignId) &&
-        (!audience || audience.has(lead.id)),
+    const filtered = audienceRows.filter(
+      (audience) =>
+        matchesText([audience.name, audience.company, audience.title, audience.email ?? "", ...audience.tags], query.q) &&
+        matchesFacet(audience.stage, query.stage) &&
+        matchesFacet(audience.ownerId, query.ownerId) &&
+        matchesFacet(audience.strategyId, query.strategyId) &&
+        (!segmentIds || segmentIds.has(audience.id)),
     );
     const key = query.sort ?? "score";
     const dir = query.dir ?? (key === "name" ? "asc" : "desc");
     const sorted = sortBy(
       filtered,
-      (lead) => (key === "name" ? lead.name : key === "updated" ? lead.updatedAt : lead.score),
+      (audience) => (key === "name" ? audience.name : key === "updated" ? audience.updatedAt : audience.score),
       dir,
     );
     const page = paginate(sorted, query.page, query.pageSize);
-    return { ...page, items: page.items.map((lead) => ({ ...lead })) };
+    return { ...page, items: page.items.map((audience) => ({ ...audience })) };
   }
 
-  async getLead(_ctx: Ctx, id: string): Promise<Lead | null> {
-    const found = leadRows.find((lead) => lead.id === id);
+  async getAudience(_ctx: Ctx, id: string): Promise<Audience | null> {
+    const found = audienceRows.find((audience) => audience.id === id);
     return found ? { ...found } : null;
   }
 
   async getProspect(_ctx: Ctx, id: string): Promise<ProspectProfile | null> {
-    const lead = leadRows.find((l) => l.id === id);
-    if (!lead) return null;
+    const audience = audienceRows.find((l) => l.id === id);
+    if (!audience) return null;
 
-    const campaign = lead.campaignId ? campaigns.find((c) => c.id === lead.campaignId) : undefined;
-    const own = threads.filter((t) => t.leadId === id);
+    const strategy = audience.strategyId ? strategies.find((c) => c.id === audience.strategyId) : undefined;
+    const own = threads.filter((t) => t.audienceId === id);
     const ownIds = new Set(own.map((t) => t.id));
-    const company = lead.company.trim().toLowerCase();
+    const company = audience.company.trim().toLowerCase();
     const colleagues = company
-      ? leadRows.filter((l) => l.id !== id && l.company.trim().toLowerCase() === company)
+      ? audienceRows.filter((l) => l.id !== id && l.company.trim().toLowerCase() === company)
       : [];
-    const fields = splitFileFields(leadExtra.get(id) ?? {});
+    const fields = splitFileFields(audienceExtra.get(id) ?? {});
 
     return buildProspect({
-      lead: { ...lead },
-      createdAt: leadCreatedAt.get(id) ?? null,
+      audience: { ...audience },
+      createdAt: audienceCreatedAt.get(id) ?? null,
       companyFields: fields.company,
       otherFields: fields.other,
-      campaign: campaign ? { id: campaign.id, name: campaign.name, status: campaign.status, type: campaign.type } : null,
+      strategy: strategy ? { id: strategy.id, name: strategy.name, status: strategy.status, type: strategy.type } : null,
       // The demo store has no execution engine, so no run has ever been recorded.
       run: null,
       audiences: segments
@@ -627,7 +627,7 @@ export class MemoryRepository implements Repository {
         .map((m) => ({ id: m.id, threadId: m.threadId, from: m.from, channel: m.channel, body: m.body, sentAt: m.sentAt })),
       events: [],
       tasks: tasks
-        .filter((t) => t.leadId === id)
+        .filter((t) => t.audienceId === id)
         .map((t) => ({ id: t.id, kind: t.kind, summary: t.summary, channel: t.channel, done: t.done, when: t.when, createdAt: null })),
       colleagues: sortBy(colleagues, (l) => l.name, "asc")
         .slice(0, 8)
@@ -636,14 +636,14 @@ export class MemoryRepository implements Repository {
     });
   }
 
-  async createLead(_ctx: Ctx, input: LeadPatch): Promise<Lead | WriteError> {
-    if (input.campaignId && !campaigns.some((c) => c.id === input.campaignId)) {
-      return { error: { field: "campaignId", message: "That campaign does not exist." } };
+  async createAudience(_ctx: Ctx, input: AudiencePatch): Promise<Audience | WriteError> {
+    if (input.strategyId && !strategies.some((c) => c.id === input.strategyId)) {
+      return { error: { field: "strategyId", message: "That strategy does not exist." } };
     }
-    const name = input.name ?? "Unnamed lead";
+    const name = input.name ?? "Unnamed audience";
     const owner = TEAM.find((m) => m.id === input.ownerId) ?? TEAM[0];
-    const row: Lead = {
-      id: `l_${nextId("lead")}`,
+    const row: Audience = {
+      id: `l_${nextId("audience")}`,
       name,
       company: input.company ?? "",
       title: input.title ?? "",
@@ -662,20 +662,20 @@ export class MemoryRepository implements Repository {
       nextStep: input.nextStep ?? "",
       ownerId: owner.id,
       ownerName: owner.name,
-      campaignId: input.campaignId ?? null,
+      strategyId: input.strategyId ?? null,
       starred: input.starred ?? false,
       updatedAt: new Date().toISOString(),
     };
-    leadRows.unshift(row);
-    leadCreatedAt.set(row.id, row.updatedAt);
+    audienceRows.unshift(row);
+    audienceCreatedAt.set(row.id, row.updatedAt);
     return { ...row };
   }
 
-  async updateLead(_ctx: Ctx, id: string, patch: LeadPatch): Promise<Lead | WriteError | null> {
-    const found = leadRows.find((lead) => lead.id === id);
+  async updateAudience(_ctx: Ctx, id: string, patch: AudiencePatch): Promise<Audience | WriteError | null> {
+    const found = audienceRows.find((audience) => audience.id === id);
     if (!found) return null;
-    if (patch.campaignId && !campaigns.some((c) => c.id === patch.campaignId)) {
-      return { error: { field: "campaignId", message: "That campaign does not exist." } };
+    if (patch.strategyId && !strategies.some((c) => c.id === patch.strategyId)) {
+      return { error: { field: "strategyId", message: "That strategy does not exist." } };
     }
     if (patch.name !== undefined) {
       found.name = patch.name;
@@ -693,7 +693,7 @@ export class MemoryRepository implements Repository {
     if (patch.consent !== undefined) found.consent = patch.consent;
     if (patch.nextStep !== undefined) found.nextStep = patch.nextStep;
     if (patch.starred !== undefined) found.starred = patch.starred;
-    if (patch.campaignId !== undefined) found.campaignId = patch.campaignId;
+    if (patch.strategyId !== undefined) found.strategyId = patch.strategyId;
     if (patch.ownerId !== undefined) {
       const owner = TEAM.find((m) => m.id === patch.ownerId);
       if (owner) {
@@ -705,21 +705,21 @@ export class MemoryRepository implements Repository {
     return { ...found };
   }
 
-  async deleteLead(_ctx: Ctx, id: string): Promise<boolean> {
-    const at = leadRows.findIndex((lead) => lead.id === id);
+  async deleteAudience(_ctx: Ctx, id: string): Promise<boolean> {
+    const at = audienceRows.findIndex((audience) => audience.id === id);
     if (at < 0) return false;
-    leadRows.splice(at, 1);
+    audienceRows.splice(at, 1);
     // Mirrors the database's cascade: a deleted prospect leaves every audience.
     for (const members of segmentMembers.values()) members.delete(id);
-    leadExtra.delete(id);
-    leadCreatedAt.delete(id);
+    audienceExtra.delete(id);
+    audienceCreatedAt.delete(id);
     return true;
   }
 
   async listThreads(_ctx: Ctx, query: ThreadQuery): Promise<Thread[]> {
     const items = threads.filter(
       (t) =>
-        matchesText([t.leadName, t.company, t.preview], query.q) &&
+        matchesText([t.audienceName, t.company, t.preview], query.q) &&
         (query.filter !== "to-reply" || t.needsReply),
     );
     return sortBy(items, (t) => t.lastAt, "desc").map((t) => ({ ...t }));
@@ -823,7 +823,7 @@ export class MemoryRepository implements Repository {
     };
   }
 
-  /* ---- lead uploads and segments ---------------------------------------- */
+  /* ---- audience uploads and segments ---------------------------------------- */
 
   async createUpload(
     _ctx: Ctx,
@@ -850,27 +850,27 @@ export class MemoryRepository implements Repository {
 
   async findInJourney(
     _ctx: Ctx,
-    leads: ParsedLead[],
-  ): Promise<{ hits: InJourneyRow[]; campaignNames: Record<string, string> }> {
-    const known = leadRows.map((l) => ({
+    audiences: ParsedAudience[],
+  ): Promise<{ hits: InJourneyRow[]; strategyNames: Record<string, string> }> {
+    const known = audienceRows.map((l) => ({
       id: l.id,
-      campaignId: l.campaignId,
+      strategyId: l.strategyId,
       email: l.email,
       mobile: l.phone,
       whatsapp: l.whatsapp ?? null,
       linkedin: l.linkedin ?? null,
     }));
-    const hits = findInJourney(known, leads);
-    const campaignNames: Record<string, string> = {};
+    const hits = findInJourney(known, audiences);
+    const strategyNames: Record<string, string> = {};
     for (const hit of hits) {
-      const campaign = campaigns.find((c) => c.id === hit.campaignId);
-      if (campaign) campaignNames[campaign.id] = campaign.name;
+      const strategy = strategies.find((c) => c.id === hit.strategyId);
+      if (strategy) strategyNames[strategy.id] = strategy.name;
     }
-    return { hits, campaignNames };
+    return { hits, strategyNames };
   }
 
-  async listLeadKeys(_ctx: Ctx) {
-    return leadRows.map((l) => ({
+  async listAudienceKeys(_ctx: Ctx) {
+    return audienceRows.map((l) => ({
       id: l.id,
       name: l.name,
       email: l.email,
@@ -880,11 +880,11 @@ export class MemoryRepository implements Repository {
     }));
   }
 
-  /** Counted against the live lead list, so a prospect removed by any path drops out. */
+  /** Counted against the live audience list, so a prospect removed by any path drops out. */
   private withCount(segment: Segment): Segment {
     const members = segmentMembers.get(segment.id);
-    const leadCount = members ? leadRows.filter((l) => members.has(l.id)).length : 0;
-    return { ...segment, leadCount };
+    const audienceCount = members ? audienceRows.filter((l) => members.has(l.id)).length : 0;
+    return { ...segment, audienceCount };
   }
 
   async listSegments(_ctx: Ctx): Promise<Segment[]> {
@@ -904,7 +904,7 @@ export class MemoryRepository implements Repository {
       description: string;
       mapping: Mapping;
       report: MappingReport;
-      leads: ParsedLead[];
+      audiences: ParsedAudience[];
       consent: boolean;
     },
   ) {
@@ -913,37 +913,37 @@ export class MemoryRepository implements Repository {
 
     const id = "seg_" + seq.segment++;
     const now = new Date().toISOString();
-    const { hits } = await this.findInJourney(ctx, input.leads);
+    const { hits } = await this.findInJourney(ctx, input.audiences);
     const out = new Set(hits.map((h) => h.row));
-    const incoming = input.leads.filter((lead) => !out.has(lead.row));
-    // The review already took its exclusions out of `input.leads`; record those plus any found now.
+    const incoming = input.audiences.filter((audience) => !out.has(audience.row));
+    // The review already took its exclusions out of `input.audiences`; record those plus any found now.
     const excluded = input.report.journey.excluded + out.size;
 
-    const existing: LeadProfile[] = leadRows.map((l) => ({
+    const existing: AudienceProfile[] = audienceRows.map((l) => ({
       id: l.id,
       email: l.email,
       mobile: l.phone,
       whatsapp: l.whatsapp ?? null,
       linkedin: l.linkedin ?? null,
       segmentIds: [],
-      extra: { ...(leadExtra.get(l.id) ?? {}) },
+      extra: { ...(audienceExtra.get(l.id) ?? {}) },
       createdAt: l.updatedAt,
       updatedAt: l.updatedAt,
     }));
     const known = new Set(existing.map((p) => p.id));
-    const merge = mergeLeads(
+    const merge = mergeAudiences(
       existing,
-      incoming.map((lead) => ({ row: lead.row, email: lead.email, mobile: lead.mobile, whatsapp: lead.whatsapp, linkedin: lead.linkedin, extra: lead.extra })),
+      incoming.map((audience) => ({ row: audience.row, email: audience.email, mobile: audience.mobile, whatsapp: audience.whatsapp, linkedin: audience.linkedin, extra: audience.extra })),
       id,
       now,
-      () => "l_" + nextId("lead"),
+      () => "l_" + nextId("audience"),
     );
 
     const members = new Set<string>();
     for (const profile of merge.profiles) {
       if (!known.has(profile.id)) {
-        const who = leadIdentity(profile);
-        leadRows.push({
+        const who = audienceIdentity(profile);
+        audienceRows.push({
           id: profile.id,
           name: who.name,
           company: who.company,
@@ -964,23 +964,23 @@ export class MemoryRepository implements Repository {
           nextStep: "",
           ownerId: ctx.userId,
           ownerName: "",
-          campaignId: null,
+          strategyId: null,
           starred: false,
           updatedAt: now,
         });
-        leadExtra.set(profile.id, profile.extra);
-        leadCreatedAt.set(profile.id, now);
+        audienceExtra.set(profile.id, profile.extra);
+        audienceCreatedAt.set(profile.id, now);
         members.add(profile.id);
       } else if (profile.segmentIds.includes(id)) {
-        const lead = leadRows.find((l) => l.id === profile.id);
-        if (lead) {
-          Object.assign(lead, identityFill(lead, profile));
-          lead.email = profile.email;
-          lead.phone = profile.mobile;
-          lead.whatsapp = profile.whatsapp;
-          lead.linkedin = profile.linkedin;
-          lead.updatedAt = now;
-          leadExtra.set(profile.id, profile.extra);
+        const audience = audienceRows.find((l) => l.id === profile.id);
+        if (audience) {
+          Object.assign(audience, identityFill(audience, profile));
+          audience.email = profile.email;
+          audience.phone = profile.mobile;
+          audience.whatsapp = profile.whatsapp;
+          audience.linkedin = profile.linkedin;
+          audience.updatedAt = now;
+          audienceExtra.set(profile.id, profile.extra);
         }
         members.add(profile.id);
       }
@@ -1002,7 +1002,7 @@ export class MemoryRepository implements Repository {
       errorCount: input.report.errorCount,
       createdAt: now,
       createdBy: ctx.userId,
-      leadCount: members.size,
+      audienceCount: members.size,
     };
     segments.push(segment);
     segmentMembers.set(id, members);

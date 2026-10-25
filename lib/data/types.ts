@@ -11,10 +11,10 @@
 import type { WorkflowGraph } from "@/lib/app/workflow";
 
 export type Channel = "linkedin" | "email" | "whatsapp" | "call" | "sms";
-export type CampaignStatus = "live" | "scheduled" | "paused" | "draft" | "completed";
-export type CampaignType = "standalone" | "multichannel";
+export type StrategyStatus = "live" | "scheduled" | "paused" | "draft" | "completed";
+export type StrategyType = "standalone" | "multichannel";
 /** Superset of both vocabularies in the codebase — see lib/db/schema.ts for why. */
-export type LeadStage =
+export type AudienceStage =
   | "new"
   | "reaching"
   | "engaged"
@@ -24,7 +24,7 @@ export type LeadStage =
   | "paused"
   | "stopped"
   | "closed";
-export type LeadSource = "form" | "csv" | "linkedin" | "crm" | "event";
+export type AudienceSource = "form" | "csv" | "linkedin" | "crm" | "event";
 export type TaskKind = "reply" | "call" | "review";
 export type Trend = "up" | "down" | "flat";
 
@@ -56,8 +56,8 @@ export type Metric = {
 export type Task = {
   id: string;
   kind: TaskKind;
-  leadId: string;
-  leadName: string;
+  audienceId: string;
+  audienceName: string;
   company: string;
   initials: string;
   score: number;
@@ -68,16 +68,16 @@ export type Task = {
   done: boolean;
 };
 
-export type Campaign = {
+export type Strategy = {
   id: string;
   name: string;
-  status: CampaignStatus;
-  type: CampaignType;
+  status: StrategyStatus;
+  type: StrategyType;
   channels: Channel[];
   version: string | null;
-  /** ISO date. For scheduled campaigns this is when it starts. */
+  /** ISO date. For scheduled strategies this is when it starts. */
   startedAt: string;
-  leads: number;
+  audiences: number;
   sent: number | null;
   delivered: number | null;
   openRate: number | null;
@@ -87,19 +87,19 @@ export type Campaign = {
   isSample?: boolean;
 };
 
-export type Lead = {
+export type Audience = {
   id: string;
   name: string;
   company: string;
-  /** Job title. The leads table shows it and derives a "Title: …" tag from it. */
+  /** Job title. The audiences table shows it and derives a "Title: …" tag from it. */
   title: string;
   initials: string;
   /** Masked in the seed data; a real store would hold the raw value. */
   phone: string | null;
   email: string | null;
-  stage: LeadStage;
+  stage: AudienceStage;
   score: number;
-  source: LeadSource;
+  source: AudienceSource;
   tags: string[];
   consent: boolean;
   avgCallSeconds: number | null;
@@ -108,20 +108,20 @@ export type Lead = {
   nextStep: string;
   ownerId: string;
   ownerName: string;
-  campaignId: string | null;
+  strategyId: string | null;
   starred: boolean;
   updatedAt: string;
-  /** Other ways to reach the lead, filled by uploads. */
+  /** Other ways to reach the audience, filled by uploads. */
   whatsapp?: string | null;
   linkedin?: string | null;
-  /** A dummy lead seeded at signup. Absent means false. */
+  /** A dummy audience seeded at signup. Absent means false. */
   isSample?: boolean;
 };
 
 export type Message = {
   id: string;
   threadId: string;
-  /** "them" is the lead, "us" is the workspace. */
+  /** "them" is the audience, "us" is the workspace. */
   from: "them" | "us";
   channel: Channel;
   body: string;
@@ -131,8 +131,8 @@ export type Message = {
 
 export type Thread = {
   id: string;
-  leadId: string;
-  leadName: string;
+  audienceId: string;
+  audienceName: string;
   company: string;
   initials: string;
   role: string;
@@ -143,8 +143,8 @@ export type Thread = {
   needsReply: boolean;
   lastAt: string;
   score: number;
-  stage: LeadStage;
-  campaignName: string | null;
+  stage: AudienceStage;
+  strategyName: string | null;
   ownerName: string;
   signals: { label: string; points: number }[];
 };
@@ -190,7 +190,7 @@ export type Overview = {
   user: User;
   metrics: Metric[];
   tasks: Task[];
-  campaigns: Campaign[];
+  strategies: Strategy[];
   quotas: ChannelQuota[];
 };
 
@@ -208,17 +208,17 @@ export type Workspace = {
   liveChannels: Channel[];
   plannedChannels: Channel[];
   /** Sample rows still in the workspace; both zero once "Remove sample data" has been used. */
-  sample: { campaigns: number; leads: number };
+  sample: { strategies: number; audiences: number };
 };
 
 /** Range keys accepted by the metrics and analytics endpoints. */
 export type RangeKey = "7d" | "30d" | "90d";
 
-export type LeadQuery = {
+export type AudienceQuery = {
   q?: string;
-  stage?: LeadStage | "all";
+  stage?: AudienceStage | "all";
   ownerId?: string | "all";
-  campaignId?: string | "all";
+  strategyId?: string | "all";
   /** Only prospects in this audience (an uploaded segment). */
   segmentId?: string | "all";
   sort?: "score" | "name" | "updated";
@@ -235,11 +235,11 @@ export type Paged<T> = {
 };
 
 /**
- * A campaign's workflow as stored. The graph is validated by `validateWorkflowGraph` before it is
+ * A strategy's workflow as stored. The graph is validated by `validateWorkflowGraph` before it is
  * written, so a repository can hand it back without re-checking it.
  */
 export type WorkflowRecord = {
-  campaignId: string;
+  strategyId: string;
   name: string;
   graph: WorkflowGraph;
   updatedAt: string;
@@ -249,7 +249,7 @@ export type WorkflowRecord = {
 
 /**
  * One touchpoint on a prospect's history. Every entry is a stored fact — a row in `messages`,
- * `events` or `tasks`, the lead's own creation, or the upload that brought it in. Nothing here
+ * `events` or `tasks`, the audience's own creation, or the upload that brought it in. Nothing here
  * is inferred or simulated.
  */
 export type ProspectTouch = {
@@ -263,7 +263,7 @@ export type ProspectTouch = {
 };
 
 export type ProspectProfile = {
-  lead: Lead;
+  audience: Audience;
   /** When the prospect was added; null where the store does not know (demo seed). */
   createdAt: string | null;
   company: {
@@ -279,7 +279,7 @@ export type ProspectProfile = {
   /** Every other column an upload carried for this person. */
   fileFields: { label: string; value: string }[];
   journey: {
-    campaign: { id: string; name: string; status: CampaignStatus; type: CampaignType } | null;
+    strategy: { id: string; name: string; status: StrategyStatus; type: StrategyType } | null;
     /** The workflow run for this person, when the engine has started one. */
     run: { state: "active" | "completed" | "stopped" | "failed"; stepId: string | null; startedAt: string; finishedAt: string | null } | null;
   };
@@ -305,8 +305,8 @@ export type ProspectProfile = {
 /* ------------------------------------------------------ channel accounts -- */
 
 /**
- * LinkedIn accounts and mailboxes belong to the **workspace**. Any number of campaigns can send
- * from one (`campaignIds`), for both channels: a mailbox is not locked to a single campaign.
+ * LinkedIn accounts and mailboxes belong to the **workspace**. Any number of strategies can send
+ * from one (`strategyIds`), for both channels: a mailbox is not locked to a single strategy.
  */
 export type LinkedInSettings = {
   /** Daily ceilings for this account. */
@@ -325,7 +325,7 @@ export type EmailSettings = {
   health: number;
   /** Emails per day. */
   cap: number;
-  /** Rotate this mailbox with the others on the same campaign. */
+  /** Rotate this mailbox with the others on the same strategy. */
   rotate: boolean;
 };
 
@@ -352,9 +352,9 @@ type AccountBase = {
   name: string;
   /** Profile URL for LinkedIn, address for email. */
   handle: string;
-  /** Campaigns that send from this account. */
-  campaignIds: string[];
-  /** Invented at signup with the sample campaign; removed with it. */
+  /** Strategies that send from this account. */
+  strategyIds: string[];
+  /** Invented at signup with the sample strategy; removed with it. */
   isSample: boolean;
   connection: AccountConnection;
 };
@@ -459,8 +459,8 @@ export type WorkspaceSettings = {
     days: string[];
     from: string;
     to: string;
-    /** `lead` sends in each lead's own time zone; `workspace` in the workspace's. */
-    timezone: "lead" | "workspace";
+    /** `audience` sends in each audience's own time zone; `workspace` in the workspace's. */
+    timezone: "audience" | "workspace";
     holidays: string[];
     limitOn: boolean;
     perDay: number;

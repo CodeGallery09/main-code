@@ -1,19 +1,19 @@
 "use client";
 
 /**
- * Setup: everything a workspace sets up once, so campaigns can run.
+ * Setup: everything a workspace sets up once, so strategies can run.
  *
  * One screen, six tabs. It used to be three rail destinations — Configuration, Integrations and
  * Settings — all answering "what is connected and how does sending behave", with Integrations
  * drawing its own tab strip across the three to admit as much. Settings held no controls at all,
  * only read-only copies of this screen. Connections and Workspace are those two screens, as tabs.
  *
- * LinkedIn accounts and mailboxes belong to the **workspace**, not to a campaign: connect one and
- * any number of campaigns can send from it. This screen therefore has no campaign scope. It loads
- * the workspace's accounts and campaigns, derives the setup checks from them, and hands each tab
+ * LinkedIn accounts and mailboxes belong to the **workspace**, not to a strategy: connect one and
+ * any number of strategies can send from it. This screen therefore has no strategy scope. It loads
+ * the workspace's accounts and strategies, derives the setup checks from them, and hands each tab
  * what it needs.
  *
- * Account dials (daily caps, rotation) and which campaigns use an account are saved. The rule
+ * Account dials (daily caps, rotation) and which strategies use an account are saved. The rule
  * switches on the Rules tab are not enforced yet, and say so.
  */
 
@@ -23,7 +23,7 @@ import { Tabs } from "./ui";
 import { api } from "@/lib/api";
 import { CONFIG_TABS, type ConfigTab } from "@/lib/app/configuration";
 import { setupChecks, tabIssues } from "@/lib/data/setup";
-import type { AccountActivity, AccountsSnapshot, Campaign } from "@/lib/data/types";
+import type { AccountActivity, AccountsSnapshot, Strategy } from "@/lib/data/types";
 import { Overview } from "./configuration/Overview";
 import { Connections } from "./configuration/Connections";
 import { Workspace } from "./configuration/Workspace";
@@ -39,7 +39,7 @@ export function ConfigurationScreen({ linkedInConfigured = false }: { linkedInCo
   const [tab, setTab] = useState<ConfigTab>("overview");
   const [snapshot, setSnapshot] = useState<AccountsSnapshot>(EMPTY);
   const [activity, setActivity] = useState<AccountActivity[]>([]);
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,12 +47,12 @@ export function ConfigurationScreen({ linkedInConfigured = false }: { linkedInCo
     try {
       const [accounts, list, counts] = await Promise.all([
         api.accounts(),
-        api.campaigns(),
+        api.strategies(),
         // Activity is a nice-to-have on this screen: a failure there must not blank the tabs.
         api.accountActivity(30).catch(() => ({ activity: [] })),
       ]);
       setSnapshot(accounts);
-      setCampaigns(list.items);
+      setStrategies(list.items);
       setActivity(counts.activity);
       setError(null);
     } catch (caught) {
@@ -109,13 +109,13 @@ export function ConfigurationScreen({ linkedInConfigured = false }: { linkedInCo
             {tab === "li" && (
               <LinkedInTab
                 snapshot={snapshot}
-                campaigns={campaigns}
+                strategies={strategies}
                 onChange={load}
                 activity={activity}
                 linkedInConfigured={linkedInConfigured}
               />
             )}
-            {tab === "mail" && <EmailTab snapshot={snapshot} campaigns={campaigns} onChange={load} />}
+            {tab === "mail" && <EmailTab snapshot={snapshot} strategies={strategies} onChange={load} />}
             {tab === "connections" && <Connections linkedInConfigured={linkedInConfigured} go={setTab} />}
             {/* Three groups of switches over one subject: personalisation, when sending happens,
                 and what must never be sent. They were three tabs. */}

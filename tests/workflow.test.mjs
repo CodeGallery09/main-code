@@ -21,8 +21,8 @@ import {
   workflowChannels,
 } from "../lib/app/workflow.ts";
 
-/** The five multichannel campaigns each have a workflow. */
-test("seeds one workflow per multichannel campaign", () => {
+/** The five multichannel strategies each have a workflow. */
+test("seeds one workflow per multichannel strategy", () => {
   assert.deepEqual(
     WORKFLOWS.map((w) => [w.id, w.name, w.status]),
     [
@@ -73,7 +73,7 @@ test("walks the audience count down the funnel", () => {
 
   // Rates carry a "~": they are typical rates applied to the audience size, not measurements,
   // and on the canvas they sit beside counts that look exactly like results.
-  assert.deepEqual(of("audience"), [["612", "leads"]]);
+  assert.deepEqual(of("audience"), [["612", "audiences"]]);
   assert.deepEqual(of("li_invite"), [["612", "sent"], ["~48%", "accepted"]]);
   // 48% of 612 accept, so that is what the LinkedIn message goes out to.
   assert.deepEqual(of("li_msg"), [["294", "sent"], ["~9.2%", "replied"]]);
@@ -85,14 +85,14 @@ test("walks the audience count down the funnel", () => {
   assert.deepEqual(of("exit"), [["318", "exited"]]);
 });
 
-test("reads the lead count off the chosen list", () => {
+test("reads the audience count off the chosen list", () => {
   const w = getWorkflow(2);
   const audience = w.nodes.find((n) => n.kind === "audience");
   const stats = stepStats(w.nodes, w.edges);
-  assert.deepEqual(stats[audience.id], [["214", "leads"]]);
+  assert.deepEqual(stats[audience.id], [["214", "audiences"]]);
 
   const swapped = w.nodes.map((n) => (n.kind === "audience" ? { ...n, data: { ...n.data, list: "lost" } } : n));
-  assert.deepEqual(stepStats(swapped, w.edges)[audience.id], [["458", "leads"]]);
+  assert.deepEqual(stepStats(swapped, w.edges)[audience.id], [["458", "audiences"]]);
 });
 
 test("labels a step from its own settings", () => {

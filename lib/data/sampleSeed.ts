@@ -6,11 +6,11 @@
  * through Drizzle.
  *
  * What a new workspace gets, all of it flagged as sample and removed by "Remove sample data":
- * - one paused multichannel campaign with its workflow, and 8 leads in it;
- * - conversations and to-dos for the leads who replied, so Inbox and Home have something in them;
- * - the campaign's funnel by day, so Analytics has a chart, matching the campaign's own figures;
+ * - one paused multichannel strategy with its workflow, and 8 audiences in it;
+ * - conversations and to-dos for the audiences who replied, so Inbox and Home have something in them;
+ * - the strategy's funnel by day, so Analytics has a chart, matching the strategy's own figures;
  * - one LinkedIn account, one mailbox and one sending domain, owned by the workspace and assigned
- *   to the sample campaign, so Configuration shows how accounts are shared across campaigns.
+ *   to the sample strategy, so Configuration shows how accounts are shared across strategies.
  */
 
 import { randomBytes } from "node:crypto";
@@ -24,11 +24,11 @@ import {
   SAMPLE_THREADS,
 } from "@/lib/data/sample";
 import {
-  campaignAccounts,
-  campaigns,
+  strategyAccounts,
+  strategies,
   channelAccounts,
   dailyRollups,
-  leads,
+  audiences,
   messages,
   sendingDomains,
   tasks,
@@ -48,10 +48,10 @@ const dayKey = (at: number) => new Date(at).toISOString().slice(0, 10);
 
 export async function seedSampleWorkspace(tx: Tx, workspaceId: string, ownerId: string): Promise<void> {
   const now = Date.now();
-  const campaignId = id("c");
+  const strategyId = id("c");
 
-  await tx.insert(campaigns).values({
-    id: campaignId,
+  await tx.insert(strategies).values({
+    id: strategyId,
     workspaceId,
     name: SAMPLE_CAMPAIGN.name,
     status: SAMPLE_CAMPAIGN.status,
@@ -59,7 +59,7 @@ export async function seedSampleWorkspace(tx: Tx, workspaceId: string, ownerId: 
     channels: [...SAMPLE_CAMPAIGN.channels],
     version: SAMPLE_CAMPAIGN.version,
     startedAt: new Date(now - SAMPLE_CAMPAIGN.startedDaysAgo * DAY),
-    leads: SAMPLE_LEADS.length,
+    audiences: SAMPLE_LEADS.length,
     sent: SAMPLE_CAMPAIGN.sent,
     delivered: SAMPLE_CAMPAIGN.delivered,
     // numeric columns take strings, matching what pg hands back.
@@ -69,47 +69,47 @@ export async function seedSampleWorkspace(tx: Tx, workspaceId: string, ownerId: 
     isSample: true,
   });
 
-  const leadIds = new Map<string, string>();
-  await tx.insert(leads).values(
-    SAMPLE_LEADS.map((lead) => {
-      const leadId = id("l");
-      leadIds.set(lead.email, leadId);
+  const audienceIds = new Map<string, string>();
+  await tx.insert(audiences).values(
+    SAMPLE_LEADS.map((audience) => {
+      const audienceId = id("l");
+      audienceIds.set(audience.email, audienceId);
       return {
-        id: leadId,
+        id: audienceId,
         workspaceId,
-        name: lead.name,
-        company: lead.company,
-        title: lead.title,
-        email: lead.email,
-        phone: lead.phone,
-        stage: lead.stage,
-        score: lead.score,
-        source: lead.source,
-        tags: lead.tags,
-        consent: lead.consent,
-        avgCallSeconds: lead.avgCallSeconds,
-        messageCount: lead.messageCount,
-        callCount: lead.callCount,
-        nextStep: lead.nextStep,
+        name: audience.name,
+        company: audience.company,
+        title: audience.title,
+        email: audience.email,
+        phone: audience.phone,
+        stage: audience.stage,
+        score: audience.score,
+        source: audience.source,
+        tags: audience.tags,
+        consent: audience.consent,
+        avgCallSeconds: audience.avgCallSeconds,
+        messageCount: audience.messageCount,
+        callCount: audience.callCount,
+        nextStep: audience.nextStep,
         ownerId,
-        campaignId,
-        starred: lead.starred,
+        strategyId,
+        starred: audience.starred,
         isSample: true,
       };
     }),
   );
-  const leadIdOf = (email: string) => {
-    const found = leadIds.get(email);
-    if (!found) throw new Error(`sample lead ${email} is not in SAMPLE_LEADS`);
+  const audienceIdOf = (email: string) => {
+    const found = audienceIds.get(email);
+    if (!found) throw new Error(`sample audience ${email} is not in SAMPLE_LEADS`);
     return found;
   };
 
-  // The sample campaign's workflow is the outbound template, reading from the campaign's own
-  // leads — so the canvas shows real counts from the sample leads above.
+  // The sample strategy's workflow is the outbound template, reading from the strategy's own
+  // audiences — so the canvas shows real counts from the sample audiences above.
   await tx.insert(workflows).values({
     id: id("wf"),
     workspaceId,
-    campaignId,
+    strategyId,
     name: SAMPLE_CAMPAIGN.name,
     graph: graphFromTemplate("outbound", AUDIENCE_CAMPAIGN),
   });
@@ -122,7 +122,7 @@ export async function seedSampleWorkspace(tx: Tx, workspaceId: string, ownerId: 
     await tx.insert(threads).values({
       id: threadId,
       workspaceId,
-      leadId: leadIdOf(thread.leadEmail),
+      audienceId: audienceIdOf(thread.audienceEmail),
       channel: thread.channel,
       intent: thread.intent,
       role: thread.role,
@@ -130,7 +130,7 @@ export async function seedSampleWorkspace(tx: Tx, workspaceId: string, ownerId: 
       unread: thread.unread,
       needsReply: thread.needsReply,
       lastAt: new Date(now - newest * HOUR),
-      campaignId,
+      strategyId,
       ownerId,
       signals: thread.signals,
     });
@@ -143,7 +143,7 @@ export async function seedSampleWorkspace(tx: Tx, workspaceId: string, ownerId: 
         channel: thread.channel,
         body: m.body,
         sentAt: new Date(now - m.hoursAgo * HOUR),
-        // Anything from the lead on a thread still waiting on us is unread.
+        // Anything from the audience on a thread still waiting on us is unread.
         read: !(thread.unread && m.from === "them"),
       })),
     );
@@ -154,7 +154,7 @@ export async function seedSampleWorkspace(tx: Tx, workspaceId: string, ownerId: 
       id: id("tk"),
       workspaceId,
       kind: task.kind,
-      leadId: leadIdOf(task.leadEmail),
+      audienceId: audienceIdOf(task.audienceEmail),
       summary: task.summary,
       channel: task.channel,
       whenLabel: task.when,
@@ -175,7 +175,7 @@ export async function seedSampleWorkspace(tx: Tx, workspaceId: string, ownerId: 
     })),
   );
 
-  /* Org-level accounts, shared by the sample campaign (and any the user makes later). */
+  /* Org-level accounts, shared by the sample strategy (and any the user makes later). */
   const linkedinId = id("a");
   const mailboxId = id("a");
   await tx.insert(channelAccounts).values([
@@ -209,8 +209,8 @@ export async function seedSampleWorkspace(tx: Tx, workspaceId: string, ownerId: 
     dmarc: SAMPLE_ACCOUNTS.domain.dmarc,
     isSample: true,
   });
-  await tx.insert(campaignAccounts).values([
-    { workspaceId, campaignId, accountId: linkedinId },
-    { workspaceId, campaignId, accountId: mailboxId },
+  await tx.insert(strategyAccounts).values([
+    { workspaceId, strategyId, accountId: linkedinId },
+    { workspaceId, strategyId, accountId: mailboxId },
   ]);
 }

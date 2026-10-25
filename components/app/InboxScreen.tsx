@@ -9,7 +9,7 @@ import { Avatar, Dot, Segmented } from "./ui";
 import { api } from "@/lib/api";
 import { relativeTime, toChannelKey, toStageLabel } from "@/lib/app/adapt";
 import { CHANNEL } from "@/lib/app/channels";
-import { scoreBand, STAGE_COLOR } from "@/lib/app/leads";
+import { scoreBand, STAGE_COLOR } from "@/lib/app/audiences";
 import { LEADS_HREF } from "@/lib/nav";
 import { SENDING_ENABLED, SENDING_OFF_NOTE } from "@/lib/capabilities";
 import type { Message, Thread } from "@/lib/data/types";
@@ -33,8 +33,8 @@ function when(iso: string): string {
 type Detail = { messages: Message[] } | { error: string };
 
 export function InboxScreen() {
-  /** Home's to-dos link here with the lead they are about, so the right conversation opens. */
-  const wantedLead = useSearchParams().get("lead");
+  /** Home's to-dos link here with the audience they are about, so the right conversation opens. */
+  const wantedAudience = useSearchParams().get("audience");
   const [filter, setFilter] = useState<"needs" | "all">("needs");
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,7 +71,7 @@ export function InboxScreen() {
 
   const needing = threads.filter((t) => t.needsReply);
   const shown = filter === "needs" ? needing : threads;
-  const asked = wantedLead ? threads.find((t) => t.leadId === wantedLead) : undefined;
+  const asked = wantedAudience ? threads.find((t) => t.audienceId === wantedAudience) : undefined;
   const thread = shown.find((t) => t.id === selected) ?? asked ?? shown[0] ?? null;
   const threadId = thread?.id ?? null;
   const detail = threadId ? details[threadId] : undefined;
@@ -111,7 +111,7 @@ export function InboxScreen() {
     setOpen(true);
   };
 
-  const first = thread?.leadName.split(" ")[0] ?? "";
+  const first = thread?.audienceName.split(" ")[0] ?? "";
 
   return (
     <div className="main">
@@ -144,10 +144,10 @@ export function InboxScreen() {
                       className={"th" + (t.id === thread?.id ? " on" : "") + (t.unread ? " unread" : "")}
                       onClick={() => pick(t.id)}
                     >
-                      <Avatar name={t.leadName} />
+                      <Avatar name={t.audienceName} />
                       <div>
                         <div className="r1">
-                          <b>{t.leadName}</b>
+                          <b>{t.audienceName}</b>
                           <time dateTime={t.lastAt}>{relativeTime(t.lastAt)}</time>
                         </div>
                         <p>{t.preview}</p>
@@ -177,7 +177,7 @@ export function InboxScreen() {
                   </p>
                 )}
                 {!loading && !error && threads.length === 0 && (
-                  <p className="empty">No conversations yet. Replies from your leads will show up here.</p>
+                  <p className="empty">No conversations yet. Replies from your audiences will show up here.</p>
                 )}
                 {!loading && !error && threads.length > 0 && shown.length === 0 && (
                   <p className="empty">Nothing is waiting for a reply.</p>
@@ -192,16 +192,16 @@ export function InboxScreen() {
                     <button className="ib back" aria-label="Back to conversations" onClick={() => setOpen(false)}>
                       <BackIcon />
                     </button>
-                    <Avatar name={thread.leadName} />
+                    <Avatar name={thread.audienceName} />
                     <div>
-                      <b>{thread.leadName}</b>
+                      <b>{thread.audienceName}</b>
                       <small>
                         {thread.role} · {thread.company}
                       </small>
                     </div>
                     <div className="acts">
-                      <Link className="btn sm line" href={`${LEADS_HREF}?lead=${encodeURIComponent(thread.leadId)}`}>
-                        Open lead
+                      <Link className="btn sm line" href={`${LEADS_HREF}?audience=${encodeURIComponent(thread.audienceId)}`}>
+                        Open audience
                       </Link>
                     </div>
                   </div>
@@ -272,8 +272,8 @@ export function InboxScreen() {
                         {toStageLabel(thread.stage)}
                       </span>
                     </dd>
-                    <dt>Campaign</dt>
-                    <dd>{thread.campaignName ?? "—"}</dd>
+                    <dt>Strategy</dt>
+                    <dd>{thread.strategyName ?? "—"}</dd>
                     <dt>Owner</dt>
                     <dd>{thread.ownerName || "—"}</dd>
                   </dl>

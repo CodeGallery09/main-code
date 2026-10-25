@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { STEP_ATTRIBUTE, getWorkflow, stepLabel, stepStats } from "../lib/app/workflow.ts";
 
-/** A saved segment as the builder sees it: sized by reachable leads, not rows. */
+/** A saved segment as the builder sees it: sized by reachable audiences, not rows. */
 const SEGMENT = {
   k: "seg_1",
   name: "Conference list",
@@ -13,16 +13,16 @@ const SEGMENT = {
   columns: { email: "work_email", whatsapp: "wa", mobile: "phone", linkedin: "li_url" },
 };
 
-test("an audience set to a segment counts its reachable leads", () => {
+test("an audience set to a segment counts its reachable audiences", () => {
   const w = getWorkflow(1);
   const audience = w.nodes.find((n) => n.kind === "audience");
   const nodes = w.nodes.map((n) => (n.id === audience.id ? { ...n, data: { ...n.data, list: "seg_1" } } : n));
 
   assert.equal(stepLabel("audience", { list: "seg_1" }, [SEGMENT]), "Conference list · 200");
-  assert.deepEqual(stepStats(nodes, w.edges, [SEGMENT])[audience.id], [["200", "leads"]]);
+  assert.deepEqual(stepStats(nodes, w.edges, [SEGMENT])[audience.id], [["200", "audiences"]]);
 });
 
-test("a channel step cannot reach more leads than its mapped column holds", () => {
+test("a channel step cannot reach more audiences than its mapped column holds", () => {
   const w = getWorkflow(1);
   const audience = w.nodes.find((n) => n.kind === "audience");
   const nodes = w.nodes.map((n) => (n.id === audience.id ? { ...n, data: { ...n.data, list: "seg_1" } } : n));

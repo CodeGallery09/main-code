@@ -41,7 +41,7 @@ export function InboxIcon(p: IconProps) {
   );
 }
 
-export function LeadsIcon(p: IconProps) {
+export function AudiencesIcon(p: IconProps) {
   return (
     <Icon {...p}>
       <path d="M9 11.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" />
@@ -51,7 +51,7 @@ export function LeadsIcon(p: IconProps) {
   );
 }
 
-export function CampaignsIcon(p: IconProps) {
+export function StrategiesIcon(p: IconProps) {
   return (
     <Icon {...p}>
       <path d="M22 2L11 13" />
@@ -91,7 +91,7 @@ export function AnalyticsIcon(p: IconProps) {
   );
 }
 
-/** Sliders: the setup a workspace does once, before campaigns run. */
+/** Sliders: the setup a workspace does once, before strategies run. */
 export function ConfigurationIcon(p: IconProps) {
   return (
     <Icon {...p}>
@@ -189,7 +189,7 @@ export function Mark() {
 }
 
 /**
- * Extra glyphs the campaign builder needs, kept as a path table rather than
+ * Extra glyphs the strategy builder needs, kept as a path table rather than
  * twenty more exports. Same 24px grid as the icons above.
  */
 const GLYPHS: Record<string, string | string[]> = {

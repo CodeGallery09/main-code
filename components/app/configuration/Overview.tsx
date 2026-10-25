@@ -34,8 +34,8 @@ export function Overview({
 
   const linkedin = snapshot.accounts.filter((a) => a.channel === "linkedin");
   const mailboxes = snapshot.accounts.filter((a) => a.channel === "email");
-  const campaignsUsing = (channel: "linkedin" | "email") =>
-    new Set(snapshot.accounts.filter((a) => a.channel === channel).flatMap((a) => a.campaignIds)).size;
+  const strategiesUsing = (channel: "linkedin" | "email") =>
+    new Set(snapshot.accounts.filter((a) => a.channel === channel).flatMap((a) => a.strategyIds)).size;
 
   return (
     <div className="cf-stack">
@@ -106,7 +106,7 @@ export function Overview({
           ready={linkedin.length > 0 && linkedin.every((a) => a.state !== "signed_out")}
           lines={[
             plural(linkedin.length, "account"),
-            `${campaignsUsing("linkedin")} ${campaignsUsing("linkedin") === 1 ? "campaign" : "campaigns"} using it`,
+            `${strategiesUsing("linkedin")} ${strategiesUsing("linkedin") === 1 ? "strategy" : "strategies"} using it`,
           ]}
           onOpen={() => go("li")}
         />
@@ -115,7 +115,7 @@ export function Overview({
           ready={mailboxes.length > 0}
           lines={[
             plural(mailboxes.length, "mailbox", "mailboxes"),
-            `${campaignsUsing("email")} ${campaignsUsing("email") === 1 ? "campaign" : "campaigns"} using it`,
+            `${strategiesUsing("email")} ${strategiesUsing("email") === 1 ? "strategy" : "strategies"} using it`,
           ]}
           onOpen={() => go("mail")}
         />
@@ -133,7 +133,7 @@ export function Overview({
       </div>
 
       <p className="cf-nocontent">
-        LinkedIn accounts and mailboxes belong to your workspace. Any number of campaigns can send from
+        LinkedIn accounts and mailboxes belong to your workspace. Any number of strategies can send from
         the same one.
       </p>
     </div>

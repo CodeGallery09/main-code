@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { CHANNEL, type ChannelKey } from "@/lib/app/channels";
-import { avatarTint, initials } from "@/lib/app/leads";
+import { avatarTint, initials } from "@/lib/app/audiences";
 
 /* ---------- formatting ---------------------------------------------------- */
 
@@ -124,7 +124,7 @@ export function Thumb({
       const el = track.querySelector<HTMLElement>(selector);
       if (!el) return setBox(null);
       // Measured against the track's own box rather than `offsetTop`/`offsetLeft`:
-      // some rows sit inside a positioned wrapper (the Leads dropdown), which
+      // some rows sit inside a positioned wrapper (the Audiences dropdown), which
       // would otherwise be the offset parent and report zero.
       const a = el.getBoundingClientRect();
       const b = track.getBoundingClientRect();

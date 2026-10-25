@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildProspect, emailDomain, eventLabel } from "../lib/leads/prospect.ts";
+import { buildProspect, emailDomain, eventLabel } from "../lib/audiences/prospect.ts";
 
-const lead = {
+const audience = {
   id: "l_1",
   name: "Ana Ruiz",
   company: "Kitebox",
@@ -21,17 +21,17 @@ const lead = {
   nextStep: "",
   ownerId: "u_1",
   ownerName: "Sam",
-  campaignId: null,
+  strategyId: null,
   starred: false,
   updatedAt: "2026-10-01T10:00:00.000Z",
 };
 
 const empty = {
-  lead,
+  audience,
   createdAt: null,
   companyFields: [],
   otherFields: [],
-  campaign: null,
+  strategy: null,
   run: null,
   audiences: [],
   threads: [],
@@ -50,7 +50,7 @@ test("a prospect with nothing recorded gets empty history, not invented figures"
   assert.equal(p.engagement.lastReplyAt, null);
   assert.equal(p.engagement.lastTouchAt, null);
   assert.deepEqual(p.engagement.events, []);
-  assert.equal(p.journey.campaign, null);
+  assert.equal(p.journey.strategy, null);
   assert.equal(p.journey.run, null);
 });
 
