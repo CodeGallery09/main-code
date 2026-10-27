@@ -1,9 +1,7 @@
-import type { Metadata } from "next";
-import { SetupConfigView } from "@/components/ws/setup/setup-config-view";
-import { linkedInConnectConfigured } from "@/lib/channels";
+import { permanentRedirect } from "next/navigation";
+import { SETUP_HREF } from "@/lib/nav";
 
-export const metadata: Metadata = { title: "Config" };
-
-export default function SetupConfigPage() {
-  return <SetupConfigView linkedInConfigured={linkedInConnectConfigured()} />;
+/** Config became Integrations: the sending rules it also held are gone, and what is left is connecting accounts. */
+export default function ConfigRedirect() {
+  permanentRedirect(`${SETUP_HREF}/integrations`);
 }

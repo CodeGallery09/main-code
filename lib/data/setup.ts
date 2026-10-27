@@ -66,7 +66,7 @@ export function setupChecks(snapshot: AccountsSnapshot): SetupCheck[] {
       id: "li-accounts",
       tone: "bad",
       title: "No LinkedIn account connected",
-      detail: "LinkedIn steps have no account to send from. Connect one in Config.",
+      detail: "LinkedIn steps have no account to send from. Connect one under Integrations.",
       goes: "li",
     });
   } else {

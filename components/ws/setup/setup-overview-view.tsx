@@ -110,7 +110,7 @@ export function SetupOverviewView({ linkedInConfigured }: { linkedInConfigured: 
                   {linkedin.length === 0 ? (
                     <EmptyState>
                       {linkedInConfigured
-                        ? "No LinkedIn account connected. Add one in Config to send invites and messages."
+                        ? "No LinkedIn account connected. Connect one under Integrations to send invites and messages."
                         : "Connecting LinkedIn isn't configured on this deployment."}
                     </EmptyState>
                   ) : (
@@ -376,7 +376,7 @@ function ConnectResult({ onConnected }: { onConnected: () => void }) {
         : state === "unknown"
           ? "We couldn't read how that sign-in went. Reload to see what connected."
           : state === "expired"
-            ? "That sign-in took too long. Start it again from Config."
+            ? "That sign-in took too long. Start it again from Integrations."
             : `LinkedIn didn't connect${detail ? `: ${detail}` : "."}`;
 
   return (

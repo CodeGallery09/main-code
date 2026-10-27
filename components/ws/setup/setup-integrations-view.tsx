@@ -18,7 +18,6 @@ import { ChannelTile } from "@/components/ws/ui/channel-tile";
 import { StatusPill } from "@/components/ws/ui/status-pill";
 import { Appear } from "@/components/ws/ui/motion";
 import { LoadError, SearchInput, Skeleton, Tag } from "@/components/ws/ui/misc";
-import { RulesCards } from "./setup-rules";
 
 /** A tile per provider. Vendor colours, darkened so the white monogram clears 4.5:1. */
 const TILE: Record<ProviderKey, { color: string; mono: string }> = {
@@ -33,14 +32,14 @@ const TILE: Record<ProviderKey, { color: string; mono: string }> = {
 };
 
 /**
- * Setup · Config — the catalogue of everything that can be connected.
+ * Setup · Integrations — the one place an account is connected: the catalogue of everything that can be.
  *
  * A provider's state is derived from the workspace's own accounts, never typed
  * in, and anything the product cannot honour is marked Planned rather than
  * offered as a button that would fail.
  */
-export function SetupConfigView({ linkedInConfigured }: { linkedInConfigured: boolean }) {
-  const { badges, workspace } = useWorkspace();
+export function SetupIntegrationsView({ linkedInConfigured }: { linkedInConfigured: boolean }) {
+  const { badges } = useWorkspace();
   const snapshot = useAsync(() => api.accounts(), []);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState("");
@@ -79,7 +78,7 @@ export function SetupConfigView({ linkedInConfigured }: { linkedInConfigured: bo
       <PageBody>
         <Appear>
           <PageHeader
-            title="Config"
+            title="Integrations"
             subtitle="Connect the accounts Flightpath sends from and the tools it talks to. Connect as many as you like."
           />
         </Appear>
@@ -92,63 +91,58 @@ export function SetupConfigView({ linkedInConfigured }: { linkedInConfigured: bo
         )}
 
         {snapshot.state === "ready" && (
-          // Two panes that scroll on their own: what is connected, and the rules that govern sending.
-          <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:grid-rows-1">
-            <div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+          <div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
             <Appear index={1}>
               <ChannelStrip snapshot={snapshot.data} />
             </Appear>
 
-            {GROUPS.map((group, i) => {
-              const items = views.filter((v) => v.provider.group === group && matches(v));
-              if (items.length === 0) return null;
-              const shut = collapsed[group];
-              return (
-                <Appear key={group} index={i + 2}>
-                  <Card>
-                    <div
-                      className={cn(
-                        "flex flex-wrap items-center justify-between gap-[10px] px-4 py-[10px]",
-                        !shut && "border-b border-border",
-                      )}
-                    >
-                      <h2 className="font-mono text-[13px] font-bold tracking-[-0.01em]">{group}</h2>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-expanded={!shut}
-                        aria-label={shut ? `Show ${group}` : `Hide ${group}`}
-                        onClick={() => setCollapsed({ ...collapsed, [group]: !shut })}
+            <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
+              {GROUPS.map((group, i) => {
+                const items = views.filter((v) => v.provider.group === group && matches(v));
+                if (items.length === 0) return null;
+                const shut = collapsed[group];
+                return (
+                  <Appear key={group} index={i + 2}>
+                    <Card>
+                      <div
+                        className={cn(
+                          "flex flex-wrap items-center justify-between gap-[10px] px-4 py-[10px]",
+                          !shut && "border-b border-border",
+                        )}
                       >
-                        {shut ? <ChevronDown aria-hidden strokeWidth={2} /> : <ChevronUp aria-hidden strokeWidth={2} />}
-                      </Button>
-                    </div>
-                    {!shut && (
-                      <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-x-6 px-4 pb-2 pt-[2px]">
-                        {items.map((v) => (
-                          <ProviderRow
-                            key={v.provider.k}
-                            view={v}
-                            connecting={connecting && v.provider.k === "linkedin"}
-                            onConnect={() => void connect(v.provider.k)}
-                          />
-                        ))}
+                        <h2 className="font-mono text-[13px] font-bold tracking-[-0.01em]">{group}</h2>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-expanded={!shut}
+                          aria-label={shut ? `Show ${group}` : `Hide ${group}`}
+                          onClick={() => setCollapsed({ ...collapsed, [group]: !shut })}
+                        >
+                          {shut ? <ChevronDown aria-hidden strokeWidth={2} /> : <ChevronUp aria-hidden strokeWidth={2} />}
+                        </Button>
                       </div>
-                    )}
-                  </Card>
-                </Appear>
-              );
-            })}
+                      {!shut && (
+                        <div className="px-4 pb-2 pt-[2px]">
+                          {items.map((v) => (
+                            <ProviderRow
+                              key={v.provider.k}
+                              view={v}
+                              connecting={connecting && v.provider.k === "linkedin"}
+                              onConnect={() => void connect(v.provider.k)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </Card>
+                  </Appear>
+                );
+              })}
+            </div>
 
             <p className="rounded-[10px] bg-accent px-[13px] py-[8px] text-[11.5px] leading-[1.55] text-muted-foreground">
               Everything connected here belongs to the workspace, so any strategy can use it. Add as many LinkedIn
-              accounts or mailboxes as you need — the limits are per account and shared across strategies.
+              accounts or mailboxes as you need. Connecting is not sending: nothing goes out until a sender exists.
             </p>
-            </div>
-
-            <div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
-              <RulesCards workspace={workspace} index={GROUPS.length + 2} />
-            </div>
           </div>
         )}
       </PageBody>
@@ -243,8 +237,9 @@ function ProviderRow({
       )}
       {state === "disconnected" &&
         (action ? (
-          <Button variant="outline" size="icon" disabled={connecting} aria-label={`Connect ${provider.name}`} onClick={onConnect}>
+          <Button size="sm" disabled={connecting} aria-label={`Connect ${provider.name}`} onClick={onConnect}>
             <Plus aria-hidden strokeWidth={2.2} />
+            {connecting ? "Opening…" : "Connect"}
           </Button>
         ) : (
           <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">Not built yet</span>

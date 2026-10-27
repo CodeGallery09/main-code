@@ -54,11 +54,11 @@ export function PageBody({ children, className }: { children: React.ReactNode; c
 
 const SETUP_TABS = [
   { href: SETUP_HREF, label: "Overview" },
-  { href: `${SETUP_HREF}/config`, label: "Config" },
+  { href: `${SETUP_HREF}/integrations`, label: "Integrations" },
   { href: `${SETUP_HREF}/messages`, label: "Messages" },
 ];
 
-/** Overview · Config · Templates. The Config tab carries the count of things that are broken. */
+/** Overview · Integrations · Messages. The Integrations tab carries the count of things that are broken. */
 export function SetupTabs({ right, issues = 0 }: { right?: React.ReactNode; issues?: number }) {
   const pathname = usePathname();
   const still = useReducedMotion();
@@ -78,7 +78,7 @@ export function SetupTabs({ right, issues = 0 }: { right?: React.ReactNode; issu
               )}
             >
               {t.label}
-              {t.label === "Config" && issues > 0 ? (
+              {t.label === "Integrations" && issues > 0 ? (
                 <span className="rounded-full bg-primary px-[6px] py-px font-mono text-[10.5px] font-medium text-primary-foreground">
                   {issues}
                 </span>

@@ -227,7 +227,7 @@ directly.
 | `/api/webhooks/unipile/accounts` | POST | account status changed. Shared-secret header; writes `channel_accounts.state` |
 | `/api/webhooks/unipile/messages` | POST | inbound message. Shared-secret header; idempotent on the provider's message id |
 | `/api/badges` | GET | `{ tasks, inbox, config }`: the rail counts, fetched on every navigation |
-| `/api/settings` | GET, PATCH | the Configuration screen's Variables/Sending rules/Compliance tabs (`workspace_settings`). PATCH body carries only the section(s) changed (`{ variableFallbacks? \| sendingRules? \| compliance? }`); shape/range checked in `validate.ts`, merged into the stored row by the repository. Always real for the signed-in workspace, but `SENDING_ENABLED` stays false so nothing acts on it — see Configuration below |
+| `/api/settings` | GET, PATCH | the (removed) rules screen: Variables/Sending rules/Compliance (`workspace_settings`); no screen calls it now. PATCH body carries only the section(s) changed (`{ variableFallbacks? \| sendingRules? \| compliance? }`); shape/range checked in `validate.ts`, merged into the stored row by the repository. Always real for the signed-in workspace, but `SENDING_ENABLED` stays false so nothing acts on it — see Configuration below |
 | `/api/audiences/uploads`, `…/[id]/validate`, `/api/audiences/segments` | POST, GET | parked file → review (per-channel reach, **in-journey warning**, import plan) → saved segment. Segments carry a live `audienceCount`. Max 4 MB (Vercel's body cap) |
 | `/api/threads`, `/api/threads/[id]`, `/api/threads/[id]/messages` | GET, POST | |
 | `/api/analytics` | GET | `?range=`, `?channels=` |
@@ -318,7 +318,7 @@ reads what only the server can read, and renders one `"use client"` view. Keep i
 |---|---|---|---|
 | `shell/AppShell.tsx` | 139 | — | the frame: `Sidebar` + children above `lg`, top bar + animated sheet below it. Detects the two **focus routes** (`/dashboard/strategies/new`, `/dashboard/workflows/[id]`) and renders them chromeless. At `lg`+ it is a fixed `h-dvh` frame and screens scroll inside their cards (see §5 "A fixed frame") |
 | `shell/sidebar.tsx` | 162 | — | `Sidebar` (216px) and `SidebarRail` (60px, builder only), `NavList`, `AccountCard`, `SignOutItem` (inline failure message), `NavBadge` (grey = information, black = needs you). **Five destinations** (`DASHBOARD_NAV` via `shell/nav.ts`) — see §2d |
-| `shell/page.tsx` | 101 | — | `TopBar`, `PageHeader`, `PageBody` (`px-6 pt-4 pb-6`, `gap-4`, takes the remaining height at `lg`), `SetupTabs` (animated underline, Overview · Config · Messages) |
+| `shell/page.tsx` | 101 | — | `TopBar`, `PageHeader`, `PageBody` (`px-6 pt-4 pb-6`, `gap-4`, takes the remaining height at `lg`), `SetupTabs` (animated underline, Overview · Integrations · Messages) |
 | `shell/workspace-context.tsx` | 63 | `/api/badges` | user + workspace from the layout, badges refetched on every navigation, `refreshBadges()` for a screen that just changed one |
 | `shell/use-sign-out.ts` | 34 | `/api/logout` | navigates only after the server confirms, with a **full page load** — see §5 |
 | `home/home-view.tsx` | 388 | `/api/overview`, `/api/strategies`, `/api/tasks`, `/api/accounts` | four metric tiles (fixed 7-day window; ranges belong to Analytics, which it links to), To do with a Segmented filter and optimistic completion, Sending today from the accounts' quotas, Strategies, Setup health computed from `setupChecks`. The greeting is computed after mount (no date-dependent server markup) |
@@ -326,13 +326,13 @@ reads what only the server can read, and renders one `"use client"` view. Keep i
 | `audiences/audiences-view.tsx` | 456 | `/api/audiences`, `/api/audiences/segments` | drop zone, filters, segment cards that narrow the table, paged leads table, copy-email, Add a lead, delete with `Confirm`; a row opens `lead-drawer.tsx`, whose Edit opens `lead-form.tsx`. **No row checkboxes** — nothing consumed the selection and there is no bulk action |
 | `strategies/strategies-view.tsx` | 302 | `/api/strategies`, `/api/strategies/[id]` | **the only strategy list** (§2d). Status Segmented + search + channel select; Pause/Resume, Duplicate (creates the strategy *and* copies its graph), Delete. A row opens the builder |
 | `strategies/new-strategy-view.tsx` | 236 | `/api/strategies`, `/api/strategies/[id]/workflow` | focus route. Shape (multichannel / single channel), then a play or a blank sequence; creates the strategy + its workflow and opens the builder — **never on a GET** |
-| `builder/builder-view.tsx` | 452 | `/api/strategies/[id]/workflow` | see below |
+| `builder/builder-view.tsx` + `canvas.tsx` + `inspector.tsx` | 585 + 382 + 387 | `/api/accounts`, `/api/strategies/[id]/workflow` | the drag-and-drop builder, see below |
 | `setup/setup-overview-view.tsx` + `account-settings.tsx` | 401 + 132 | `/api/accounts` | connected accounts, each account's dials behind its Settings, hosted-sign-in result banner, disconnect. No Pause: nothing is sending to pause |
-| `setup/setup-config-view.tsx` + `setup-rules.tsx` | 249 + 539 | `/api/accounts`, `/api/settings` | the provider catalogue (`providerView()`) and starting a LinkedIn sign-in; `setup-rules.tsx` is the stored rules (sending window, limits, stop rules, skip rules, variable fallbacks, compliance) plus the Workspace card and "Remove sample data" |
+| `setup/setup-integrations-view.tsx` | 250 | `/api/accounts` | the provider catalogue (`providerView()`) and the **one place an account is connected** (a labelled Connect button starts the hosted LinkedIn sign-in). The sending-rules cards and Workspace card that sat beside it as "Config" were removed at the user's request; `/api/settings`, `workspace_settings` and `lib/app/configuration.ts` are still there but no screen edits them |
 | `setup/setup-messages-view.tsx` | 283 | `/api/workflows` | **all message copy in the workspace, in one place**, read out of every stored graph by `lib/ws/messages.ts`. The builder never edits copy (§5) |
 | `analytics/analytics-view.tsx` + `charts.tsx` | 138 + 89 | `/api/analytics` | one report, no tabs. Hairline grid, single near-black accent |
 | `ui/` | ~700 | — | `button` (cva: default/outline/ghost/dashed/danger/warning/inverse; sizes sm 30 · md 34 · lg 38 · icon 30 · icon-sm 28) · `card` · `status-pill` · `segmented` (shared-layout thumb) · `channel-tile` · `confirm` · `motion` (`Appear`, `Swap`, `Row`, `Expand`, and the one easing pair) · `misc` (`Initials, Meter, Switch, NativeSelect, SearchInput, Sparkline, MetricTile, EmptyState, Tag, ChannelChip, Skeleton, LoadError`) |
-| `lib/ws/` | 462 | — | `utils.ts` (`cn`, `fmt`, `pct`, `initialsOf`) · `channels.ts` (the domain `Channel` union → display name, monogram, colour, order) · `format.ts` (metric values and footers; says "Nothing yet"/"No comparison" rather than inventing a 0%) · `use-async.ts` (the loading/ready/failed/retry contract every card shares) · `plan.ts` (the graph ⇄ ordered-list seam — see below) · `messages.ts` (real copy out of stored graphs) |
+| `lib/ws/` | 462 | — | `utils.ts` (`cn`, `fmt`, `pct`, `initialsOf`) · `channels.ts` (the domain `Channel` union → display name, monogram, colour, order) · `format.ts` (metric values and footers; says "Nothing yet"/"No comparison" rather than inventing a 0%) · `use-async.ts` (the loading/ready/failed/retry contract every card shares) · `graphEdit.ts` (pure canvas edits, tested) · `messages.ts` (real copy out of stored graphs) |
 | `components/glass.ts` | ~230 | — | refraction + specular runtime, **marketing-only** (`SiteGlass.tsx` imports it). Was `components/app/glass.ts` |
 
 **Motion.** `framer-motion` only, and only `transform`/`opacity`: `Appear` (a 4px rise, staggered
@@ -341,26 +341,33 @@ by `index`), `Swap`/`Row` through `AnimatePresence`, `Expand` for a disclosure, 
 `useReducedMotion()`, and `workspace.css` zeroes durations under `prefers-reduced-motion` as a
 backstop.
 
-### Workflow builder — `components/ws/builder/builder-view.tsx` (452L)
-**It is an ordered list, not a canvas.** The node-graph surface (pannable canvas, step palette,
-property inspector, ~2000L across four files) is **deleted**: a sequence of touches is a list, and
-the graph bought nothing a list does not say more plainly. Do not reintroduce it.
+### Workflow builder — `components/ws/builder/` (a drag-and-drop canvas)
+**It is a canvas again** (an ordered list replaced it for a while and the user asked for the
+drag-and-drop one back). Three files plus one pure helper:
+`builder-view.tsx` (585L: owns the one copy of the graph, undo/redo history, autosave, palette,
+the strategy panel) · `canvas.tsx` (382L: cards, sockets, edges, drag/drop) · `inspector.tsx`
+(387L: the selected step's fields, and "then go to" selects so a plan can be wired without a
+mouse) · `lib/ws/graphEdit.ts` (import-free and tested by `tests/graphEdit.test.mjs`: `connect`,
+`refuseConnect`, `wouldCycle`, `removeNode`, `freeSlot`, `keepInView`).
 
-The screen reads, top to bottom, in one 820px column: *Here's the plan* (the save state and the
-name) · *Who it goes to* · *What happens in order* (each touch's channel, template and day, plus
-one **Pace** control — gentle / standard / persistent — that rewrites every gap) · *When to stop*
-(stop-on-reply, locked) · *Nothing sends yet*.
-
-**`lib/ws/plan.ts` (219L) is the seam.** The stored shape is unchanged — still a node/edge graph in
-the `workflows` table, still validated by `validateWorkflowGraph()`. `readPlan(graph)` walks
-`audience → out`, folds each `wait.days` into the next touch's `gap`, and returns an ordered
-`Plan`; `writePlan()` rebuilds the audience → wait → touch chain, preserving each node's existing
-data, and re-runs `layout()`. `paceOf()`/`repace()` map gaps to a pace and back.
-
-**A plan that branches is read-only, not flattened.** `readPlan` sets `linear: false` on any fork,
-`cond` or `split`. The editor then disables every control (`Segmented` has a `disabled` prop for
-exactly this), makes the name `readOnly`, shows a banner saying why, and `change()` returns early —
-a stored branching graph is never silently rewritten into a straight line.
+- **Adding a step:** drag a palette item onto the canvas (HTML5 drag, data type
+  `application/x-step`), or click it — a click continues the plan from the selected step (or the
+  last one added) through its first free socket. **Wiring:** pull from the dot under a step to
+  another card, or use the inspector's "then go to". A step has **at most one parent** and a
+  connection that would loop is refused (`graphEdit.ts`), matching `layout()` and
+  `validateWorkflowGraph()`. Delete / Backspace removes the selection, Ctrl/⌘+Z undoes.
+- **Graph coordinates vs zoom.** Positions are stored unscaled; `zoom` only scales how the surface
+  is drawn, so the canvas divides pointer positions by it. `layout()` centres the tree on x = 0, so
+  half of a tidied plan has negative x — `keepInView()` slides it right/down on load and after
+  *Tidy up*, or the left half is unreachable in a scrolling canvas.
+- **A step on a channel with no connected account is flagged** on its card and in the strategy
+  panel (`issues()` with `channelOff`, wording rewritten to "isn't connected"). Only LinkedIn and
+  Email need an account; a call step is a to-do for a person.
+- **Figures on the cards are estimates** (`stepStats()`), and the canvas footer says so. Nothing
+  sends (`SENDING_ENABLED`).
+- **The page is fixed-height** like every other screen: the palette, canvas and settings panel
+  each scroll on their own.
+- `lib/ws/plan.ts` (the old list seam) is deleted.
 
 **Model.** `lib/app/workflow.ts` (946L) still owns `WorkflowGraph`, the templates,
 `graphFromTemplate()`, `toGraph`/`fromGraph` and `validateWorkflowGraph()` /
@@ -414,12 +421,12 @@ questions could not be answered before seeing the strategy. Channels follow from
 follows from what the user does.
 
 ### Setup — `/dashboard/configuration` — one screen, three tabs
-`setup-overview-view.tsx` · `setup-config-view.tsx` (`/dashboard/configuration/config`) ·
+`setup-overview-view.tsx` · `setup-integrations-view.tsx` (`/dashboard/configuration/integrations`; `/configuration/config` redirects here) ·
 `setup-messages-view.tsx` (`/dashboard/configuration/messages`). Titled "Setup" and reached from
 the rail — it is one of the six `DASHBOARD_NAV` destinations, so it works on a phone.
 
 **It was six tabs, and before that three rail destinations.** Overview · LinkedIn · Email ·
-Connections · Rules · Workspace collapsed to **Overview · Config · Messages**: LinkedIn and Email
+Connections · Rules · Workspace collapsed to **Overview · Integrations · Messages**: LinkedIn and Email
 were two copies of one account register (now Overview), Connections and Rules are both "what is
 connected and how does sending behave" (now Config), Workspace held four read-only facts (now a
 card on Config), and message copy had no home at all (now Messages). `/dashboard/integrations`
@@ -446,7 +453,7 @@ rotation save (debounced) through `PATCH /api/accounts/:id`. Domains show their 
 state. The Overview's checks come from `lib/data/setup.ts` (real state), never a constant.
 **Connecting a mailbox is not built** and the screen says so instead of offering a button.
 
-**WhatsApp, Calls and SMS** are a Planned row on Config — no account or number concept exists, so
+**WhatsApp, Calls and SMS** are a Planned row on Integrations — no account or number concept exists, so
 there is nothing to configure and nothing was scaffolded. A tab whose whole content would be
 "nothing to configure yet" does not get a tab.
 
@@ -476,11 +483,11 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 `data-pip-section`, hidden on `/dashboard`.
 
 ### Tests — `tests/` (Node's built-in runner, not Jest/Vitest)
-`dataQuery.test.mjs` · `demoRequest.test.mjs` · `workflow.test.mjs` · `validate.test.mjs` ·
+`dataQuery.test.mjs` · `graphEdit.test.mjs` · `demoRequest.test.mjs` · `workflow.test.mjs` · `validate.test.mjs` ·
 `adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `setup.test.mjs` · `workflowPersist.test.mjs` · `audiencesValidation` `audiencesMerge` `audiencesJourney` `audiencesProfile` `audiencesImportPlan` `prospect` `workflowSegment` ·
 `unipile.test.mjs` (the Unipile request contract + response readers) · `unipileEvents.test.mjs`
 (both documented webhook envelopes) · `webhookConfig.test.mjs` (the header/query-param match) —
-**221 tests**
+**229 tests**
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).
@@ -501,7 +508,7 @@ namespaces, no parameter properties).
 | Re-theme workspace | the `.ws-root` token block at the top of `app/workspace.css`, and its `@theme inline` mapping right below it. Tokens are **never** on `:root` (that would repaint the marketing pages, which share the document) and components never carry hex — see §5. |
 | Add a glass surface (marketing only) | selector list in `globals.css`'s glass-skin block **AND** `SiteGlass.tsx`'s lens/specular lists. Miss one → renders flat. The workspace has no glass surfaces any more — see §5. |
 | Add a nav item | `lib/nav.ts` (workspace) or `lib/site.ts` (marketing). For the workspace, read §2d first: the rail and the phone sheet render the same six entries |
-| Add a Setup tab | `SetupTabs` in `components/ws/shell/page.tsx` + a route under `app/dashboard/configuration/`. There are three (Overview · Config · Messages) and a tab whose content would be "nothing to configure yet" belongs on Config as a Planned row instead |
+| Add a Setup tab | `SetupTabs` in `components/ws/shell/page.tsx` + a route under `app/dashboard/configuration/`. There are three (Overview · Integrations · Messages) and a tab whose content would be "nothing to configure yet" belongs on Config as a Planned row instead |
 | Offer a new builder step | `STEPS` + `defaults()` + `stepLabel()` **and** `PALETTE` in `lib/app/workflow.ts`. `STEPS` describes a step so stored graphs render; `PALETTE` is what a user may add, and only steps that can actually run go in it (`tests/workflow.test.mjs` pins that) |
 | Change what a new workspace starts with | `lib/data/sample.ts` (content, tested) and `sampleSeed.ts` (insert). Keep every email on `.example` and every phone in 555-01xx — the tests enforce it. |
 | Add a field to a stored workflow | `WorkflowGraph` + `validateWorkflowGraph` in `lib/app/workflow.ts` (the whitelist **drops/refuses** anything not listed) + a case in `tests/workflowPersist.test.mjs` |
@@ -514,7 +521,7 @@ namespaces, no parameter properties).
 | Change what the import review shows | `ImportPreview`/`ReviewRow` in `lib/audiences/segments.ts` → `analyseUpload` in `lib/audiences/analyse.ts` → `components/ws/audiences/import-review.tsx` |
 | Add something to the prospect profile | `ProspectProfile` in `lib/data/types.ts` → `ProspectFacts` + `buildProspect` in `lib/audiences/prospect.ts` (+ `tests/prospect.test.mjs`) → `getProspect` in **both** `pg.ts` and `memory.ts` (scope every query by `workspace_id`) → `components/ws/audiences/lead-drawer.tsx` |
 | Add a builder step kind | `STEPS` + `defaults()` + `stepLabel()` in `lib/app/workflow.ts`; tests pin the five fixture graphs in `WORKFLOWS` |
-| Add a Configuration setting | the catalogue entry in `lib/app/configuration.ts` (and its default in `defaultWorkspaceSettings()`), a field on `WorkspaceSettings` in `lib/data/types.ts`, a check in the matching `validate*Patch` in `lib/data/validate.ts`, then a row in `components/ws/setup/setup-rules.tsx`. Rows are its own `<Field>`/`<ToggleLine>` — don't hand-roll one, and don't write a rule's label or hint into the component: the catalogue owns that copy. |
+| Add a Configuration setting (no screen edits them today — the rules UI was removed; rebuild one before adding a setting) | the catalogue entry in `lib/app/configuration.ts` (and its default in `defaultWorkspaceSettings()`), a field on `WorkspaceSettings` in `lib/data/types.ts`, a check in the matching `validate*Patch` in `lib/data/validate.ts`, then a row in `components/ws/setup/setup-rules.tsx`. Rows are its own `<Field>`/`<ToggleLine>` — don't hand-roll one, and don't write a rule's label or hint into the component: the catalogue owns that copy. |
 | Add a workspace UI primitive | `components/ws/ui/` (one file per family), styled from tokens only. Check the name against `globals.css` first — it is loaded on `/dashboard` too, so a class name both stylesheets use inherits the marketing rules. |
 | Add a screen state (loading / empty / failed) | `useAsync` in `lib/ws/use-async.ts` plus `Skeleton`/`EmptyState`/`LoadError` from `ui/misc.tsx`. Every card on these screens shows all three; a screen that shows only the happy path is unfinished. |
 
@@ -770,7 +777,7 @@ Roughly in the order they should be closed.
     **Setup → Messages is read-only.** It lists the real copy out of every stored workflow, but
     editing a template there is not built: the touch's copy is still edited through the stored
     graph. The template editor's own open questions (variables with fallbacks — the fallbacks
-    themselves do persist, see Config — the LinkedIn 300-character invite limit, and the
+    themselves do persist in `workspace_settings`, though no screen edits them now — the LinkedIn 300-character invite limit, and the
     WhatsApp/DLT approval states) are unanswered, and WhatsApp and SMS cannot send anyway.
 14. **Workspace-level channel on/off switches do not exist.** The builder's `channelsOff` prop and
     its "…is off in Settings" tooltip are left in place for when they do; nothing passes it today.
