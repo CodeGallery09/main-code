@@ -288,7 +288,7 @@ export function BuilderView({
                     Add the first touch to get started.
                   </li>
                 )}
-                {touches.map((t) => {
+                {touches.map((t, i) => {
                   const flagged = unconnected(t.channel);
                   return (
                     <li
@@ -303,7 +303,7 @@ export function BuilderView({
                       <span className="flex shrink-0 basis-[62px] flex-col gap-px">
                         <span className="font-mono text-[13px] font-bold">Day {t.day}</span>
                         <span className="font-mono text-[10px] text-muted-foreground">
-                          {t.day === 1 && t.gap === 0 ? "start" : t.gap === 0 ? "same day" : `+${t.gap} days`}
+                          {i === 0 ? "start" : t.gap === 0 ? "same day" : `+${t.gap} days`}
                         </span>
                       </span>
                       <ChannelTile channel={t.channel} />
