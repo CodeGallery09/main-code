@@ -28,10 +28,10 @@ function NavBadge({ n, tone }: { n: number; tone: "info" | "action" }) {
 export function Brand({ collapsed }: { collapsed?: boolean }) {
   return (
     <span className="flex items-center gap-[10px]">
-      <span className="flex size-[28px] items-center justify-center rounded-lg bg-primary text-primary-foreground">
-        <Send aria-hidden className="size-[15px]" strokeWidth={1.8} />
+      <span className="flex size-[24px] items-center justify-center rounded-md bg-primary text-primary-foreground">
+        <Send aria-hidden className="size-[13px]" strokeWidth={1.8} />
       </span>
-      {!collapsed && <span className="font-mono text-[15px] font-bold tracking-[-0.01em]">Flightpath</span>}
+      {!collapsed && <span className="font-mono text-[13.5px] font-bold tracking-[-0.01em]">Flightpath</span>}
     </span>
   );
 }
@@ -58,11 +58,11 @@ export function NavList({ onNavigate }: { onNavigate?: () => void }) {
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex h-[38px] items-center gap-[11px] rounded-lg px-[11px] text-[14px] transition-colors hover:bg-accent",
+              "flex h-[32px] items-center gap-[9px] rounded-lg px-[9px] text-[13px] transition-colors hover:bg-accent",
               active ? "bg-muted font-medium text-foreground" : "text-body",
             )}
           >
-            <Icon aria-hidden className="size-[17px]" strokeWidth={1.7} />
+            <Icon aria-hidden className="size-[15px]" strokeWidth={1.7} />
             <span className="flex-1">{item.label}</span>
             {item.badge && count > 0 ? <NavBadge n={count} tone={item.tone ?? "info"} /> : null}
           </Link>
@@ -80,13 +80,13 @@ export function SignOutItem() {
         type="button"
         disabled={busy}
         onClick={() => void signOut()}
-        className="flex h-[38px] items-center gap-[11px] rounded-lg px-[11px] text-[14px] text-body transition-colors hover:bg-accent disabled:opacity-60"
+        className="flex h-[32px] items-center gap-[9px] rounded-lg px-[9px] text-[13px] text-body transition-colors hover:bg-accent disabled:opacity-60"
       >
-        <LogOut aria-hidden className="size-[17px]" strokeWidth={1.7} />
+        <LogOut aria-hidden className="size-[15px]" strokeWidth={1.7} />
         {busy ? "Signing out…" : "Sign out"}
       </button>
       {failed ? (
-        <span role="alert" className="px-[11px] text-[11.5px] text-warning">
+        <span role="alert" className="px-[11px] text-[11px] text-warning">
           We couldn&apos;t end the session. Check your connection and try again.
         </span>
       ) : null}
@@ -98,11 +98,11 @@ export function AccountCard() {
   const { user, workspace } = useWorkspace();
   return (
     <div className="flex items-center gap-[10px] rounded-[10px] border border-border bg-card px-[11px] py-[10px]">
-      <span className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-muted font-mono text-[12px] font-medium">
+      <span className="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-muted font-mono text-[11px] font-medium">
         {user.initials}
       </span>
       <span className="flex min-w-0 flex-col leading-[1.3]">
-        <span className="truncate text-[13px] font-medium">{user.name}</span>
+        <span className="truncate text-[12px] font-medium">{user.name}</span>
         <span className="truncate text-[11px] text-muted-foreground">
           {workspace.name} · {workspace.plan}
         </span>
@@ -111,10 +111,10 @@ export function AccountCard() {
   );
 }
 
-/** The 252px sidebar. Desktop only; below 1024px the shell shows a top bar and a sheet instead. */
+/** The 216px sidebar. Desktop only; below 1024px the shell shows a top bar and a sheet instead. */
 export function Sidebar() {
   return (
-    <aside className="hidden w-[252px] shrink-0 flex-col gap-[22px] border-r border-border bg-chrome px-4 pb-[18px] pt-[20px] lg:flex">
+    <aside className="hidden w-[216px] shrink-0 flex-col gap-4 border-r border-border bg-chrome px-3 pb-3 pt-4 lg:flex lg:h-full lg:overflow-y-auto">
       <div className="flex items-center justify-between gap-2 px-[6px] py-[2px]">
         <Brand />
       </div>
@@ -134,7 +134,7 @@ export function SidebarRail() {
   return (
     <nav
       aria-label="Main"
-      className="hidden shrink-0 basis-[60px] flex-col items-center gap-[6px] border-r border-border bg-chrome py-[14px] sm:flex"
+      className="hidden shrink-0 basis-[60px] flex-col items-center gap-[6px] border-r border-border bg-chrome py-[10px] sm:flex"
     >
       <span className="mb-[10px]">
         <Brand collapsed />

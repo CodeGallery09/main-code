@@ -205,7 +205,7 @@ export function RulesCards({ workspace, index = 0 }: { workspace: Workspace; ind
                       })
                     }
                     className={cn(
-                      "rounded-full border px-[11px] py-[5px] text-[12px] transition-colors duration-150",
+                      "rounded-full border px-[11px] py-[5px] text-[11.5px] transition-colors duration-150",
                       on
                         ? "border-primary bg-primary text-primary-foreground"
                         : "border-input bg-card text-muted-foreground hover:bg-secondary",
@@ -298,12 +298,12 @@ export function RulesCards({ workspace, index = 0 }: { workspace: Workspace; ind
               </CardDescription>
             </span>
           </CardHeader>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-x-8 px-[18px] pb-[14px] pt-[8px]">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-x-8 px-4 pb-[14px] pt-[8px]">
             {VARIABLES.map((variable) => (
-              <label key={variable.token} className="flex items-center gap-[10px] border-b border-divider py-[11px]">
+              <label key={variable.token} className="flex items-center gap-[10px] border-b border-divider py-[8px]">
                 <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
-                  <span className="font-mono text-[12px] font-medium">{variable.token}</span>
-                  <span className="truncate text-[11.5px] text-muted-foreground">from {variable.from}</span>
+                  <span className="font-mono text-[11.5px] font-medium">{variable.token}</span>
+                  <span className="truncate text-[11px] text-muted-foreground">from {variable.from}</span>
                 </span>
                 <input
                   type="text"
@@ -317,12 +317,12 @@ export function RulesCards({ workspace, index = 0 }: { workspace: Workspace; ind
                       string | null
                     >)
                   }
-                  className="h-[30px] w-[130px] shrink-0 rounded-lg border border-input bg-card px-[9px] text-[12.5px]"
+                  className="h-[30px] w-[130px] shrink-0 rounded-lg border border-input bg-card px-[9px] text-[11.5px]"
                 />
               </label>
             ))}
           </div>
-          <p className="px-[18px] pb-[14px] text-[12px] text-muted-foreground">
+          <p className="px-4 pb-[14px] text-[11.5px] text-muted-foreground">
             Adding a new token, snippets and a do-not-contact list are not built yet — there is nowhere to store them.
           </p>
         </Card>
@@ -340,8 +340,8 @@ export function RulesCards({ workspace, index = 0 }: { workspace: Workspace; ind
           {CONSENT.map((basis) => {
             const channel = CONSENT_CHANNEL[basis.k];
             return (
-              <div key={basis.k} className="flex items-center gap-3 border-b border-divider px-[18px] py-[11px]">
-                <span className="flex-1 text-[13px]">{channel ? CHANNEL_NAME[channel] : basis.k}</span>
+              <div key={basis.k} className="flex items-center gap-3 border-b border-divider px-4 py-[8px]">
+                <span className="flex-1 text-[12px]">{channel ? CHANNEL_NAME[channel] : basis.k}</span>
                 {basis.options.length === 0 ? (
                   <Tag>{basis.fixed}</Tag>
                 ) : (
@@ -369,8 +369,8 @@ export function RulesCards({ workspace, index = 0 }: { workspace: Workspace; ind
             />
           ))}
 
-          <div className="flex items-center gap-3 px-[18px] py-[13px]">
-            <span className="flex-1 text-[13px]">Keep audience data for</span>
+          <div className="flex items-center gap-3 px-4 py-[9px]">
+            <span className="flex-1 text-[12px]">Keep audience data for</span>
             <NativeSelect
               id="retention"
               label="Retention"
@@ -402,7 +402,7 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
           <CardDescription>Inviting a teammate is not built yet, so a workspace is one person today.</CardDescription>
         </span>
       </CardHeader>
-      <dl className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-x-8 px-[18px] pb-[14px] pt-[10px]">
+      <dl className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-x-8 px-4 pb-[14px] pt-[10px]">
         <Fact label="Name" value={workspace.name} />
         <Fact label="Plan" value={workspace.plan} />
         <Fact label="Seats" value={`${fmt(workspace.seatsUsed)} of ${fmt(workspace.seats)} used`} />
@@ -426,10 +426,10 @@ function SaveNote({ save }: { save: Save }) {
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-wrap items-start gap-x-6 gap-y-[8px] border-b border-divider px-[18px] py-[13px] last:border-b-0">
+    <div className="flex flex-wrap items-start gap-x-6 gap-y-[8px] border-b border-divider px-4 py-[9px] last:border-b-0">
       <span className="flex basis-[200px] flex-col gap-[2px]">
-        <span className="text-[13px] font-medium">{label}</span>
-        {hint && <span className="text-[11.5px] leading-[1.5] text-muted-foreground">{hint}</span>}
+        <span className="text-[12px] font-medium">{label}</span>
+        {hint && <span className="text-[11px] leading-[1.5] text-muted-foreground">{hint}</span>}
       </span>
       <span className="grow-[999] basis-[320px]">{children}</span>
     </div>
@@ -446,10 +446,10 @@ function ToggleLine({
   onChange: (on: boolean) => void;
 }) {
   return (
-    <div className="flex items-center gap-3 border-b border-divider px-[18px] py-[11px] last:border-b-0">
+    <div className="flex items-center gap-3 border-b border-divider px-4 py-[8px] last:border-b-0">
       <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
-        <span className="text-[13px]">{rule.label}</span>
-        {rule.hint && <span className="text-[11.5px] leading-[1.5] text-muted-foreground">{rule.hint}</span>}
+        <span className="text-[12px]">{rule.label}</span>
+        {rule.hint && <span className="text-[11px] leading-[1.5] text-muted-foreground">{rule.hint}</span>}
       </span>
       {rule.locked ? (
         <span className="flex shrink-0 items-center gap-[6px] font-mono text-[10.5px] uppercase tracking-[0.07em] text-muted-foreground">
@@ -483,7 +483,7 @@ function TimeInput({
         type="time"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-[30px] rounded-lg border border-input bg-card px-[9px] font-mono text-[12.5px]"
+        className="h-[30px] rounded-lg border border-input bg-card px-[9px] font-mono text-[11.5px]"
       />
     </span>
   );
@@ -523,7 +523,7 @@ function NumberInput({
           const next = Number(e.target.value);
           if (Number.isFinite(next) && next >= min && next <= max) onChange(next);
         }}
-        className="h-[30px] w-[64px] rounded-lg border border-input bg-card px-[9px] font-mono text-[12.5px] disabled:opacity-50"
+        className="h-[30px] w-[64px] rounded-lg border border-input bg-card px-[9px] font-mono text-[11.5px] disabled:opacity-50"
       />
     </span>
   );
@@ -531,9 +531,9 @@ function NumberInput({
 
 function Fact({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-divider py-[11px]">
+    <div className="flex items-center justify-between gap-3 border-b border-divider py-[8px]">
       <dt className="label-mono">{label}</dt>
-      <dd className={cn("truncate text-[13px]", mono && "font-mono text-[12px]")}>{value}</dd>
+      <dd className={cn("truncate text-[12px]", mono && "font-mono text-[11.5px]")}>{value}</dd>
     </div>
   );
 }

@@ -27,7 +27,7 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-[5px] whitespace-nowrap rounded-full px-[9px] py-[3px] text-[11.5px] font-medium",
+        "inline-flex items-center gap-[5px] whitespace-nowrap rounded-full px-[9px] py-[3px] text-[11px] font-medium",
         t.wrap,
         className,
       )}

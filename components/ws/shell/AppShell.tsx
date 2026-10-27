@@ -38,15 +38,18 @@ export function AppShell({
 
   return (
     <WorkspaceProvider user={user} workspace={workspace}>
-      <div className="ws-root min-h-screen">
+      {/* At lg and up the window is the frame: it never scrolls, and each screen scrolls only the
+          list or table inside its own card. Below lg (a phone, a short window) it is one long page. */}
+      <div className="ws-root min-h-dvh lg:h-dvh lg:min-h-[600px]">
         {focus ? (
-          children
+          <div className="relative flex min-h-dvh flex-col lg:h-full lg:min-h-0 lg:overflow-hidden">{children}</div>
         ) : (
-          <div className="flex min-h-screen items-stretch">
+          <div className="flex min-h-dvh items-stretch lg:h-full lg:min-h-0">
             <Sidebar />
-            <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex min-w-0 flex-1 flex-col lg:min-h-0">
               <MobileBar />
-              <main className="flex min-w-0 flex-1 flex-col">{children}</main>
+              {/* `relative` so the visually-hidden labels inside a scrolling pane are clipped with it, not left to stretch the document. */}
+              <main className="relative flex min-w-0 flex-1 flex-col lg:min-h-0 lg:overflow-hidden">{children}</main>
             </div>
           </div>
         )}
@@ -73,7 +76,7 @@ function MobileBar() {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-3 border-b border-border bg-chrome px-5 py-[11px] lg:hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border bg-chrome px-5 py-[8px] lg:hidden">
         <Brand />
         <button
           type="button"

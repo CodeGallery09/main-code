@@ -92,7 +92,7 @@ export function InboxView() {
         </Appear>
 
         <Appear index={1}>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-4">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
             {BLOCKS.map((b) => {
               const inChannel = scoped.filter((t) => t.channel === b);
               const on = channel === b;
@@ -106,7 +106,7 @@ export function InboxView() {
                     setOpenId(null);
                   }}
                   className={cn(
-                    "flex flex-col gap-[10px] rounded-xl border px-[17px] pb-[13px] pt-[15px] text-left transition-colors",
+                    "flex flex-col gap-[6px] rounded-xl border px-3 pb-[9px] pt-[10px] text-left transition-colors",
                     on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:border-input",
                   )}
                 >
@@ -122,10 +122,10 @@ export function InboxView() {
                     {on && <span className="font-mono text-[10.5px] text-on-primary-muted">Filtered</span>}
                   </span>
                   <span className="flex items-baseline gap-[7px]">
-                    <span className="font-mono text-[28px] font-bold leading-none tracking-[-0.02em]">
+                    <span className="font-mono text-[20px] font-bold leading-none tracking-[-0.02em]">
                       {inChannel.filter((t) => t.needsReply).length}
                     </span>
-                    <span className={cn("text-[12.5px]", on ? "text-on-primary-muted" : "text-muted-foreground")}>
+                    <span className={cn("text-[11.5px]", on ? "text-on-primary-muted" : "text-muted-foreground")}>
                       need you
                     </span>
                   </span>
@@ -144,10 +144,15 @@ export function InboxView() {
           </div>
         </Appear>
 
-        <div className="flex flex-wrap items-start gap-4">
-          <Card className="flex max-h-[1060px] min-w-0 max-w-[360px] grow basis-[300px] flex-col">
-            <div className="flex items-center justify-between gap-[10px] border-b border-border px-4 py-[14px]">
-              <h2 className="font-mono text-[14px] font-bold">
+        <div
+          className={cn(
+            "grid grid-cols-1 gap-3 lg:min-h-0 lg:flex-1 lg:grid-rows-1",
+            open ? "lg:grid-cols-[minmax(250px,300px)_minmax(0,1fr)_minmax(200px,230px)]" : "lg:grid-cols-[minmax(250px,300px)_minmax(0,1fr)]",
+          )}
+        >
+          <Card className="flex min-w-0 flex-col lg:min-h-0">
+            <div className="flex items-center justify-between gap-[10px] border-b border-border px-4 py-[10px]">
+              <h2 className="font-mono text-[13px] font-bold">
                 {channel === "all" ? "All conversations" : CHANNEL_NAME[channel]} · {visible.length}
               </h2>
               {channel !== "all" && (
@@ -156,10 +161,10 @@ export function InboxView() {
                 </Button>
               )}
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div className="max-h-[420px] flex-1 overflow-y-auto lg:max-h-none lg:min-h-0">
               {list.state === "loading" ? (
                 Array.from({ length: 6 }, (_, i) => (
-                  <div key={i} className="flex gap-[11px] border-b border-divider px-4 py-[13px]">
+                  <div key={i} className="flex gap-[11px] border-b border-divider px-4 py-[9px]">
                     <Skeleton className="size-[32px] rounded-full" />
                     <span className="flex flex-1 flex-col gap-[6px]">
                       <Skeleton className="h-[11px] w-[60%]" />
@@ -181,14 +186,14 @@ export function InboxView() {
                       aria-current={selected || undefined}
                       onClick={() => setOpenId(t.id)}
                       className={cn(
-                        "flex w-full gap-[11px] border-b border-divider px-4 py-[13px] text-left transition-colors",
+                        "flex w-full gap-[11px] border-b border-divider px-4 py-[9px] text-left transition-colors",
                         selected ? "bg-accent" : "bg-card hover:bg-chrome",
                       )}
                     >
                       <Initials text={t.initials} size={32} className={selected ? "bg-sunken" : undefined} />
                       <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
                         <span className="flex items-baseline justify-between gap-2">
-                          <span className={cn("truncate text-[13.5px]", selected ? "font-semibold" : "font-medium")}>
+                          <span className={cn("truncate text-[12.5px]", selected ? "font-semibold" : "font-medium")}>
                             {t.audienceName}
                           </span>
                           <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{at(t.lastAt)}</span>
@@ -196,7 +201,7 @@ export function InboxView() {
                         <span className="truncate font-mono text-[10.5px] uppercase tracking-[0.04em] text-muted-foreground">
                           {CHANNEL_NAME[t.channel]} · {t.company}
                         </span>
-                        <span className={cn("truncate text-[12.5px]", selected ? "text-body" : "text-muted-foreground")}>
+                        <span className={cn("truncate text-[11.5px]", selected ? "text-body" : "text-muted-foreground")}>
                           {t.preview}
                         </span>
                       </span>
@@ -220,7 +225,7 @@ export function InboxView() {
               }}
             />
           ) : (
-            <Card className="grow-[999] basis-[460px] p-10 text-center text-[13px] text-muted-foreground">
+            <Card className="grid place-items-center p-10 text-center text-[12px] text-muted-foreground">
               Pick a conversation from the list.
             </Card>
           )}
@@ -256,17 +261,17 @@ function ThreadPane({
   }, [messages.length, composing]);
 
   return (
-    <Card className="flex min-w-0 grow-[999] basis-[460px] flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-[18px] py-[14px]">
+    <Card className="flex min-w-0 flex-col lg:min-h-0">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-[10px]">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-[9px]">
-            <h2 className="text-[15px] font-semibold">
+            <h2 className="text-[14px] font-semibold">
               {thread.audienceName}
               {thread.company ? ` · ${thread.company}` : ""}
             </h2>
             <ChannelChip>{CHANNEL_NAME[thread.channel]}</ChannelChip>
           </div>
-          <span className="text-[12.5px] text-muted-foreground">
+          <span className="text-[11.5px] text-muted-foreground">
             {thread.role || "No title on file"} · last touch {lastTouch(thread, messages)}
           </span>
         </div>
@@ -278,13 +283,13 @@ function ThreadPane({
         </div>
       </div>
 
-      <div ref={scroller} className="flex max-h-[620px] flex-col gap-3 overflow-y-auto px-[18px] py-4 [&>*]:shrink-0">
+      <div ref={scroller} className="flex max-h-[520px] flex-col gap-3 overflow-y-auto px-4 py-3 lg:max-h-none lg:min-h-0 lg:flex-1 [&>*]:shrink-0">
         {detail.state === "loading" ? (
           [0, 1, 2].map((i) => <Skeleton key={i} className="h-[86px] rounded-[10px]" />)
         ) : detail.state === "failed" ? (
           <LoadError message="We couldn't load this conversation." onRetry={detail.reload} />
         ) : messages.length === 0 ? (
-          <p className="py-8 text-center text-[13px] text-muted-foreground">Nothing has been exchanged yet.</p>
+          <p className="py-8 text-center text-[12px] text-muted-foreground">Nothing has been exchanged yet.</p>
         ) : (
           messages.map((m) => <MessageRecord key={m.id} m={m} thread={thread} />)
         )}
@@ -330,8 +335,8 @@ function Footer({
         </Expand>
       ) : (
         <Expand key="handoff">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-divider bg-quiet px-[18px] pb-4 pt-[14px]">
-            <p className="min-w-0 flex-1 basis-[280px] text-[12.5px] leading-[1.55] text-body">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-divider bg-quiet px-4 pb-4 pt-[14px]">
+            <p className="min-w-0 flex-1 basis-[280px] text-[11.5px] leading-[1.55] text-body">
               {thread.channel === "linkedin"
                 ? "LinkedIn replies happen in LinkedIn. Automating them risks the account, so Flightpath hands you over rather than typing for you."
                 : thread.channel === "whatsapp"
@@ -347,7 +352,7 @@ function Footer({
                   href="https://www.linkedin.com/messaging/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex h-[34px] items-center gap-[7px] rounded-lg bg-primary px-[13px] text-[13px] font-medium text-primary-foreground"
+                  className="inline-flex h-[34px] items-center gap-[7px] rounded-lg bg-primary px-[13px] text-[12px] font-medium text-primary-foreground"
                 >
                   Reply in LinkedIn
                   <ExternalLink aria-hidden className="size-[14px]" strokeWidth={2} />
@@ -358,7 +363,7 @@ function Footer({
                   href="https://business.whatsapp.com/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex h-[34px] items-center gap-[7px] rounded-lg bg-primary px-[13px] text-[13px] font-medium text-primary-foreground"
+                  className="inline-flex h-[34px] items-center gap-[7px] rounded-lg bg-primary px-[13px] text-[12px] font-medium text-primary-foreground"
                 >
                   Open in WhatsApp
                   <ExternalLink aria-hidden className="size-[14px]" strokeWidth={2} />
@@ -382,38 +387,38 @@ function Rail({ thread }: { thread: Thread }) {
   ];
 
   return (
-    <aside className="flex min-w-0 max-w-[290px] grow basis-[240px] flex-col gap-4">
-      <Card className="flex flex-col gap-3 px-4 py-[15px]">
+    <aside className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:overflow-y-auto">
+      <Card className="flex flex-col gap-3 px-4 py-3">
         <h3 className="label-mono">Lead</h3>
         <dl className="flex flex-col gap-[10px]">
           {fields.map(([label, value]) => (
             <div key={label} className="flex flex-col gap-[2px]">
-              <dt className="text-[11.5px] text-muted-foreground">{label}</dt>
-              <dd className="text-[12.5px] font-medium [overflow-wrap:anywhere]">{value}</dd>
+              <dt className="text-[11px] text-muted-foreground">{label}</dt>
+              <dd className="text-[11.5px] font-medium [overflow-wrap:anywhere]">{value}</dd>
             </div>
           ))}
         </dl>
       </Card>
 
-      <Card className="flex flex-col gap-[10px] px-4 py-[15px]">
+      <Card className="flex flex-col gap-[10px] px-4 py-3">
         <h3 className="label-mono">Strategy</h3>
-        <p className="text-[13.5px] font-medium">{thread.strategyName ?? "Not in a strategy"}</p>
-        <p className="rounded-lg bg-secondary px-[11px] py-[9px] text-[12.5px] leading-[1.55] text-body">
+        <p className="text-[12.5px] font-medium">{thread.strategyName ?? "Not in a strategy"}</p>
+        <p className="rounded-lg bg-secondary px-[11px] py-[9px] text-[11.5px] leading-[1.55] text-body">
           {thread.strategyName
             ? "A reply stops the sequence for this person. Nothing further goes out — and nothing sends at all until a channel is connected."
             : "This person is not in a sequence, so nothing is scheduled for them."}
         </p>
       </Card>
 
-      <Card className="flex flex-col gap-[11px] px-4 py-[15px]">
+      <Card className="flex flex-col gap-[11px] px-4 py-3">
         <h3 className="label-mono">Signals</h3>
         {thread.signals.length === 0 ? (
-          <p className="text-[12.5px] text-muted-foreground">Nothing recorded on this conversation yet.</p>
+          <p className="text-[11.5px] text-muted-foreground">Nothing recorded on this conversation yet.</p>
         ) : (
           <ul className="flex flex-col gap-[9px]">
             {thread.signals.map((s) => (
               <li key={s.label} className="flex items-start justify-between gap-[9px]">
-                <span className="text-[12.5px] text-body">{s.label}</span>
+                <span className="text-[11.5px] text-body">{s.label}</span>
                 <span className="font-mono text-[11px] text-muted-foreground">+{s.points}</span>
               </li>
             ))}

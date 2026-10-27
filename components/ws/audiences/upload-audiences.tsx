@@ -127,8 +127,8 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
       >
         <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0">
-            <h2 className="font-mono text-[16px] font-bold tracking-[-0.01em]">Upload an audience</h2>
-            <p className="mt-1 text-[12.5px] text-muted-foreground">
+            <h2 className="font-mono text-[14.5px] font-bold tracking-[-0.01em]">Upload an audience</h2>
+            <p className="mt-1 text-[11.5px] text-muted-foreground">
               One file is one audience. It is read on the server, and nothing is saved until you confirm the review.
             </p>
           </div>
@@ -137,7 +137,7 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
           </Button>
         </header>
 
-        <ol aria-label="Steps" className="flex flex-wrap items-center gap-[18px] border-b border-border bg-chrome px-5 py-[11px]">
+        <ol aria-label="Steps" className="flex flex-wrap items-center gap-[18px] border-b border-border bg-chrome px-5 py-[8px]">
           {STEPS.map(([key, label], i) => (
             <li key={key} className="flex items-center gap-[8px]">
               <span
@@ -148,16 +148,16 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
               >
                 {i < at ? <Check aria-hidden className="size-[12px]" strokeWidth={2.4} /> : i + 1}
               </span>
-              <span className={cn("text-[12.5px]", i === at ? "font-semibold text-foreground" : "text-muted-foreground")}>
+              <span className={cn("text-[11.5px]", i === at ? "font-semibold text-foreground" : "text-muted-foreground")}>
                 {label}
               </span>
             </li>
           ))}
         </ol>
 
-        <div className="flex flex-col gap-4 px-5 py-[18px]">
+        <div className="flex flex-col gap-4 px-5 py-[16px]">
           {error && (
-            <p role="alert" className="rounded-[10px] border border-warning-border bg-warning-bg px-[13px] py-[10px] text-[12.5px] text-warning">
+            <p role="alert" className="rounded-[10px] border border-warning-border bg-warning-bg px-[13px] py-[10px] text-[11.5px] text-warning">
               {error}
             </p>
           )}
@@ -170,7 +170,7 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
                   value={name}
                   placeholder="Q4 SaaS founders"
                   onChange={(e) => setName(e.target.value)}
-                  className="h-[36px] w-full rounded-lg border border-input bg-card px-[12px] text-[13px]"
+                  className="h-[36px] w-full rounded-lg border border-input bg-card px-[12px] text-[12px]"
                 />
               </Field>
               <Field id="seg-desc" label="Description (optional)">
@@ -180,7 +180,7 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
                   maxLength={MAX_DESCRIPTION}
                   placeholder="Where this list came from and who is on it."
                   onChange={(e) => setDescription(e.target.value.slice(0, MAX_DESCRIPTION))}
-                  className="min-h-[72px] w-full resize-y rounded-lg border border-input bg-card px-[12px] py-[9px] text-[13px] leading-[1.55]"
+                  className="min-h-[72px] w-full resize-y rounded-lg border border-input bg-card px-[12px] py-[9px] text-[12px] leading-[1.55]"
                 />
                 <span className="font-mono text-[10.5px] text-muted-foreground">
                   {description.length} / {MAX_DESCRIPTION}
@@ -206,10 +206,10 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
                 <span className="flex size-[40px] items-center justify-center rounded-[10px] border border-border bg-card text-body">
                   <FileUp aria-hidden className="size-[19px]" strokeWidth={1.7} />
                 </span>
-                <span className="text-[13.5px] font-semibold">
+                <span className="text-[12.5px] font-semibold">
                   {busy === "parsing" ? "Reading the file…" : "Drop a .csv or .xlsx here"}
                 </span>
-                <span className="max-w-[420px] text-[12.5px] leading-[1.55] text-muted-foreground">
+                <span className="max-w-[420px] text-[11.5px] leading-[1.55] text-muted-foreground">
                   Up to {MAX_UPLOAD_MB} MB. We match the columns, flag duplicates against leads you already have, and
                   show you everything before saving.
                 </span>
@@ -230,8 +230,8 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
           {step === "map" && preview && (
             <>
               <p className="flex flex-wrap items-baseline gap-[10px]">
-                <span className="text-[13.5px] font-semibold">{preview.fileName}</span>
-                <span className="font-mono text-[11.5px] text-muted-foreground">
+                <span className="text-[12.5px] font-semibold">{preview.fileName}</span>
+                <span className="font-mono text-[11px] text-muted-foreground">
                   {size(preview.fileSize)} · {fmt(preview.totalRows)} rows · {preview.headers.length} columns
                 </span>
               </p>
@@ -251,7 +251,7 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
                     {preview.sample.map((row, i) => (
                       <tr key={i}>
                         {row.map((cell, j) => (
-                          <td key={j} className="whitespace-nowrap border-b border-divider px-[12px] py-[8px] text-[12.5px]">
+                          <td key={j} className="whitespace-nowrap border-b border-divider px-[12px] py-[8px] text-[11.5px]">
                             {cell || "—"}
                           </td>
                         ))}
@@ -263,7 +263,7 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
 
               <div className="flex flex-col gap-[10px]">
                 <span className="label-mono">Match columns to attributes</span>
-                <p className="text-[12.5px] leading-[1.55] text-muted-foreground">
+                <p className="text-[11.5px] leading-[1.55] text-muted-foreground">
                   Column names don&apos;t have to match. Every entry is checked on its own content — an “@” for email, a
                   country code with that country&apos;s exact digit count for numbers, and a web address for LinkedIn.
                 </p>
@@ -284,7 +284,7 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
                             return next;
                           })
                         }
-                        className="h-[36px] rounded-lg border border-input bg-card px-[11px] text-[13px]"
+                        className="h-[36px] rounded-lg border border-input bg-card px-[11px] text-[12px]"
                       >
                         <option value="">Not mapped</option>
                         {preview.headers.map((header) => (
@@ -293,7 +293,7 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
                           </option>
                         ))}
                       </select>
-                      <span className="text-[11.5px] leading-[1.45] text-muted-foreground">{hint}</span>
+                      <span className="text-[11px] leading-[1.45] text-muted-foreground">{hint}</span>
                     </div>
                   ))}
                 </div>
@@ -304,7 +304,7 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
           {step === "review" && report && <ImportReview report={report} consent={consent} onConsent={setConsent} />}
         </div>
 
-        <footer className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-[14px]">
+        <footer className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-[10px]">
           {step === "map" && (
             <Button variant="outline" onClick={() => setStep("file")}>
               Back

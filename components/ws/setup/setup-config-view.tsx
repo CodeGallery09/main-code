@@ -76,7 +76,7 @@ export function SetupConfigView({ linkedInConfigured }: { linkedInConfigured: bo
         issues={badges.config}
         right={<SearchInput id="config-search" placeholder="Search connections" value={q} onChange={setQ} className="w-[260px]" />}
       />
-      <PageBody className="gap-[18px]">
+      <PageBody>
         <Appear>
           <PageHeader
             title="Config"
@@ -84,7 +84,7 @@ export function SetupConfigView({ linkedInConfigured }: { linkedInConfigured: bo
           />
         </Appear>
 
-        {snapshot.state === "loading" && <Skeleton className="h-[320px] rounded-xl" />}
+        {snapshot.state === "loading" && <Skeleton className="h-[240px] rounded-xl" />}
         {snapshot.state === "failed" && (
           <Card>
             <LoadError message="We couldn't read what's connected." onRetry={snapshot.reload} />
@@ -92,7 +92,9 @@ export function SetupConfigView({ linkedInConfigured }: { linkedInConfigured: bo
         )}
 
         {snapshot.state === "ready" && (
-          <>
+          // Two panes that scroll on their own: what is connected, and the rules that govern sending.
+          <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:grid-rows-1">
+            <div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
             <Appear index={1}>
               <ChannelStrip snapshot={snapshot.data} />
             </Appear>
@@ -106,11 +108,11 @@ export function SetupConfigView({ linkedInConfigured }: { linkedInConfigured: bo
                   <Card>
                     <div
                       className={cn(
-                        "flex flex-wrap items-center justify-between gap-[10px] px-[18px] py-[14px]",
+                        "flex flex-wrap items-center justify-between gap-[10px] px-4 py-[10px]",
                         !shut && "border-b border-border",
                       )}
                     >
-                      <h2 className="font-mono text-[14.5px] font-bold tracking-[-0.01em]">{group}</h2>
+                      <h2 className="font-mono text-[13px] font-bold tracking-[-0.01em]">{group}</h2>
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -122,7 +124,7 @@ export function SetupConfigView({ linkedInConfigured }: { linkedInConfigured: bo
                       </Button>
                     </div>
                     {!shut && (
-                      <div className="grid grid-cols-[repeat(auto-fit,minmax(440px,1fr))] gap-x-8 px-[18px] pb-[14px] pt-[6px]">
+                      <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-x-6 px-4 pb-2 pt-[2px]">
                         {items.map((v) => (
                           <ProviderRow
                             key={v.provider.k}
@@ -138,13 +140,16 @@ export function SetupConfigView({ linkedInConfigured }: { linkedInConfigured: bo
               );
             })}
 
-            <p className="rounded-[10px] bg-accent px-[15px] py-[13px] text-[12.5px] leading-[1.55] text-muted-foreground">
+            <p className="rounded-[10px] bg-accent px-[13px] py-[8px] text-[11.5px] leading-[1.55] text-muted-foreground">
               Everything connected here belongs to the workspace, so any strategy can use it. Add as many LinkedIn
               accounts or mailboxes as you need — the limits are per account and shared across strategies.
             </p>
+            </div>
 
-            <RulesCards workspace={workspace} index={GROUPS.length + 2} />
-          </>
+            <div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+              <RulesCards workspace={workspace} index={GROUPS.length + 2} />
+            </div>
+          </div>
         )}
       </PageBody>
     </>
@@ -157,15 +162,15 @@ function ChannelStrip({ snapshot }: { snapshot: AccountsSnapshot }) {
   const live = CHANNEL_ORDER.filter((c) => connected.has(c)).length;
 
   return (
-    <Card className="flex flex-col gap-[13px] px-[17px] py-[15px]">
+    <Card className="flex flex-col gap-[10px] px-4 py-3">
       <div className="flex flex-wrap items-baseline justify-between gap-[10px]">
         <h2 className="label-mono">Connected channels</h2>
-        <span className="font-mono text-[11.5px] text-body">
+        <span className="font-mono text-[11px] text-body">
           {live} of {CHANNEL_ORDER.length} channels live · {fmt(snapshot.accounts.length)}{" "}
           {snapshot.accounts.length === 1 ? "account" : "accounts"}
         </span>
       </div>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-[10px]">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
         {CHANNEL_ORDER.map((channel) => {
           const rows = snapshot.accounts.filter((a) => a.channel === channel);
           const on = rows.length > 0;
@@ -173,13 +178,13 @@ function ChannelStrip({ snapshot }: { snapshot: AccountsSnapshot }) {
             <div
               key={channel}
               className={cn(
-                "flex items-center gap-[10px] rounded-[10px] px-3 py-[11px]",
+                "flex items-center gap-[10px] rounded-[10px] px-3 py-[8px]",
                 on ? "border border-border bg-card" : "border border-dashed border-[#d3cfc6]",
               )}
             >
               <ChannelTile channel={channel} muted={!on} />
               <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
-                <span className={cn("truncate text-[13px]", on ? "font-semibold" : "font-medium text-body")}>
+                <span className={cn("truncate text-[12px]", on ? "font-semibold" : "font-medium text-body")}>
                   {CHANNEL_NAME[channel]}
                 </span>
                 <span
@@ -210,14 +215,14 @@ function ProviderRow({
   const tile = TILE[provider.k];
 
   return (
-    <div className="flex items-center gap-3 border-b border-secondary py-3">
+    <div className="flex items-center gap-3 border-b border-secondary py-[9px]">
       <ChannelTile color={tile.color} mono={tile.mono} size="lg" muted={state === "planned"} />
       <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
         <span className="flex min-w-0 items-center gap-[7px]">
-          <span className="truncate text-[13.5px] font-semibold">{provider.name}</span>
+          <span className="truncate text-[12.5px] font-semibold">{provider.name}</span>
           {state === "planned" && <Tag>Planned</Tag>}
         </span>
-        <span className="truncate text-[12.5px] text-muted-foreground">{detail || provider.blurb}</span>
+        <span className="truncate text-[11.5px] text-muted-foreground">{detail || provider.blurb}</span>
       </span>
 
       {state === "connected" && (

@@ -13,7 +13,7 @@ import { useAsync } from "@/lib/ws/use-async";
 import { fmt, initialsOf } from "@/lib/ws/utils";
 import { PageBody, PageHeader, SetupTabs, TopBar } from "@/components/ws/shell/page";
 import { useWorkspace } from "@/components/ws/shell/workspace-context";
-import { Card } from "@/components/ws/ui/card";
+import { Card, FILL } from "@/components/ws/ui/card";
 import { Button, buttonVariants } from "@/components/ws/ui/button";
 import { ChannelTile } from "@/components/ws/ui/channel-tile";
 import { Confirm } from "@/components/ws/ui/confirm";
@@ -74,7 +74,7 @@ export function SetupOverviewView({ linkedInConfigured }: { linkedInConfigured: 
     <>
       <TopBar title="Setup" />
       <SetupTabs issues={badges.config} />
-      <PageBody className="gap-[22px]">
+      <PageBody>
         <Appear>
           <PageHeader
             title="Connected accounts"
@@ -86,8 +86,8 @@ export function SetupOverviewView({ linkedInConfigured }: { linkedInConfigured: 
 
         {snapshot.state === "loading" && (
           <>
-            <Skeleton className="h-[160px] rounded-xl" />
-            <Skeleton className="h-[160px] rounded-xl" />
+            <Skeleton className="h-[120px] rounded-xl" />
+            <Skeleton className="h-[120px] rounded-xl" />
           </>
         )}
 
@@ -98,15 +98,15 @@ export function SetupOverviewView({ linkedInConfigured }: { linkedInConfigured: 
         )}
 
         {snapshot.state === "ready" && (
-          <>
-            <Appear index={1}>
-              <Card>
+          <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)_auto]">
+            <Appear index={1} className={FILL}>
+              <Card className={FILL}>
                 <GroupHeader
                   tile={<ChannelTile channel="linkedin" size="sm" />}
                   name="LinkedIn accounts"
                   count={`${fmt(linkedin.length)} ${linkedin.length === 1 ? "account" : "accounts"}`}
                 />
-                <div className="px-[18px] pb-[10px] pt-1">
+                <div className="px-4 pb-[10px] pt-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                   {linkedin.length === 0 ? (
                     <EmptyState>
                       {linkedInConfigured
@@ -131,14 +131,14 @@ export function SetupOverviewView({ linkedInConfigured }: { linkedInConfigured: 
               </Card>
             </Appear>
 
-            <Appear index={2}>
-              <Card>
+            <Appear index={2} className={FILL}>
+              <Card className={FILL}>
                 <GroupHeader
                   tile={<ChannelTile channel="email" size="sm" />}
                   name="Email accounts"
                   count={`${fmt(mailboxes.length)} ${mailboxes.length === 1 ? "mailbox" : "mailboxes"} · ${fmt(domains.length)} ${domains.length === 1 ? "domain" : "domains"}`}
                 />
-                <div className="px-[18px] pb-[10px] pt-1">
+                <div className="px-4 pb-[10px] pt-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                   {mailboxes.length === 0 && domains.length === 0 ? (
                     <EmptyState>
                       No mailbox connected. Connecting one isn&apos;t built yet, so email steps can be planned but not
@@ -166,15 +166,15 @@ export function SetupOverviewView({ linkedInConfigured }: { linkedInConfigured: 
               </Card>
             </Appear>
 
-            <Appear index={3}>
+            <Appear index={3} className="lg:col-span-2">
               <Card>
                 <GroupHeader
                   tile={<ChannelTile muted size="sm" mono="··" />}
                   name="WhatsApp, calls and SMS"
                   count="Planned"
                 />
-                <div className="px-[18px] py-[14px]">
-                  <p className="text-[12.5px] leading-[1.6] text-muted-foreground">
+                <div className="px-4 py-[10px]">
+                  <p className="text-[11.5px] leading-[1.6] text-muted-foreground">
                     These channels are on the roadmap. They have no tab and no connect button because there is nothing
                     behind them yet — a call step today becomes a to-do for a person, which is why calls are still on
                     offer in the builder.
@@ -182,7 +182,7 @@ export function SetupOverviewView({ linkedInConfigured }: { linkedInConfigured: 
                 </div>
               </Card>
             </Appear>
-          </>
+          </div>
         )}
       </PageBody>
 
@@ -206,10 +206,10 @@ export function SetupOverviewView({ linkedInConfigured }: { linkedInConfigured: 
 
 function GroupHeader({ tile, name, count }: { tile: React.ReactNode; name: string; count: string }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-[10px] border-b border-border px-[18px] py-[13px]">
+    <div className="flex flex-wrap items-center justify-between gap-[10px] border-b border-border px-4 py-[9px]">
       <div className="flex min-w-0 items-center gap-[10px]">
         {tile}
-        <h2 className="font-mono text-[14.5px] font-bold tracking-[-0.01em]">{name}</h2>
+        <h2 className="font-mono text-[13px] font-bold tracking-[-0.01em]">{name}</h2>
         <span className="font-mono text-[11px] text-muted-foreground">{count}</span>
       </div>
       <Link href={`${SETUP_HREF}/config`} className={buttonVariants({ variant: "outline", size: "sm" })}>
@@ -249,13 +249,13 @@ function AccountRow({
 
   return (
     <div className="border-b border-divider last:border-b-0">
-      <div className="flex flex-wrap items-center gap-3 py-[13px]">
+      <div className="flex flex-wrap items-center gap-3 py-[9px]">
         <span className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-accent font-mono text-[11px] font-medium text-body">
           {initialsOf(account.name)}
         </span>
         <span className="flex min-w-0 flex-1 basis-[240px] flex-col gap-[2px]">
-          <span className="break-all text-[13.5px] font-semibold">{account.name}</span>
-          <span className="break-all text-[12.5px] text-muted-foreground">
+          <span className="break-all text-[12.5px] font-semibold">{account.name}</span>
+          <span className="break-all text-[11.5px] text-muted-foreground">
             {account.handle} · {account.connection.statusDetail || account.connection.provider}
           </span>
         </span>
@@ -296,13 +296,13 @@ function AccountRow({
 function DomainRow({ domain }: { domain: SendingDomain }) {
   const missing = missingRecords(domain);
   return (
-    <div className="flex flex-wrap items-center gap-3 border-b border-divider py-[13px] last:border-b-0">
+    <div className="flex flex-wrap items-center gap-3 border-b border-divider py-[9px] last:border-b-0">
       <span className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-accent font-mono text-[10px] font-medium text-body">
         DNS
       </span>
       <span className="flex min-w-0 flex-1 basis-[240px] flex-col gap-[2px]">
-        <span className="break-all text-[13.5px] font-semibold">{domain.host}</span>
-        <span className="text-[12.5px] text-muted-foreground">
+        <span className="break-all text-[12.5px] font-semibold">{domain.host}</span>
+        <span className="text-[11.5px] text-muted-foreground">
           {missing.length === 0
             ? "SPF, DKIM and DMARC all in place"
             : `Add ${missing.join(", ")} at your DNS provider so mail from this domain isn't treated as spam`}
@@ -383,7 +383,7 @@ function ConnectResult({ onConnected }: { onConnected: () => void }) {
     <Appear>
       <div
         role="status"
-        className={`flex flex-wrap items-center gap-3 rounded-xl border px-[18px] py-[13px] text-[13px] ${
+        className={`flex flex-wrap items-center gap-3 rounded-xl border px-4 py-[9px] text-[12px] ${
           tone === "success"
             ? "border-success-bg bg-success-bg text-success"
             : tone === "info"

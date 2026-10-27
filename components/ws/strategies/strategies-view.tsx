@@ -10,7 +10,7 @@ import { whenLabel } from "@/lib/ws/format";
 import { useAsync } from "@/lib/ws/use-async";
 import { cn, fmt } from "@/lib/ws/utils";
 import { PageBody, PageHeader, TopBar } from "@/components/ws/shell/page";
-import { Card } from "@/components/ws/ui/card";
+import { Card, FILL } from "@/components/ws/ui/card";
 import { Button, buttonVariants } from "@/components/ws/ui/button";
 import { Confirm } from "@/components/ws/ui/confirm";
 import { Segmented } from "@/components/ws/ui/segmented";
@@ -119,7 +119,7 @@ export function StrategiesView() {
                 : "A strategy is an audience plus the sequence that reaches it."
             }
             actions={
-              <Link href="/dashboard/strategies/new" className={buttonVariants({ size: "lg" })}>
+              <Link href="/dashboard/strategies/new" className={buttonVariants()}>
                 <Plus aria-hidden strokeWidth={2} />
                 New strategy
               </Link>
@@ -128,7 +128,7 @@ export function StrategiesView() {
         </Appear>
 
         <Appear index={1}>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
             {list.state === "ready" && totals ? (
               <>
                 <MetricTile
@@ -142,7 +142,7 @@ export function StrategiesView() {
               </>
             ) : (
               [0, 1, 2, 3].map((i) => (
-                <div key={i} className="flex flex-col gap-3 rounded-xl border border-border bg-card px-[18px] pb-[14px] pt-[16px]">
+                <div key={i} className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 pb-[10px] pt-3">
                   <Skeleton className="h-[11px] w-[70px]" />
                   <Skeleton className="h-[32px] w-[90px]" />
                   <Skeleton className="h-[11px] w-[110px]" />
@@ -152,9 +152,9 @@ export function StrategiesView() {
           </div>
         </Appear>
 
-        <Appear index={2}>
-          <Card>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-[18px] py-[14px]">
+        <Appear index={2} className={FILL}>
+          <Card className={FILL}>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-[10px]">
               <Segmented<Filter>
                 label="Filter by status"
                 value={filter}
@@ -183,9 +183,9 @@ export function StrategiesView() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
               <div className="min-w-[940px]">
-                <div className={cn("grid gap-3 border-b border-border bg-chrome px-[18px] py-[10px]", COLS)}>
+                <div className={cn("sticky top-0 z-[1] grid gap-3 border-b border-border bg-chrome px-4 py-[7px]", COLS)}>
                   {HEADS.map((h, i) => (
                     <span key={h} className={cn("label-mono text-[10.5px] tracking-[0.07em]", i >= 2 && "text-right")}>
                       {h}
@@ -195,7 +195,7 @@ export function StrategiesView() {
 
                 {list.state === "loading" ? (
                   Array.from({ length: 4 }, (_, i) => (
-                    <div key={i} className={cn("grid items-center gap-3 border-b border-divider px-[18px] py-[15px]", COLS)}>
+                    <div key={i} className={cn("grid items-center gap-3 border-b border-divider px-4 py-[10px]", COLS)}>
                       <Skeleton className="h-[12px] w-[70%]" />
                       {HEADS.slice(1).map((h) => (
                         <Skeleton key={h} className="h-[12px]" />
@@ -212,9 +212,9 @@ export function StrategiesView() {
                   </EmptyState>
                 ) : (
                   rows.map((s) => (
-                    <div key={s.id} className={cn("grid items-center gap-3 border-b border-divider px-[18px] py-[13px]", COLS)}>
+                    <div key={s.id} className={cn("grid items-center gap-3 border-b border-divider px-4 py-[9px]", COLS)}>
                       <span className="flex min-w-0 flex-col gap-[3px]">
-                        <span className={cn("truncate text-[13.5px] font-medium", s.isSample && "text-body")}>
+                        <span className={cn("truncate text-[12.5px] font-medium", s.isSample && "text-body")}>
                           {s.name}
                           {s.isSample ? <span className="ml-2 font-mono text-[10px] uppercase text-muted-foreground">Sample</span> : null}
                         </span>
@@ -225,11 +225,11 @@ export function StrategiesView() {
                       <span>
                         <StrategyStatusPill status={s.status} />
                       </span>
-                      <span className="text-right font-mono text-[12.5px]">{fmt(s.audiences)}</span>
-                      <span className="text-right font-mono text-[12.5px]">{num(s.sent)}</span>
-                      <span className="text-right font-mono text-[12.5px]">{num(s.delivered)}</span>
-                      <span className="text-right font-mono text-[12.5px]">{rate(s.openRate)}</span>
-                      <span className="text-right font-mono text-[12.5px] font-medium">{rate(s.replyRate)}</span>
+                      <span className="text-right font-mono text-[11.5px]">{fmt(s.audiences)}</span>
+                      <span className="text-right font-mono text-[11.5px]">{num(s.sent)}</span>
+                      <span className="text-right font-mono text-[11.5px]">{num(s.delivered)}</span>
+                      <span className="text-right font-mono text-[11.5px]">{rate(s.openRate)}</span>
+                      <span className="text-right font-mono text-[11.5px] font-medium">{rate(s.replyRate)}</span>
                       <span className="flex items-center justify-end gap-1">
                         {s.type === "multichannel" ? (
                           <Link
@@ -270,11 +270,11 @@ export function StrategiesView() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-[10px] px-[18px] py-3">
-              <span className="text-[12.5px] text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-[10px] border-t border-divider px-4 py-2">
+              <span className="text-[11.5px] text-muted-foreground">
                 {rows.length} of {all.length} strategies
               </span>
-              <span className="text-[12.5px] text-muted-foreground">
+              <span className="text-[11.5px] text-muted-foreground">
                 A lead is only ever in one strategy, so a new one skips anyone already in another.
               </span>
             </div>

@@ -14,7 +14,7 @@ import { useAsync } from "@/lib/ws/use-async";
 import { cn } from "@/lib/ws/utils";
 import { PageBody, PageHeader, SetupTabs, TopBar } from "@/components/ws/shell/page";
 import { useWorkspace } from "@/components/ws/shell/workspace-context";
-import { Card, CardHeader, CardTitle } from "@/components/ws/ui/card";
+import { Card, CardHeader, CardTitle, FILL } from "@/components/ws/ui/card";
 import { Button } from "@/components/ws/ui/button";
 import { ChannelTile } from "@/components/ws/ui/channel-tile";
 import { Segmented } from "@/components/ws/ui/segmented";
@@ -59,7 +59,7 @@ export function SetupMessagesView() {
         issues={badges.config}
         right={<SearchInput id="message-search" placeholder="Search messages" value={q} onChange={setQ} className="w-[240px]" />}
       />
-      <PageBody className="gap-[18px]">
+      <PageBody>
         <Appear>
           <PageHeader
             title="Messages"
@@ -83,8 +83,8 @@ export function SetupMessagesView() {
           </Appear>
         )}
 
-        <Appear index={2}>
-          <Card>
+        <Appear index={2} className={FILL}>
+          <Card className={FILL}>
             <CardHeader>
               <CardTitle>{filter === "all" ? "All messages" : `${CHANNEL_NAME[filter]} messages`}</CardTitle>
               <span className="font-mono text-[11px] text-muted-foreground">
@@ -93,9 +93,9 @@ export function SetupMessagesView() {
             </CardHeader>
 
             {workflows.state === "loading" ? (
-              <div className="px-[18px] py-2">
+              <div className="px-4 py-2">
                 {[0, 1, 2].map((i) => (
-                  <div key={i} className="flex items-center gap-3 border-b border-divider py-[14px] last:border-b-0">
+                  <div key={i} className="flex items-center gap-3 border-b border-divider py-[10px] last:border-b-0">
                     <Skeleton className="size-[32px] rounded-lg" />
                     <Skeleton className="h-[12px] flex-1" />
                   </div>
@@ -110,14 +110,14 @@ export function SetupMessagesView() {
                   : "No messages match this filter."}
               </EmptyState>
             ) : (
-              <div className="px-[18px] pb-3 pt-1">
+              <div className="px-4 pb-3 pt-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                 {shown.map((row) => (
                   <div key={row.key} className="border-b border-secondary last:border-b-0">
-                    <div className="flex flex-wrap items-center gap-3 py-[13px]">
+                    <div className="flex flex-wrap items-center gap-3 py-[9px]">
                       <ChannelTile channel={row.channel} />
                       <span className="flex min-w-0 flex-1 basis-[280px] flex-col gap-[2px]">
-                        <span className="truncate text-[13.5px] font-semibold">{row.what}</span>
-                        <span className="truncate text-[12.5px] text-muted-foreground">{firstLine(row)}</span>
+                        <span className="truncate text-[12.5px] font-semibold">{row.what}</span>
+                        <span className="truncate text-[11.5px] text-muted-foreground">{firstLine(row)}</span>
                       </span>
                       <span className="flex shrink-0 basis-[180px] flex-col gap-[2px]">
                         <Link
@@ -161,7 +161,7 @@ export function SetupMessagesView() {
           </Card>
         </Appear>
 
-        <p className="rounded-[10px] bg-accent px-[15px] py-[13px] text-[12.5px] leading-[1.55] text-muted-foreground">
+        <p className="rounded-[10px] bg-accent px-[13px] py-[8px] text-[11.5px] leading-[1.55] text-muted-foreground">
           WhatsApp and SMS messages would need approval before they could send — WhatsApp by Meta, SMS through DLT
           registration. Neither channel is connected, which is why neither is offered in the builder.
         </p>
@@ -223,7 +223,7 @@ function MessageEditor({
             id={`${row.key}-subject`}
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            className="h-[34px] rounded-lg border border-input bg-card px-[11px] text-[13px]"
+            className="h-[34px] rounded-lg border border-input bg-card px-[11px] text-[12px]"
           />
         </div>
       )}
@@ -237,7 +237,7 @@ function MessageEditor({
           rows={7}
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          className="w-full resize-y rounded-lg border border-input bg-card px-[12px] py-[9px] text-[13.5px] leading-[1.6]"
+          className="w-full resize-y rounded-lg border border-input bg-card px-[12px] py-[9px] text-[12.5px] leading-[1.6]"
         />
       </div>
 
@@ -257,13 +257,13 @@ function MessageEditor({
         ))}
       </div>
 
-      <p className="text-[12px] leading-[1.55] text-muted-foreground">
+      <p className="text-[11.5px] leading-[1.55] text-muted-foreground">
         A token with nothing behind it sends as a blank, so keep one out unless every lead in the audience has it.
         {row.kind === "li_invite" ? " LinkedIn invite notes are limited to 300 characters." : ""}
       </p>
 
       {error ? (
-        <p role="alert" className="text-[12.5px] text-warning">
+        <p role="alert" className="text-[11.5px] text-warning">
           {error}
         </p>
       ) : null}

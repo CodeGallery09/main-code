@@ -28,7 +28,7 @@ export function AreaChart({
   const w = 640;
   const h = height;
   const pad = { top: 12, right: 8, bottom: 20, left: 8 };
-  if (points.length < 2) return <p className="py-8 text-center text-[13px] text-muted-foreground">Not enough data yet.</p>;
+  if (points.length < 2) return <p className="py-8 text-center text-[12px] text-muted-foreground">Not enough data yet.</p>;
 
   const max = Math.max(...points.map((p) => p.y), 1);
   const stepX = (w - pad.left - pad.right) / (points.length - 1);
@@ -67,8 +67,8 @@ export function BarRows({
   return (
     <ul aria-label={label} className={cn("flex flex-col", className)}>
       {rows.map((row) => (
-        <li key={row.name} className="flex items-center gap-[14px] border-b border-divider py-[11px] last:border-b-0">
-          <span className="shrink-0 basis-[96px] text-[13px]">{row.name}</span>
+        <li key={row.name} className="flex items-center gap-[14px] border-b border-divider py-[8px] last:border-b-0">
+          <span className="shrink-0 basis-[96px] text-[12px]">{row.name}</span>
           <span
             role="img"
             aria-label={`${row.name}: ${row.value}`}
@@ -77,7 +77,7 @@ export function BarRows({
           >
             <span className="block h-full bg-primary" style={{ width: `${(row.value / max) * 100}%` }} />
           </span>
-          <span className="shrink-0 basis-[120px] text-right font-mono text-[12px] text-body">
+          <span className="shrink-0 basis-[120px] text-right font-mono text-[11.5px] text-body">
             {row.note ?? row.value.toLocaleString("en-IN")}
           </span>
         </li>

@@ -74,10 +74,10 @@ export function ImportReview({
 
       {journey.excluded > 0 && (
         <div role="alert" className="rounded-[10px] border border-warning-border bg-warning-bg px-[14px] py-3">
-          <p className="text-[13px] font-semibold text-warning">
+          <p className="text-[12px] font-semibold text-warning">
             {fmt(journey.excluded)} {journey.excluded === 1 ? "person is" : "people are"} left out
           </p>
-          <p className="mt-1 text-[12.5px] leading-[1.55] text-warning">
+          <p className="mt-1 text-[11.5px] leading-[1.55] text-warning">
             They are already in another strategy ({journey.byStrategy.map((c) => `${c.name}: ${fmt(c.count)}`).join(", ")}),
             so they are left out rather than added to a second sequence. The counts above already exclude them.
           </p>
@@ -85,14 +85,14 @@ export function ImportReview({
       )}
 
       {plan.missing.name > 0 && (
-        <p className="text-[12.5px] leading-[1.55] text-muted-foreground">
+        <p className="text-[11.5px] leading-[1.55] text-muted-foreground">
           {fmt(plan.missing.name)} {plan.missing.name === 1 ? "row has" : "rows have"} no name column, so the name is
           made from the email or LinkedIn address. Those are marked “from contact” below and can be edited afterwards.
         </p>
       )}
 
       <section className="rounded-[11px] border border-border">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-[14px] py-[11px]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-[14px] py-[8px]">
           <span className="label-mono">Review before saving</span>
           <Segmented<Filter>
             size="sm"
@@ -108,7 +108,7 @@ export function ImportReview({
           />
         </div>
         {rows.length === 0 ? (
-          <p className="px-[14px] py-7 text-center text-[13px] text-muted-foreground">
+          <p className="px-[14px] py-7 text-center text-[12px] text-muted-foreground">
             {plan.rowCount === 0 ? "No row in this file can be saved." : "No rows in this group."}
           </p>
         ) : (
@@ -126,16 +126,16 @@ export function ImportReview({
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.row}>
-                    <td className="border-b border-divider px-[12px] py-[9px] font-mono text-[11.5px] text-muted-foreground">
+                    <td className="border-b border-divider px-[12px] py-[9px] font-mono text-[11px] text-muted-foreground">
                       {r.row}
                     </td>
-                    <td className="border-b border-divider px-[12px] py-[9px] text-[12.5px]">
+                    <td className="border-b border-divider px-[12px] py-[9px] text-[11.5px]">
                       {r.name}
                       {!r.nameFromFile && <span className="ml-1 text-[11px] text-muted-foreground">· from contact</span>}
                     </td>
-                    <td className="border-b border-divider px-[12px] py-[9px] text-[12.5px]">{r.company || "—"}</td>
-                    <td className="border-b border-divider px-[12px] py-[9px] text-[12.5px]">{r.title || "—"}</td>
-                    <td className="border-b border-divider px-[12px] py-[9px] font-mono text-[11.5px]">{contactOf(r)}</td>
+                    <td className="border-b border-divider px-[12px] py-[9px] text-[11.5px]">{r.company || "—"}</td>
+                    <td className="border-b border-divider px-[12px] py-[9px] text-[11.5px]">{r.title || "—"}</td>
+                    <td className="border-b border-divider px-[12px] py-[9px] font-mono text-[11px]">{contactOf(r)}</td>
                     <td className="border-b border-divider px-[12px] py-[9px]">
                       <StatusPill tone={OUTCOME[r.outcome].tone}>{OUTCOME[r.outcome].label}</StatusPill>
                       {r.outcome === "duplicate" && r.duplicateOf ? (
@@ -149,7 +149,7 @@ export function ImportReview({
           </div>
         )}
         {capped && filter === "all" && (
-          <p className="px-[14px] py-[9px] text-[12px] text-muted-foreground">
+          <p className="px-[14px] py-[9px] text-[11.5px] text-muted-foreground">
             Showing the first {fmt(plan.rows.length)} of {fmt(plan.rowCount)} rows. Every row is saved.
           </p>
         )}
@@ -161,10 +161,10 @@ export function ImportReview({
           .map((c) => {
             const meta = ATTRIBUTES.find((a) => a.key === c.attribute);
             return (
-              <div key={c.attribute} className="flex flex-col gap-[3px] rounded-[10px] border border-border px-3 py-[11px]">
+              <div key={c.attribute} className="flex flex-col gap-[3px] rounded-[10px] border border-border px-3 py-[8px]">
                 <span className="label-mono">{meta ? meta.label : c.attribute}</span>
-                <span className="font-mono text-[13px] font-bold">{fmt(c.reachable)} reachable</span>
-                <span className="text-[11.5px] text-muted-foreground">
+                <span className="font-mono text-[12px] font-bold">{fmt(c.reachable)} reachable</span>
+                <span className="text-[11px] text-muted-foreground">
                   from “{c.column}” · {fmt(c.invalid)} invalid · {fmt(c.blank)} blank
                 </span>
               </div>
@@ -174,12 +174,12 @@ export function ImportReview({
 
       {report.errors.length > 0 && (
         <section className="rounded-[11px] border border-border">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-[14px] py-[11px]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-[14px] py-[8px]">
             <span className="label-mono">
               Validation · {fmt(invalidTotal)} invalid · {fmt(blankTotal)} blank
             </span>
             {blankTotal > 0 && (
-              <label className="flex items-center gap-2 text-[12.5px] text-body">
+              <label className="flex items-center gap-2 text-[11.5px] text-body">
                 <input
                   type="checkbox"
                   checked={showBlank}
@@ -191,7 +191,7 @@ export function ImportReview({
             )}
           </div>
           {issues.length === 0 ? (
-            <p className="px-[14px] py-6 text-center text-[13px] text-muted-foreground">
+            <p className="px-[14px] py-6 text-center text-[12px] text-muted-foreground">
               No invalid entries. Every filled-in contact cell passed its check.
             </p>
           ) : (
@@ -209,23 +209,23 @@ export function ImportReview({
                 <tbody>
                   {issues.map((e, i) => (
                     <tr key={`${e.row}-${e.attribute}-${i}`}>
-                      <td className="border-b border-divider px-[12px] py-[9px] font-mono text-[11.5px] text-muted-foreground">
+                      <td className="border-b border-divider px-[12px] py-[9px] font-mono text-[11px] text-muted-foreground">
                         {e.row}
                       </td>
-                      <td className="border-b border-divider px-[12px] py-[9px] text-[12.5px]">
+                      <td className="border-b border-divider px-[12px] py-[9px] text-[11.5px]">
                         {ATTRIBUTES.find((a) => a.key === e.attribute)?.label ?? e.attribute}
                       </td>
-                      <td className="border-b border-divider px-[12px] py-[9px] font-mono text-[11.5px]">
+                      <td className="border-b border-divider px-[12px] py-[9px] font-mono text-[11px]">
                         {e.value || "—"}
                       </td>
-                      <td className="border-b border-divider px-[12px] py-[9px] text-[12.5px] text-body">{e.reason}</td>
+                      <td className="border-b border-divider px-[12px] py-[9px] text-[11.5px] text-body">{e.reason}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-          <p className="px-[14px] py-[9px] text-[12px] text-muted-foreground">
+          <p className="px-[14px] py-[9px] text-[11.5px] text-muted-foreground">
             A row with one bad entry is still saved if another of its contacts is valid; only the bad entry is dropped.
           </p>
         </section>
@@ -239,10 +239,10 @@ export function ImportReview({
           className="mt-[3px] size-[15px] shrink-0 accent-[var(--primary)]"
         />
         <span className="flex flex-col gap-1">
-          <span className="text-[13px] font-semibold">
+          <span className="text-[12px] font-semibold">
             These people have agreed to be contacted, or I have a lawful basis to contact them.
           </span>
-          <span className="text-[12.5px] leading-[1.55] text-muted-foreground">
+          <span className="text-[11.5px] leading-[1.55] text-muted-foreground">
             It applies to the leads this file creates. Without it they are still saved, but they are flagged and left
             out of sends. An existing lead&apos;s consent is never changed by an import.
           </span>
@@ -255,11 +255,11 @@ export function ImportReview({
 function Stat({ label, value, note, accent }: { label: string; value: string; note: string; accent?: boolean }) {
   return (
     <div
-      className={`flex flex-col gap-[3px] rounded-[10px] px-3 py-[11px] ${accent ? "bg-accent" : "border border-border"}`}
+      className={`flex flex-col gap-[3px] rounded-[10px] px-3 py-[8px] ${accent ? "bg-accent" : "border border-border"}`}
     >
       <span className="label-mono">{label}</span>
       <span className="font-mono text-[20px] font-bold leading-none tracking-[-0.02em]">{value}</span>
-      <span className="text-[11.5px] leading-[1.45] text-muted-foreground">{note}</span>
+      <span className="text-[11px] leading-[1.45] text-muted-foreground">{note}</span>
     </div>
   );
 }

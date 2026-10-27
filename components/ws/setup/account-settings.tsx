@@ -72,7 +72,7 @@ export function AccountSettings({ account, onSaved }: { account: ChannelAccount;
               onChange={(v) => setValues((s) => ({ ...s, cap: v }))}
             />
             <div className="flex items-center justify-between gap-3 rounded-lg border border-input bg-card px-[11px] py-[7px]">
-              <span className="text-[12.5px] font-medium">Share the load with other mailboxes</span>
+              <span className="text-[11.5px] font-medium">Share the load with other mailboxes</span>
               <Switch
                 checked={values.rotate ?? false}
                 onChange={(v) => setValues((s) => ({ ...s, rotate: v }))}
@@ -83,13 +83,13 @@ export function AccountSettings({ account, onSaved }: { account: ChannelAccount;
         )}
       </div>
 
-      <p className="text-[12px] leading-[1.55] text-muted-foreground">
+      <p className="text-[11.5px] leading-[1.55] text-muted-foreground">
         Limits belong to the account and are shared by every strategy that sends from it. Nothing sends yet, so these
         are the ceilings that will apply the day it does.
       </p>
 
       {error ? (
-        <p role="alert" className="text-[12.5px] text-warning">
+        <p role="alert" className="text-[11.5px] text-warning">
           {error}
         </p>
       ) : null}
@@ -125,7 +125,7 @@ function Number({
         min={0}
         value={value}
         onChange={(e) => onChange(Math.max(0, Math.floor(e.target.valueAsNumber || 0)))}
-        className="h-[34px] rounded-lg border border-input bg-card px-[11px] font-mono text-[13px]"
+        className="h-[34px] rounded-lg border border-input bg-card px-[11px] font-mono text-[12px]"
       />
     </div>
   );

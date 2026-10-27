@@ -63,8 +63,8 @@ export function Confirm({
             exit={{ opacity: 0, y: 6 }}
             transition={EASE_OUT}
           >
-            <h2 className="mb-2 font-mono text-[15px] font-bold tracking-[-0.01em]">{title}</h2>
-            <div className="mb-4 text-[13px] leading-[1.6] text-body">{body}</div>
+            <h2 className="mb-2 font-mono text-[14px] font-bold tracking-[-0.01em]">{title}</h2>
+            <div className="mb-4 text-[12px] leading-[1.6] text-body">{body}</div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button variant="outline" onClick={onCancel} disabled={busy}>
                 Cancel

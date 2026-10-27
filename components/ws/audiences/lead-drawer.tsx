@@ -59,8 +59,8 @@ export function LeadDrawer({
       >
         <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0">
-            <h2 className="truncate text-[15px] font-semibold">{lead.name}</h2>
-            <p className="mt-[2px] truncate text-[12.5px] text-muted-foreground">
+            <h2 className="truncate text-[14px] font-semibold">{lead.name}</h2>
+            <p className="mt-[2px] truncate text-[11.5px] text-muted-foreground">
               {[lead.title, lead.company].filter(Boolean).join(" · ") || "No title on file"}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -82,7 +82,7 @@ export function LeadDrawer({
           </span>
         </header>
 
-        <div className="flex flex-col gap-5 px-5 py-[18px]">
+        <div className="flex flex-col gap-5 px-5 py-[16px]">
           <Section title="Contact">
             <Pairs
               rows={[
@@ -119,7 +119,7 @@ export function LeadDrawer({
                     ]}
                   />
                 ) : (
-                  <p className="text-[12.5px] text-muted-foreground">Not in a strategy yet.</p>
+                  <p className="text-[11.5px] text-muted-foreground">Not in a strategy yet.</p>
                 )}
               </Section>
 
@@ -132,8 +132,8 @@ export function LeadDrawer({
                   <ul className="mt-3 flex flex-col">
                     {data.engagement.byChannel.map((c) => (
                       <li key={c.channel} className="flex items-center justify-between gap-3 border-b border-divider py-[9px] last:border-b-0">
-                        <span className="text-[12.5px]">{CHANNEL_NAME[c.channel]}</span>
-                        <span className="font-mono text-[11.5px] text-muted-foreground">
+                        <span className="text-[11.5px]">{CHANNEL_NAME[c.channel]}</span>
+                        <span className="font-mono text-[11px] text-muted-foreground">
                           {fmt(c.sent)} sent · {fmt(c.received)} in
                         </span>
                       </li>
@@ -147,7 +147,7 @@ export function LeadDrawer({
                   <ul className="flex flex-col">
                     {data.audiences.map((a) => (
                       <li key={a.id} className="flex flex-col gap-[2px] border-b border-divider py-[9px] last:border-b-0">
-                        <span className="text-[12.5px] font-medium">{a.name}</span>
+                        <span className="text-[11.5px] font-medium">{a.name}</span>
                         <span className="font-mono text-[10.5px] text-muted-foreground">{a.fileName}</span>
                       </li>
                     ))}
@@ -157,14 +157,14 @@ export function LeadDrawer({
 
               <Section title="Timeline">
                 {data.timeline.length === 0 ? (
-                  <p className="text-[12.5px] text-muted-foreground">Nothing recorded yet.</p>
+                  <p className="text-[11.5px] text-muted-foreground">Nothing recorded yet.</p>
                 ) : (
                   <ul className="flex flex-col gap-[9px]">
                     {data.timeline.slice(0, 12).map((t) => (
                       <li key={t.id} className="flex items-start gap-[9px]">
                         <span aria-hidden className="mt-[6px] size-[5px] shrink-0 rounded-full bg-[#c9c5bc]" />
                         <span className="flex min-w-0 flex-col gap-px">
-                          <span className="text-[12.5px] text-body">{t.label}</span>
+                          <span className="text-[11.5px] text-body">{t.label}</span>
                           <span className="font-mono text-[10.5px] text-muted-foreground">{at(t.at)}</span>
                         </span>
                       </li>
@@ -194,8 +194,8 @@ function Pairs({ rows, link }: { rows: [string, string][]; link?: string }) {
     <dl className="flex flex-col gap-[10px]">
       {rows.map(([label, value]) => (
         <div key={label} className="flex flex-col gap-[2px]">
-          <dt className="text-[11.5px] text-muted-foreground">{label}</dt>
-          <dd className="text-[12.5px] font-medium [overflow-wrap:anywhere]">
+          <dt className="text-[11px] text-muted-foreground">{label}</dt>
+          <dd className="text-[11.5px] font-medium [overflow-wrap:anywhere]">
             {label === "LinkedIn" && link ? (
               <a href={link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-[6px] hover:underline">
                 <ExternalLink aria-hidden className="size-[13px] text-[var(--ch-linkedin)]" strokeWidth={2} />
@@ -213,7 +213,7 @@ function Pairs({ rows, link }: { rows: [string, string][]; link?: string }) {
 
 function Figure({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-[3px] rounded-[10px] border border-border px-3 py-[11px]">
+    <div className="flex flex-col gap-[3px] rounded-[10px] border border-border px-3 py-[8px]">
       <span className="label-mono">{label}</span>
       <span className="font-mono text-[20px] font-bold leading-none tracking-[-0.02em]">{value}</span>
     </div>

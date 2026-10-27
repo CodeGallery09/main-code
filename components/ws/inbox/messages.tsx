@@ -28,16 +28,16 @@ export function lastTouch(thread: Thread, messages: Message[]) {
 export function MessageRecord({ m, thread }: { m: Message; thread: Thread }) {
   const out = m.from === "us";
   return (
-    <article className="flex flex-col gap-[7px] rounded-[10px] border border-divider bg-chrome px-[14px] py-[11px]">
+    <article className="flex flex-col gap-[7px] rounded-[10px] border border-divider bg-chrome px-[14px] py-[8px]">
       <span className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-2">
           <Initials text={out ? "YOU" : thread.initials} size={24} className="text-[9.5px]" />
           <ChannelChip>{CHANNEL_NAME[m.channel]}</ChannelChip>
-          <span className="text-[12.5px] font-medium">{out ? "You" : thread.audienceName}</span>
+          <span className="text-[11.5px] font-medium">{out ? "You" : thread.audienceName}</span>
         </span>
         <span className="font-mono text-[11px] text-muted-foreground">{at(m.sentAt)}</span>
       </span>
-      <p className="whitespace-pre-line text-[13.5px] leading-[1.6] text-prose">{m.body}</p>
+      <p className="whitespace-pre-line text-[12.5px] leading-[1.6] text-prose">{m.body}</p>
     </article>
   );
 }

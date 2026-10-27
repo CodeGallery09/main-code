@@ -13,8 +13,8 @@ import { Button } from "@/components/ws/ui/button";
  */
 export function ReplyBar({ onReply }: { onReply: () => void }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-[10px] border-t border-divider bg-quiet px-[18px] py-3">
-      <span className="text-[12.5px] text-muted-foreground">
+    <div className="flex flex-wrap items-center justify-between gap-[10px] border-t border-divider bg-quiet px-4 py-3">
+      <span className="text-[11.5px] text-muted-foreground">
         {SENDING_ENABLED
           ? "Sends from your connected mailbox · counts toward today's email limit."
           : "Replies are saved to the thread. Nothing leaves Flightpath until a mailbox is connected."}
@@ -60,7 +60,7 @@ export function Composer({ thread, onSaved, onClose }: { thread: Thread; onSaved
   }
 
   return (
-    <div className="flex flex-col gap-[10px] border-t border-divider bg-quiet px-[18px] pb-4 pt-[14px]">
+    <div className="flex flex-col gap-[10px] border-t border-divider bg-quiet px-4 pb-4 pt-[14px]">
       <div className="flex items-center justify-between gap-2">
         <span className="label-mono">Reply to {first}</span>
         <Button variant="outline" size="sm" onClick={onClose}>
@@ -77,17 +77,17 @@ export function Composer({ thread, onSaved, onClose }: { thread: Thread; onSaved
         rows={6}
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        className="w-full resize-y rounded-[9px] border border-input bg-card px-[14px] py-3 text-[13.5px] leading-[1.65] text-foreground"
+        className="w-full resize-y rounded-[9px] border border-input bg-card px-[14px] py-3 text-[12.5px] leading-[1.65] text-foreground"
       />
 
       {error ? (
-        <p role="alert" className="text-[12.5px] text-warning">
+        <p role="alert" className="text-[11.5px] text-warning">
           {error}
         </p>
       ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-[10px] border-t border-divider pt-[11px]">
-        <span className="text-[12px] leading-[1.5] text-muted-foreground">
+        <span className="text-[11.5px] leading-[1.5] text-muted-foreground">
           Saved to this thread and to the lead&apos;s history. Nothing is sent: no mailbox is connected yet.
         </span>
         <span className="flex flex-wrap items-center gap-2">

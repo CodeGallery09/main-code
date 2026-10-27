@@ -42,5 +42,5 @@ export function WorkspaceTime({ timeZone }: { timeZone: string }) {
     return () => window.clearInterval(timer);
   }, [timeZone]);
 
-  return <span className="font-mono text-[12px] text-muted-foreground">{now ?? ""}</span>;
+  return <span className="font-mono text-[11.5px] text-muted-foreground">{now ?? ""}</span>;
 }

@@ -63,8 +63,21 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
 - **No shadows, gradients or glass in the workspace.** Surfaces separate by a hairline border (`--border` between cards, the lighter `--divider` between rows). The single exception is the 1px lift on the active `Segmented` option. `components/glass.ts` (the refraction/specular runtime, moved out of `components/app/`) is marketing-only now — `SiteGlass.tsx` imports it; nothing in `components/ws/` does.
 - **Mono carries structure, sans carries prose.** JetBrains Mono (`--font-code`) for the brand, page and card titles, uppercase micro-labels (`.label-mono`) and **every number**; Inter for names, descriptions, body copy and buttons.
 - **Colour never carries meaning alone.** Every status is a fg/bg pair with a text label (`StatusPill`); a destructive action differs in icon shape as well as colour. `--ch-*` colours are darkened from each vendor's brand colour so a white monogram clears 4.5:1 — use them on tiles only, never as text, always beside the channel name.
-- **Layout without breakpoints.** The shell is `flex flex-wrap` (sidebar `basis-[252px] grow`, main `grow-[999] basis-[760px] min-w-0`); grids are `repeat(auto-fit,minmax(Npx,1fr))`, or `auto-fill` where one card must not stretch; wide tables sit in `overflow-x-auto` with a `min-w`. **Never make the sidebar `fixed`, `sticky` or `h-screen`.** The one breakpoint is `lg`, where the rail becomes a top bar and a sheet.
-- **Spacing is fixed:** page body `px-8 pt-6 pb-12`, `gap-5` between sections, card header `px-[18px] py-[14px]`, rows `py-[11px]`–`py-[13px]`. That is what keeps margins aligned across screens.
+- **A fixed frame at `lg` and up.** The window is the frame: `AppShell` is `lg:h-dvh` (with a 600px floor,
+  under which the whole page scrolls), `main` is `lg:overflow-hidden`, and the sidebar is `lg:h-full`.
+  **A screen never makes the page scroll**: `PageBody` takes the height left under the top bar, one
+  region is given `FILL` (`components/ws/ui/card.tsx`) and the list, table or pane inside it scrolls
+  (`CardScroll`, or `lg:min-h-0 lg:flex-1 lg:overflow-y-auto`). Every flex or grid ancestor between
+  the frame and a scroller needs `lg:min-h-0`, and a grid needs `lg:grid-rows-1`, or the track grows
+  to its content. `main` is `relative` on purpose: a visually-hidden (`absolute`) label inside a
+  scrolling pane would otherwise anchor to the viewport and stretch the document. Below `lg` the
+  page is one long scroll, grids are `repeat(auto-fit,minmax(Npx,1fr))` and a wide table sits in
+  `overflow-x-auto` with a `min-w`. Check a new screen at 1440x900, 1280x720 and 1024x700 that
+  `document.documentElement.scrollHeight` equals the window height.
+- **Compact density.** Body 12px, micro-labels 11px, page title 20px, controls 26–34px, sidebar 216px.
+- **Spacing is fixed:** Page body `px-6 pt-4 pb-6`, `gap-4` between sections, card
+  header `px-4 py-[10px]`, rows `py-[9px]`. Matching these is what makes the margins line up across
+  screens; a new card that invents its own padding shows immediately.
 - **Motion** is `framer-motion`, `transform`/`opacity` only, under ~220ms. `components/ws/ui/motion.tsx` owns the easing and the wrappers (`Appear`, `Swap`, `Row`, `Expand`); `Segmented` and the Setup tabs share one `layoutId` thumb. Every wrapper reads `useReducedMotion()`. Do not use CSS `zoom`.
 - **Density** is the type scale in `workspace.css` plus the sizes baked into `components/ws/ui/` (13px body, 11px micro-labels, 30–38px controls). Re-tune the primitive, not individual screens.
 

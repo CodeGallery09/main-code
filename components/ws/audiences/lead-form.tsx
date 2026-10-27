@@ -83,15 +83,15 @@ export function LeadForm({
             transition={still ? { duration: 0 } : EASE_OUT}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="border-b border-border px-[18px] py-[14px]">
-              <h2 className="font-mono text-[14.5px] font-bold tracking-[-0.01em]">
+            <div className="border-b border-border px-4 py-[10px]">
+              <h2 className="font-mono text-[13px] font-bold tracking-[-0.01em]">
                 {lead ? "Edit lead" : "Add a lead"}
               </h2>
             </div>
 
             <form
               method="post"
-              className="flex flex-col gap-[13px] px-[18px] py-[16px]"
+              className="flex flex-col gap-[13px] px-4 py-[12px]"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (ready && !busy) void save();
@@ -111,7 +111,7 @@ export function LeadForm({
               />
 
               {!lead && (
-                <label className="flex items-start gap-[9px] rounded-[10px] bg-accent px-[13px] py-[11px] text-[12.5px] leading-[1.55] text-body">
+                <label className="flex items-start gap-[9px] rounded-[10px] bg-accent px-[13px] py-[8px] text-[11.5px] leading-[1.55] text-body">
                   <input
                     type="checkbox"
                     checked={consent}
@@ -123,7 +123,7 @@ export function LeadForm({
               )}
 
               {error && (
-                <p role="alert" className="text-[12.5px] text-destructive">
+                <p role="alert" className="text-[11.5px] text-destructive">
                   {error}
                 </p>
               )}
@@ -173,7 +173,7 @@ function TextField({
         value={value}
         required={required}
         onChange={(e) => onChange(e.target.value)}
-        className="h-[34px] rounded-lg border border-input bg-card px-[11px] text-[13px]"
+        className="h-[34px] rounded-lg border border-input bg-card px-[11px] text-[12px]"
       />
     </span>
   );

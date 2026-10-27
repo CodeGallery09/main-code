@@ -316,9 +316,9 @@ reads what only the server can read, and renders one `"use client"` view. Keep i
 
 | File | L | Reads from | Notes |
 |---|---|---|---|
-| `shell/AppShell.tsx` | 136 | — | the frame: `Sidebar` + children above `lg`, top bar + animated sheet below it. Detects the two **focus routes** (`/dashboard/strategies/new`, `/dashboard/workflows/[id]`) and renders them chromeless. Layout is `flex flex-wrap`, never `fixed`/`sticky`/`h-screen` |
-| `shell/sidebar.tsx` | 162 | — | `Sidebar` (252px) and `SidebarRail` (60px, builder only), `NavList`, `AccountCard`, `SignOutItem` (inline failure message), `NavBadge` (grey = information, black = needs you). **Five destinations** (`DASHBOARD_NAV` via `shell/nav.ts`) — see §2d |
-| `shell/page.tsx` | 95 | — | `TopBar`, `PageHeader`, `PageBody` (`px-8 pt-6 pb-12`, `gap-5`), `SetupTabs` (animated underline, Overview · Config · Messages) |
+| `shell/AppShell.tsx` | 139 | — | the frame: `Sidebar` + children above `lg`, top bar + animated sheet below it. Detects the two **focus routes** (`/dashboard/strategies/new`, `/dashboard/workflows/[id]`) and renders them chromeless. At `lg`+ it is a fixed `h-dvh` frame and screens scroll inside their cards (see §5 "A fixed frame") |
+| `shell/sidebar.tsx` | 162 | — | `Sidebar` (216px) and `SidebarRail` (60px, builder only), `NavList`, `AccountCard`, `SignOutItem` (inline failure message), `NavBadge` (grey = information, black = needs you). **Five destinations** (`DASHBOARD_NAV` via `shell/nav.ts`) — see §2d |
+| `shell/page.tsx` | 101 | — | `TopBar`, `PageHeader`, `PageBody` (`px-6 pt-4 pb-6`, `gap-4`, takes the remaining height at `lg`), `SetupTabs` (animated underline, Overview · Config · Messages) |
 | `shell/workspace-context.tsx` | 63 | `/api/badges` | user + workspace from the layout, badges refetched on every navigation, `refreshBadges()` for a screen that just changed one |
 | `shell/use-sign-out.ts` | 34 | `/api/logout` | navigates only after the server confirms, with a **full page load** — see §5 |
 | `home/home-view.tsx` | 388 | `/api/overview`, `/api/strategies`, `/api/tasks`, `/api/accounts` | four metric tiles (fixed 7-day window; ranges belong to Analytics, which it links to), To do with a Segmented filter and optimistic completion, Sending today from the accounts' quotas, Strategies, Setup health computed from `setupChecks`. The greeting is computed after mount (no date-dependent server markup) |
@@ -594,14 +594,21 @@ namespaces, no parameter properties).
   (`variant="danger"` + `Trash2`/`Unlink`). The `--ch-*` channel colours are darkened from each
   vendor's brand colour so a white monogram clears 4.5:1 — use them **on tiles only**, never as
   text, and always beside the channel's name.
-- **Layout without breakpoints.** The shell is `flex flex-wrap` (sidebar `basis-[252px] grow`, main
-  `grow-[999] basis-[760px] min-w-0`), grids are `repeat(auto-fit,minmax(Npx,1fr))` — or
-  `auto-fill` where a single card must not stretch the full width — and a wide table sits in
-  `overflow-x-auto` with a `min-w`. **Never make the sidebar `fixed`, `sticky` or `h-screen`.** The
-  one breakpoint is `lg`, where the rail becomes a top bar and a sheet.
-- **Spacing is fixed, not improvised.** Page body `px-8 pt-6 pb-12`, `gap-5` between sections, card
-  header `px-[18px] py-[14px]`, rows `py-[11px]`–`py-[13px]`. Matching these is what makes the
-  margins line up across screens; a new card that invents its own padding shows immediately.
+- **A fixed frame at `lg` and up.** The window is the frame: `AppShell` is `lg:h-dvh` (with a 600px floor,
+  under which the whole page scrolls), `main` is `lg:overflow-hidden`, and the sidebar is `lg:h-full`.
+  **A screen never makes the page scroll**: `PageBody` takes the height left under the top bar, one
+  region is given `FILL` (`components/ws/ui/card.tsx`) and the list, table or pane inside it scrolls
+  (`CardScroll`, or `lg:min-h-0 lg:flex-1 lg:overflow-y-auto`). Every flex or grid ancestor between
+  the frame and a scroller needs `lg:min-h-0`, and a grid needs `lg:grid-rows-1`, or the track grows
+  to its content. `main` is `relative` on purpose: a visually-hidden (`absolute`) label inside a
+  scrolling pane would otherwise anchor to the viewport and stretch the document. Below `lg` the
+  page is one long scroll, grids are `repeat(auto-fit,minmax(Npx,1fr))` and a wide table sits in
+  `overflow-x-auto` with a `min-w`. Check a new screen at 1440x900, 1280x720 and 1024x700 that
+  `document.documentElement.scrollHeight` equals the window height.
+- **Compact density.** Body 12px, micro-labels 11px, page title 20px, controls 26–34px, sidebar 216px.
+- **Spacing is fixed, not improvised.** Page body `px-6 pt-4 pb-6`, `gap-4` between sections, card
+  header `px-4 py-[10px]`, rows `py-[9px]`. Matching these is what makes the margins line up across
+  screens; a new card that invents its own padding shows immediately.
 - **Motion is `framer-motion`, `transform`/`opacity` only, and always reduced-motion aware.**
   `components/ws/ui/motion.tsx` owns the easing and the four wrappers (`Appear`, `Swap`, `Row`,
   `Expand`); `Segmented` and `SetupTabs` share one `layoutId` thumb. Every wrapper reads
@@ -640,6 +647,13 @@ namespaces, no parameter properties).
 - **Two routes are chromeless** (`/dashboard/strategies/new` and `/dashboard/workflows/[id]`):
   `AppShell` detects them and renders the focus layout, the builder with a 60px `SidebarRail`. Add
   a focus route to that check, not by nesting another layout.
+- **`app/dashboard/not-found.tsx`** is what `notFound()` renders for any dashboard page, inside the
+  layout (the session and the way back survive). In the no-database `dev` deployment it says why a
+  strategy you just created can 404: `MemoryRepository` writes live in one serverless instance and
+  are not shared between requests, so create-then-open can land on a different instance. A database
+  deployment never has this. **LinkedIn connecting is production-only**: `UNIPILE_DSN` /
+  `UNIPILE_API_KEY` are set for the Vercel *production* target only, and the connect flow also needs
+  the database (`connect_sessions`, `channel_accounts`), which `dev` deliberately lacks.
 - The Setup tab strip wraps rather than scrolls — the underline is a `layoutId` element, so it
   follows whichever tab is current on either row.
 

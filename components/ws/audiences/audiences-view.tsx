@@ -22,7 +22,7 @@ import { shortDate } from "@/lib/ws/format";
 import { useAsync } from "@/lib/ws/use-async";
 import { cn, fmt } from "@/lib/ws/utils";
 import { PageBody, PageHeader, TopBar } from "@/components/ws/shell/page";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ws/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle, FILL } from "@/components/ws/ui/card";
 import { Button } from "@/components/ws/ui/button";
 import { Confirm } from "@/components/ws/ui/confirm";
 import { StatusPill } from "@/components/ws/ui/status-pill";
@@ -114,11 +114,11 @@ export function AudiencesView() {
             }
             actions={
               <>
-                <Button size="lg" variant="outline" onClick={() => setEditing("new")}>
+                <Button variant="outline" onClick={() => setEditing("new")}>
                   <Plus aria-hidden strokeWidth={2} />
                   Add a lead
                 </Button>
-                <Button size="lg" onClick={() => setUploading(true)}>
+                <Button onClick={() => setUploading(true)}>
                   <Upload aria-hidden strokeWidth={1.9} />
                   Upload audience
                 </Button>
@@ -131,51 +131,22 @@ export function AudiencesView() {
           <button
             type="button"
             onClick={() => setUploading(true)}
-            className="flex w-full flex-wrap items-center gap-[14px] rounded-xl border border-dashed border-input bg-chrome p-[18px] text-left transition-colors hover:border-primary"
+            className="flex w-full flex-wrap items-center gap-3 rounded-xl border border-dashed border-input bg-chrome px-4 py-2 text-left transition-colors hover:border-primary"
           >
-            <span className="flex size-[40px] shrink-0 items-center justify-center rounded-[10px] border border-border bg-card text-body">
-              <FileUp aria-hidden className="size-[19px]" strokeWidth={1.7} />
+            <span className="flex size-[32px] shrink-0 items-center justify-center rounded-lg border border-border bg-card text-body">
+              <FileUp aria-hidden className="size-[16px]" strokeWidth={1.7} />
             </span>
             <span className="flex min-w-0 flex-1 basis-[280px] flex-col gap-[3px]">
-              <span className="text-[13.5px] font-semibold">Drop a .csv or .xlsx here</span>
-              <span className="text-[12.5px] leading-[1.55] text-muted-foreground">
+              <span className="text-[12.5px] font-semibold">Drop a .csv or .xlsx here</span>
+              <span className="text-[11.5px] leading-[1.55] text-muted-foreground">
                 We match the columns, flag duplicates against leads you already have, and show you everything before
                 saving.
               </span>
             </span>
-            <span className="inline-flex h-[34px] items-center rounded-lg border border-input bg-card px-[13px] text-[13px] font-medium">
+            <span className="inline-flex h-[30px] items-center rounded-lg border border-input bg-card px-[11px] text-[12px] font-medium">
               Choose a file
             </span>
           </button>
-        </Appear>
-
-        <Appear index={2}>
-          <div className="flex flex-wrap items-center gap-[10px]">
-            <SearchInput
-              id="lead-search"
-              placeholder="Search name, company or email"
-              value={q}
-              onChange={(v) => {
-                setQ(v);
-                setPage(1);
-              }}
-              className="min-w-0 flex-1 basis-[300px]"
-            />
-            <NativeSelect
-              id="aud-strategy"
-              label="Strategy"
-              hideLabel
-              value={strategyId}
-              onChange={(v) => {
-                setStrategyId(v);
-                setPage(1);
-              }}
-              options={[
-                { value: "all", label: "All strategies" },
-                ...(strategies.data?.items ?? []).map((s) => ({ value: s.id, label: s.name })),
-              ]}
-            />
-          </div>
         </Appear>
 
         <Appear index={3}>
@@ -186,7 +157,7 @@ export function AudiencesView() {
                 <CardDescription>Pick one to see its leads</CardDescription>
               </div>
             </CardHeader>
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3 px-[18px] pb-4 pt-[14px]">
+            <div className="flex gap-3 overflow-x-auto px-4 py-3 [&>*]:w-[290px] [&>*]:shrink-0">
               <AudienceCard
                 name="All leads"
                 source="Everyone in this workspace"
@@ -216,8 +187,8 @@ export function AudiencesView() {
           </Card>
         </Appear>
 
-        <Appear index={4}>
-          <Card>
+        <Appear index={4} className={FILL}>
+          <Card className={FILL}>
             <CardHeader>
               <div className="flex min-w-0 items-baseline gap-[10px]">
                 <CardTitle>{open ? open.name : "All leads"}</CardTitle>
@@ -225,11 +196,37 @@ export function AudiencesView() {
                   {open ? open.description || `Imported from ${open.fileName}` : "Every lead in the workspace"}
                 </CardDescription>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <SearchInput
+                  id="lead-search"
+                  placeholder="Search name, company or email"
+                  value={q}
+                  onChange={(v) => {
+                    setQ(v);
+                    setPage(1);
+                  }}
+                  className="w-[260px]"
+                />
+                <NativeSelect
+                  id="aud-strategy"
+                  label="Strategy"
+                  hideLabel
+                  value={strategyId}
+                  onChange={(v) => {
+                    setStrategyId(v);
+                    setPage(1);
+                  }}
+                  options={[
+                    { value: "all", label: "All strategies" },
+                    ...(strategies.data?.items ?? []).map((s) => ({ value: s.id, label: s.name })),
+                  ]}
+                />
+              </div>
             </CardHeader>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
               <div className="min-w-[940px]">
-                <div className={cn("grid items-center gap-3 border-b border-border bg-chrome px-[18px] py-[10px]", COLS)}>
+                <div className={cn("sticky top-0 z-[1] grid items-center gap-3 border-b border-border bg-chrome px-4 py-[7px]", COLS)}>
                   {HEADS.map((h, i) => (
                     <span key={h} className={cn("label-mono text-[10.5px] tracking-[0.07em]", i === HEADS.length - 1 && "text-right")}>
                       {h}
@@ -239,7 +236,7 @@ export function AudiencesView() {
 
                 {leads.state === "loading" ? (
                   Array.from({ length: 6 }, (_, i) => (
-                    <div key={i} className={cn("grid items-center gap-3 border-b border-divider px-[18px] py-[13px]", COLS)}>
+                    <div key={i} className={cn("grid items-center gap-3 border-b border-divider px-4 py-[9px]", COLS)}>
                       <Skeleton className="h-[12px] w-[70%]" />
                       {HEADS.slice(1).map((h) => (
                         <Skeleton key={h} className="h-[12px]" />
@@ -256,24 +253,24 @@ export function AudiencesView() {
                   </EmptyState>
                 ) : (
                   leads.data.items.map((lead) => (
-                    <div key={lead.id} className={cn("grid items-center gap-3 border-b border-divider px-[18px] py-[11px]", COLS)}>
+                    <div key={lead.id} className={cn("grid items-center gap-3 border-b border-divider px-4 py-[8px]", COLS)}>
                       <button
                         type="button"
                         onClick={() => setOpenLead(lead)}
                         className="flex min-w-0 items-center gap-[10px] text-left"
                       >
-                        <span className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-accent font-mono text-[11px] font-medium text-body">
+                        <span className="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-accent font-mono text-[11px] font-medium text-body">
                           {lead.initials}
                         </span>
                         <span className="flex min-w-0 flex-col gap-[2px]">
-                          <span className="truncate text-[13.5px] font-medium hover:underline">{lead.name}</span>
-                          <span className="truncate text-[12px] text-muted-foreground">{lead.title || "—"}</span>
+                          <span className="truncate text-[12.5px] font-medium hover:underline">{lead.name}</span>
+                          <span className="truncate text-[11.5px] text-muted-foreground">{lead.title || "—"}</span>
                         </span>
                       </button>
-                      <span className="truncate text-[12.5px]">{lead.company || "—"}</span>
+                      <span className="truncate text-[11.5px]">{lead.company || "—"}</span>
                       <span
                         className={cn(
-                          "inline-flex h-[26px] w-[38px] items-center justify-center rounded-sm font-mono text-[12.5px] font-bold",
+                          "inline-flex h-[22px] w-[34px] items-center justify-center rounded-sm font-mono text-[11.5px] font-bold",
                           scoreStyle(lead.score),
                         )}
                       >
@@ -282,7 +279,7 @@ export function AudiencesView() {
                       <span className="flex min-w-0 items-center gap-[6px]">
                         {lead.email ? (
                           <>
-                            <span className="truncate text-[12.5px]">{lead.email}</span>
+                            <span className="truncate text-[11.5px]">{lead.email}</span>
                             <Button
                               variant="ghost"
                               size="icon-sm"
@@ -294,7 +291,7 @@ export function AudiencesView() {
                             </Button>
                           </>
                         ) : (
-                          <span className="text-[12.5px] text-muted-foreground">No email on file</span>
+                          <span className="text-[11.5px] text-muted-foreground">No email on file</span>
                         )}
                       </span>
                       <span>
@@ -303,20 +300,20 @@ export function AudiencesView() {
                             href={lead.linkedin}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-[6px] text-[12.5px] hover:underline"
+                            className="inline-flex items-center gap-[6px] text-[11.5px] hover:underline"
                           >
                             <ExternalLink aria-hidden className="size-[13px] text-[var(--ch-linkedin)]" strokeWidth={2} />
                             Profile
                           </a>
                         ) : (
-                          <span className="font-mono text-[11.5px] text-muted-foreground">—</span>
+                          <span className="font-mono text-[11px] text-muted-foreground">—</span>
                         )}
                       </span>
                       <span>
                         {lead.consent ? (
                           <StatusPill tone="success">Opted in</StatusPill>
                         ) : (
-                          <span className="inline-flex items-center gap-[5px] rounded-full bg-warning-bg px-[9px] py-[3px] text-[11.5px] font-medium text-warning">
+                          <span className="inline-flex items-center gap-[5px] rounded-full bg-warning-bg px-[9px] py-[3px] text-[11px] font-medium text-warning">
                             <CircleAlert aria-hidden className="size-[12px]" strokeWidth={2.1} />
                             Needs check
                           </span>
@@ -333,8 +330,8 @@ export function AudiencesView() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-[10px] px-[18px] py-3">
-              <span className="text-[12.5px] text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-[10px] border-t border-divider px-4 py-2">
+              <span className="text-[11.5px] text-muted-foreground">
                 {leads.state === "ready" && total > 0
                   ? `Showing ${fmt((page - 1) * PAGE_SIZE + 1)}–${fmt(Math.min(page * PAGE_SIZE, total))} of ${fmt(total)} leads`
                   : "No leads to show"}
@@ -349,7 +346,7 @@ export function AudiencesView() {
                 >
                   <ChevronLeft aria-hidden strokeWidth={2} />
                 </Button>
-                <span className="font-mono text-[12px] text-body">
+                <span className="font-mono text-[11.5px] text-body">
                   {page} / {pages}
                 </span>
                 <Button
@@ -427,7 +424,7 @@ function AudienceCard({
     <div
       className={cn(
         "flex flex-col gap-[10px] rounded-[11px] bg-card",
-        selected ? "border-2 border-primary px-[14px] py-[13px]" : "border border-border px-[15px] py-[14px]",
+        selected ? "border-2 border-primary px-[14px] py-[9px]" : "border border-border px-[15px] py-[10px]",
       )}
     >
       <div className="flex items-start gap-[10px]">
@@ -435,7 +432,7 @@ function AudienceCard({
           <FileText aria-hidden className="size-[15px]" strokeWidth={1.8} />
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
-          <span className={cn("truncate text-[13.5px]", selected ? "font-semibold" : "font-medium")}>{name}</span>
+          <span className={cn("truncate text-[12.5px]", selected ? "font-semibold" : "font-medium")}>{name}</span>
           <span className="truncate font-mono text-[10.5px] text-muted-foreground">{source}</span>
         </span>
         <Button

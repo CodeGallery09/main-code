@@ -15,7 +15,7 @@ import { cn, fmt } from "@/lib/ws/utils";
 import { PageBody, PageHeader, TopBar } from "@/components/ws/shell/page";
 import { useWorkspace } from "@/components/ws/shell/workspace-context";
 import { DemoNote } from "@/components/ws/shell/demo-note";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ws/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardScroll, CardTitle, FILL } from "@/components/ws/ui/card";
 import { Button, buttonVariants } from "@/components/ws/ui/button";
 import { Segmented } from "@/components/ws/ui/segmented";
 import { StrategyStatusPill } from "@/components/ws/ui/status-pill";
@@ -107,7 +107,7 @@ export function HomeView() {
 
         {/* KPIs */}
         <Appear index={1}>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-4">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
             {overview.state === "ready"
               ? overview.data.metrics.map((m) => (
                   <MetricTile
@@ -119,7 +119,7 @@ export function HomeView() {
                   />
                 ))
               : [0, 1, 2, 3].map((i) => (
-                  <div key={i} className="flex flex-col gap-3 rounded-xl border border-border bg-card px-[18px] pb-[14px] pt-[16px]">
+                  <div key={i} className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 pb-[10px] pt-3">
                     <Skeleton className="h-[11px] w-[64px]" />
                     <Skeleton className="h-[32px] w-[92px]" />
                     <Skeleton className="h-[11px] w-[108px]" />
@@ -128,10 +128,10 @@ export function HomeView() {
           </div>
         </Appear>
 
-        <div className="flex flex-wrap items-start gap-5">
-          <div className="flex min-w-0 grow-[999] basis-[520px] flex-col gap-5">
-            <Appear index={2}>
-              <Card>
+        <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:grid-rows-1">
+          <div className="flex min-w-0 flex-col gap-4 lg:min-h-0">
+            <Appear index={2} className={FILL}>
+              <Card className={FILL}>
                 <CardHeader>
                   <div className="flex items-baseline gap-[9px]">
                     <CardTitle>To do</CardTitle>
@@ -158,24 +158,25 @@ export function HomeView() {
                     Nothing waiting on you here. Replies and calls that need a person show up in this list.
                   </EmptyState>
                 ) : (
+                  <CardScroll>
                   <ul>
                     <AnimatePresence initial={false}>
                       {shown.map((t) => (
                         <Row
                           key={t.id}
-                          className="flex items-center gap-[13px] border-b border-divider px-[18px] py-[13px]"
+                          className="flex items-center gap-[13px] border-b border-divider px-4 py-[9px]"
                         >
                           <Initials text={t.initials} />
                           <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
-                            <span className="truncate text-[13.5px] font-medium">
+                            <span className="truncate text-[12.5px] font-medium">
                               {t.audienceName}
                               {t.company ? ` · ${t.company}` : ""}
                             </span>
-                            <span className="truncate text-[12.5px] text-muted-foreground">{t.summary}</span>
+                            <span className="truncate text-[11.5px] text-muted-foreground">{t.summary}</span>
                           </span>
                           <span className="flex shrink-0 items-center gap-[10px]">
                             <ChannelChip>{CHANNEL_NAME[t.channel]}</ChannelChip>
-                            <span className="w-[52px] text-right font-mono text-[11.5px] text-muted-foreground">
+                            <span className="w-[52px] text-right font-mono text-[11px] text-muted-foreground">
                               {t.when}
                             </span>
                             {t.kind === "reply" ? (
@@ -192,10 +193,11 @@ export function HomeView() {
                       ))}
                     </AnimatePresence>
                   </ul>
+                  </CardScroll>
                 )}
 
-                <div className="px-[18px] py-3">
-                  <Link href={INBOX_HREF} className="text-[13px] font-medium hover:underline">
+                <div className="border-t border-divider px-4 py-2">
+                  <Link href={INBOX_HREF} className="text-[12px] font-medium hover:underline">
                     Open inbox
                   </Link>
                 </div>
@@ -206,9 +208,9 @@ export function HomeView() {
               <Card>
                 <CardHeader>
                   <CardTitle>Sending today</CardTitle>
-                  <span className="font-mono text-[11.5px] text-muted-foreground">Resets at midnight</span>
+                  <span className="font-mono text-[11px] text-muted-foreground">Resets at midnight</span>
                 </CardHeader>
-                <CardContent className="pb-[14px] pt-[6px]">
+                <CardContent className="pb-[10px] pt-[2px]">
                   {overview.state === "ready" ? (
                     CHANNEL_ORDER.map((channel) => {
                       const quota = overview.data.quotas.find((q) => q.channel === channel);
@@ -217,11 +219,11 @@ export function HomeView() {
                       return (
                         <div
                           key={channel}
-                          className="flex items-center gap-[14px] border-b border-divider py-[11px] last:border-b-0"
+                          className="flex items-center gap-[14px] border-b border-divider py-[8px] last:border-b-0"
                         >
-                          <span className="shrink-0 basis-[92px] text-[13px]">{CHANNEL_NAME[channel]}</span>
+                          <span className="shrink-0 basis-[92px] text-[12px]">{CHANNEL_NAME[channel]}</span>
                           <Meter pct={pct} label={`${CHANNEL_NAME[channel]}: ${label}`} className="flex-1" />
-                          <span className="shrink-0 basis-[108px] text-right font-mono text-[12px] text-body">
+                          <span className="shrink-0 basis-[108px] text-right font-mono text-[11.5px] text-body">
                             {label}
                           </span>
                         </div>
@@ -230,7 +232,7 @@ export function HomeView() {
                   ) : (
                     <RowSkeletons n={5} bare />
                   )}
-                  <p className="mt-3 text-[12.5px] text-muted-foreground">
+                  <p className="mt-3 text-[11.5px] text-muted-foreground">
                     Limits come from your connected accounts and are shared by every strategy.{" "}
                     <Link href={SETUP_HREF} className="font-medium text-foreground hover:underline">
                       See connected accounts
@@ -241,12 +243,12 @@ export function HomeView() {
             </Appear>
           </div>
 
-          <div className="flex min-w-0 grow basis-[320px] flex-col gap-5">
-            <Appear index={4}>
-              <Card>
+          <div className="flex min-w-0 flex-col gap-4 lg:min-h-0">
+            <Appear index={4} className={FILL}>
+              <Card className={FILL}>
                 <CardHeader>
                   <CardTitle>Strategies</CardTitle>
-                  <Link href="/dashboard/strategies" className="text-[13px] font-medium hover:underline">
+                  <Link href="/dashboard/strategies" className="text-[12px] font-medium hover:underline">
                     See all
                   </Link>
                 </CardHeader>
@@ -257,14 +259,15 @@ export function HomeView() {
                 ) : overview.data.strategies.length === 0 ? (
                   <EmptyState>Nothing is running yet.</EmptyState>
                 ) : (
+                  <CardScroll>
                   <ul>
                     {overview.data.strategies.slice(0, 6).map((s) => (
                       <li
                         key={s.id}
-                        className="flex items-center justify-between gap-3 border-b border-divider px-[18px] py-[13px] last:border-b-0"
+                        className="flex items-center justify-between gap-3 border-b border-divider px-4 py-[9px] last:border-b-0"
                       >
                         <span className="flex min-w-0 flex-col gap-[3px]">
-                          <span className={cn("truncate text-[13.5px] font-medium", s.isSample && "text-body")}>
+                          <span className={cn("truncate text-[12.5px] font-medium", s.isSample && "text-body")}>
                             {s.name}
                           </span>
                           <span className="truncate font-mono text-[11px] text-muted-foreground">
@@ -272,7 +275,7 @@ export function HomeView() {
                           </span>
                         </span>
                         <span className="flex shrink-0 items-center gap-[10px]">
-                          <span className="font-mono text-[12.5px] font-medium">
+                          <span className="font-mono text-[11.5px] font-medium">
                             {s.replyRate === null ? "—" : `${s.replyRate.toFixed(1)}%`}
                           </span>
                           <StrategyStatusPill status={s.status} />
@@ -280,6 +283,7 @@ export function HomeView() {
                       </li>
                     ))}
                   </ul>
+                  </CardScroll>
                 )}
               </Card>
             </Appear>
@@ -300,9 +304,9 @@ export function HomeView() {
 
 function RowSkeletons({ n, bare }: { n: number; bare?: boolean }) {
   return (
-    <div className={bare ? undefined : "px-[18px]"}>
+    <div className={bare ? undefined : "px-4"}>
       {Array.from({ length: n }, (_, i) => (
-        <div key={i} className="flex items-center gap-3 border-b border-divider py-[14px] last:border-b-0">
+        <div key={i} className="flex items-center gap-3 border-b border-divider py-[10px] last:border-b-0">
           <Skeleton className="size-[30px] rounded-full" />
           <Skeleton className="h-[12px] flex-1" />
           <Skeleton className="h-[12px] w-[52px]" />
@@ -332,7 +336,7 @@ function SetupHealth({
       <CardHeader>
         <CardTitle>Setup health</CardTitle>
         {checks ? (
-          <span className="font-mono text-[11.5px] text-muted-foreground">
+          <span className="font-mono text-[11px] text-muted-foreground">
             {passing} / {total} checks
           </span>
         ) : null}
@@ -341,16 +345,16 @@ function SetupHealth({
       {failed ? (
         <LoadError message="We couldn't read your connected accounts." onRetry={onRetry} />
       ) : !checks ? (
-        <div className="flex flex-col gap-3 px-[18px] py-4">
+        <div className="flex flex-col gap-3 px-4 py-4">
           <Skeleton className="h-[30px] w-[88px]" />
           <Skeleton className="h-[6px] w-full rounded-none" />
         </div>
       ) : (
         <>
-          <div className="px-[18px] pb-[6px] pt-4">
+          <div className="px-4 pb-[4px] pt-3">
             <div className="mb-[10px] flex items-baseline gap-[10px]">
-              <span className="font-mono text-[30px] font-bold leading-none tracking-[-0.02em]">{score}%</span>
-              <span className="text-[12.5px] text-muted-foreground">
+              <span className="font-mono text-[22px] font-bold leading-none tracking-[-0.02em]">{score}%</span>
+              <span className="text-[11.5px] text-muted-foreground">
                 {issues.length === 0
                   ? "Everything we can check is in order"
                   : `${issues.length} ${issues.length === 1 ? "thing needs" : "things need"} you`}
@@ -358,7 +362,7 @@ function SetupHealth({
             </div>
             <Meter pct={score} label={`${passing} of ${total} setup checks passing`} />
           </div>
-          <ul className="flex flex-col gap-[2px] px-[18px] pb-4 pt-3">
+          <ul className="flex flex-col gap-[2px] px-4 pb-3 pt-2 lg:max-h-[170px] lg:overflow-y-auto">
             {issues.map((issue) => (
               <li key={issue.id}>
                 <Link
@@ -371,8 +375,8 @@ function SetupHealth({
                     strokeWidth={1.9}
                   />
                   <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
-                    <span className="text-[13px] font-medium">{issue.title}</span>
-                    <span className="text-[12px] text-muted-foreground">{issue.detail}</span>
+                    <span className="text-[12px] font-medium">{issue.title}</span>
+                    <span className="text-[11.5px] text-muted-foreground">{issue.detail}</span>
                   </span>
                   <ChevronRight aria-hidden className="size-[15px] shrink-0 text-muted-foreground" />
                 </Link>

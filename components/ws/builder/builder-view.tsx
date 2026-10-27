@@ -171,15 +171,15 @@ export function BuilderView({
   };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-dvh lg:h-full lg:min-h-0">
       <SidebarRail />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-chrome px-[22px] py-[11px]">
+      <div className="flex min-w-0 flex-1 flex-col lg:min-h-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-chrome px-5 py-[6px]">
           <div className="flex min-w-0 items-center gap-[11px]">
             <Link
               href="/dashboard/strategies"
               aria-label="Back to strategies"
-              className="flex size-[32px] shrink-0 items-center justify-center rounded-lg border border-input bg-card hover:bg-accent"
+              className="flex size-[28px] shrink-0 items-center justify-center rounded-lg border border-input bg-card hover:bg-accent"
             >
               <ArrowLeft aria-hidden className="size-[15px]" strokeWidth={2} />
             </Link>
@@ -191,7 +191,7 @@ export function BuilderView({
               value={name}
               readOnly={!read.linear}
               onChange={(e) => change(setName)(e.target.value)}
-              className="w-[290px] max-w-full rounded-md border border-transparent bg-transparent px-2 py-[5px] font-mono text-[15px] font-bold tracking-[-0.01em] hover:border-input"
+              className="w-[290px] max-w-full rounded-md border border-transparent bg-transparent px-2 py-[5px] font-mono text-[14px] font-bold tracking-[-0.01em] hover:border-input"
             />
             <span
               className={cn("whitespace-nowrap font-mono text-[11px]", save === "failed" ? "text-warning" : "text-muted-foreground")}
@@ -201,11 +201,11 @@ export function BuilderView({
           </div>
         </div>
 
-        <div className="flex flex-1 justify-center px-5 pb-12 pt-[26px] sm:px-[22px]">
-          <div className="flex w-full max-w-[820px] flex-col gap-[18px]">
+        <div className="flex flex-1 justify-center px-5 pb-5 pt-4 sm:px-6 lg:min-h-0">
+          <div className="flex w-full max-w-[820px] flex-col gap-3 lg:min-h-0 lg:overflow-y-auto">
             <div>
-              <h1 className="mb-[6px] font-mono text-[24px] font-bold tracking-[-0.02em]">Here&apos;s the plan</h1>
-              <p className="text-[13.5px] text-muted-foreground">
+              <h1 className="mb-[3px] font-mono text-[18px] font-bold tracking-[-0.02em]">Here&apos;s the plan</h1>
+              <p className="text-[12.5px] text-muted-foreground">
                 {touches.length === 0
                   ? "Nothing in it yet. Add the first touch below."
                   : `${touches.length} ${touches.length === 1 ? "touch" : "touches"} over ${span} ${span === 1 ? "day" : "days"}. Change anything, or leave it as it is.`}
@@ -215,7 +215,7 @@ export function BuilderView({
             {!read.linear && (
               <div role="alert" className="flex flex-wrap items-center gap-[11px] rounded-[10px] border border-warning-border bg-warning-bg px-[14px] py-3">
                 <TriangleAlert aria-hidden className="size-[16px] shrink-0 text-warning" strokeWidth={1.9} />
-                <span className="min-w-0 flex-1 text-[13px] leading-[1.5] text-warning">
+                <span className="min-w-0 flex-1 text-[12px] leading-[1.5] text-warning">
                   This plan branches. The list below shows the touches on its main path; editing here would drop the
                   branches, so it is left as it is until branching has an editor of its own.
                 </span>
@@ -225,25 +225,25 @@ export function BuilderView({
             {blocked.length > 0 && (
               <div role="alert" className="flex flex-wrap items-center gap-[11px] rounded-[10px] border border-warning-border bg-warning-bg px-[14px] py-3">
                 <TriangleAlert aria-hidden className="size-[16px] shrink-0 text-warning" strokeWidth={1.9} />
-                <span className="min-w-0 flex-1 basis-[260px] text-[13px] leading-[1.5] text-warning">
+                <span className="min-w-0 flex-1 basis-[260px] text-[12px] leading-[1.5] text-warning">
                   {blocked.length === 1 ? "One touch uses" : `${blocked.length} touches use`} a channel with no account
                   connected, so {blocked.length === 1 ? "it" : "they"} could never run.
                 </span>
-                <Link href={SETUP_HREF} className="inline-flex h-[30px] items-center rounded-md border border-warning-border bg-card px-[11px] text-[12.5px] font-medium text-warning">
+                <Link href={SETUP_HREF} className="inline-flex h-[30px] items-center rounded-md border border-warning-border bg-card px-[11px] text-[11.5px] font-medium text-warning">
                   Connect an account
                 </Link>
               </div>
             )}
 
             {/* 1 · Who */}
-            <Card className="flex flex-wrap items-center gap-3 px-4 py-[15px]">
+            <Card className="flex flex-wrap items-center gap-3 px-4 py-[10px]">
               <span className="flex size-[34px] shrink-0 items-center justify-center rounded-[9px] bg-primary text-primary-foreground">
                 <Users aria-hidden className="size-[16px]" strokeWidth={1.8} />
               </span>
               <span className="flex min-w-0 flex-1 basis-[220px] flex-col gap-[2px]">
                 <span className="label-mono text-[10.5px]">Who it goes to</span>
-                <span className="text-[14px] font-semibold">{chosen?.label ?? "Choose an audience"}</span>
-                <span className="text-[12.5px] text-muted-foreground">
+                <span className="text-[13px] font-semibold">{chosen?.label ?? "Choose an audience"}</span>
+                <span className="text-[11.5px] text-muted-foreground">
                   {chosen?.size === null || chosen === undefined
                     ? "Counted when the strategy runs"
                     : `${fmt(chosen.size)} ${chosen.size === 1 ? "lead" : "leads"}`}
@@ -263,9 +263,9 @@ export function BuilderView({
             </Card>
 
             {/* 2 + 3 · What happens, and how often */}
-            <Card>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-[14px]">
-                <h2 className="font-mono text-[14px] font-bold tracking-[-0.01em]">What happens, in order</h2>
+            <Card className="flex flex-col lg:min-h-[280px] lg:flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-[10px]">
+                <h2 className="font-mono text-[13px] font-bold tracking-[-0.01em]">What happens, in order</h2>
                 <span className="flex items-center gap-[9px]">
                   <span className="label-mono text-[10.5px]">Pace</span>
                   <Segmented<Pace>
@@ -282,9 +282,9 @@ export function BuilderView({
                 </span>
               </div>
 
-              <ol className="px-4 pb-[14px] pt-2">
+              <ol className="px-4 pb-[10px] pt-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                 {touches.length === 0 && (
-                  <li className="py-6 text-center text-[13px] text-muted-foreground">
+                  <li className="py-6 text-center text-[12px] text-muted-foreground">
                     Add the first touch to get started.
                   </li>
                 )}
@@ -297,19 +297,19 @@ export function BuilderView({
                         "flex items-center gap-[13px]",
                         flagged
                           ? "my-px rounded-[10px] border border-warning-border bg-warning-surface p-3"
-                          : "border-b border-divider py-[13px]",
+                          : "border-b border-divider py-[9px]",
                       )}
                     >
                       <span className="flex shrink-0 basis-[62px] flex-col gap-px">
-                        <span className="font-mono text-[13px] font-bold">Day {t.day}</span>
+                        <span className="font-mono text-[12px] font-bold">Day {t.day}</span>
                         <span className="font-mono text-[10px] text-muted-foreground">
                           {i === 0 ? "start" : t.gap === 0 ? "same day" : `+${t.gap} days`}
                         </span>
                       </span>
                       <ChannelTile channel={t.channel} />
                       <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
-                        <span className="truncate text-[13.5px] font-semibold">{t.what}</span>
-                        <span className={cn("truncate text-[12.5px]", flagged ? "text-warning" : "text-muted-foreground")}>
+                        <span className="truncate text-[12.5px] font-semibold">{t.what}</span>
+                        <span className={cn("truncate text-[11.5px]", flagged ? "text-warning" : "text-muted-foreground")}>
                           {flagged
                             ? `No ${CHANNEL_NAME[t.channel]} account is connected, so this step can't run`
                             : "Uses the message saved on this step"}
@@ -331,7 +331,7 @@ export function BuilderView({
                 })}
               </ol>
 
-              <div className="px-4 pb-4">
+              <div className="border-t border-divider px-4 py-3">
                 <AnimatePresence initial={false} mode="wait">
                   {!picking ? (
                     <Expand key="add">
@@ -368,12 +368,13 @@ export function BuilderView({
               </div>
             </Card>
 
+            <div className="grid gap-3 lg:shrink-0 lg:grid-cols-2">
             {/* 4 · When to stop */}
             <Card>
-              <div className="border-b border-border px-4 py-[14px]">
-                <h2 className="font-mono text-[14px] font-bold tracking-[-0.01em]">When to stop</h2>
+              <div className="border-b border-border px-4 py-[10px]">
+                <h2 className="font-mono text-[13px] font-bold tracking-[-0.01em]">When to stop</h2>
               </div>
-              <div className="px-4 pb-[14px] pt-[6px]">
+              <div className="px-4 pb-[8px] pt-[2px]">
                 <Rule
                   title="Stop as soon as they reply"
                   note="On any channel. The thread moves to your Inbox and nothing else goes out."
@@ -398,12 +399,12 @@ export function BuilderView({
             </Card>
 
             {/* Outcome */}
-            <div className="flex flex-wrap items-center gap-[14px] rounded-xl bg-accent px-4 py-[15px]">
+            <div className="flex flex-wrap items-center gap-3 rounded-xl bg-accent px-4 py-3">
               <span className="flex min-w-0 flex-1 basis-[280px] flex-col gap-1">
-                <span className="text-[13.5px] font-semibold">
+                <span className="text-[12.5px] font-semibold">
                   {SENDING_ENABLED ? "If you turn this on now" : "Nothing sends yet"}
                 </span>
-                <span className="text-[12.5px] leading-[1.55] text-body">
+                <span className="text-[11.5px] leading-[1.55] text-body">
                   {SENDING_ENABLED
                     ? `Each person's plan runs ${span} days, inside your sending window.`
                     : `This plan is saved and ready: ${touches.length} ${touches.length === 1 ? "touch" : "touches"} over ${span} ${span === 1 ? "day" : "days"}. There is no sender behind it yet, so turning a strategy on would be a claim we can't keep — connect your accounts in Setup and this is the first thing that will run.`}
@@ -411,10 +412,11 @@ export function BuilderView({
               </span>
               <Link
                 href={SETUP_HREF}
-                className="inline-flex h-[34px] items-center rounded-lg border border-input bg-card px-[13px] text-[13px] font-medium"
+                className="inline-flex h-[30px] items-center rounded-lg border border-input bg-card px-[11px] text-[12px] font-medium"
               >
                 Go to Setup
               </Link>
+            </div>
             </div>
           </div>
         </div>
@@ -429,7 +431,7 @@ function AddTouch({ kind, onAdd }: { kind: StepKind; onAdd: () => void }) {
     <button
       type="button"
       onClick={onAdd}
-      className="inline-flex h-[38px] items-center gap-2 rounded-[9px] border border-input bg-card pl-2 pr-[13px] text-[13px] font-medium transition-colors hover:bg-accent"
+      className="inline-flex h-[38px] items-center gap-2 rounded-[9px] border border-input bg-card pl-2 pr-[13px] text-[12px] font-medium transition-colors hover:bg-accent"
     >
       <ChannelTile channel={channel} size="sm" />
       {TOUCH_WHAT[kind]}
@@ -439,10 +441,10 @@ function AddTouch({ kind, onAdd }: { kind: StepKind; onAdd: () => void }) {
 
 function Rule({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3 border-b border-divider py-3 last:border-b-0">
+    <div className="flex items-center gap-3 border-b border-divider py-[9px] last:border-b-0">
       <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
-        <span className="text-[13.5px] font-medium">{title}</span>
-        <span className="text-[12.5px] text-muted-foreground">{note}</span>
+        <span className="text-[12.5px] font-medium">{title}</span>
+        <span className="text-[11.5px] text-muted-foreground">{note}</span>
       </span>
       {children}
     </div>

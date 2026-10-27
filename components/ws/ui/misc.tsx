@@ -101,7 +101,7 @@ export function NativeSelect({
           disabled={disabled}
           onChange={(e) => onChange?.(e.target.value)}
           className={cn(
-            "h-[36px] w-full appearance-none truncate rounded-lg border border-input bg-card pl-[12px] pr-[34px] text-[13px] font-medium text-foreground disabled:opacity-50",
+            "h-[36px] w-full appearance-none truncate rounded-lg border border-input bg-card pl-[12px] pr-[34px] text-[12px] font-medium text-foreground disabled:opacity-50",
             selectClassName,
           )}
         >
@@ -144,7 +144,7 @@ export function SearchInput({
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
         placeholder={placeholder}
-        className="h-[36px] w-full rounded-lg border border-input bg-card pl-[34px] pr-[12px] text-[13px] placeholder:text-muted-foreground"
+        className="h-[36px] w-full rounded-lg border border-input bg-card pl-[34px] pr-[12px] text-[12px] placeholder:text-muted-foreground"
       />
     </span>
   );
@@ -196,17 +196,17 @@ export function MetricTile({
   aside?: string;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-[18px] pb-[14px] pt-[16px]">
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 pb-[10px] pt-3">
       <span className="label-mono">{label}</span>
       <div className="flex items-end justify-between gap-3">
-        <span className="font-mono text-[32px] font-bold leading-none tracking-[-0.02em]">{value}</span>
+        <span className="font-mono text-[24px] font-bold leading-none tracking-[-0.02em]">{value}</span>
         {series && series.length > 1 ? (
           <Sparkline values={series} />
         ) : aside ? (
-          <span className="font-mono text-[12px] text-muted-foreground">{aside}</span>
+          <span className="font-mono text-[11.5px] text-muted-foreground">{aside}</span>
         ) : null}
       </div>
-      <span className="font-mono text-[11.5px] text-body">{footer}</span>
+      <span className="font-mono text-[11px] text-body">{footer}</span>
     </div>
   );
 }
@@ -214,7 +214,7 @@ export function MetricTile({
 /* ---------- Empty state ---------- */
 
 export function EmptyState({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <p className={cn("px-[18px] py-[38px] text-center text-[13px] text-muted-foreground", className)}>{children}</p>;
+  return <p className={cn("px-4 py-6 text-center text-[12px] text-muted-foreground", className)}>{children}</p>;
 }
 
 /* ---------- Tag ---------- */
@@ -266,12 +266,12 @@ export function Skeleton({ className }: { className?: string }) {
 /** What a card shows when its request failed. Always offers the retry. */
 export function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-[10px] px-[18px] py-[34px] text-center">
-      <p className="text-[13px] text-body">{message}</p>
+    <div className="flex flex-col items-center gap-[10px] px-4 py-[34px] text-center">
+      <p className="text-[12px] text-body">{message}</p>
       <button
         type="button"
         onClick={onRetry}
-        className="h-[30px] rounded-md border border-input bg-card px-[11px] text-[12.5px] font-medium hover:bg-accent"
+        className="h-[30px] rounded-md border border-input bg-card px-[11px] text-[11.5px] font-medium hover:bg-accent"
       >
         Try again
       </button>
