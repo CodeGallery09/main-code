@@ -1,0 +1,180 @@
+"use client";
+
+import { useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { api } from "@/lib/api";
+import type { Audience } from "@/lib/data/types";
+import type { AudiencePatch } from "@/lib/data/validate";
+import { EASE_OUT } from "@/components/ws/ui/motion";
+import { Button } from "@/components/ws/ui/button";
+
+/**
+ * Add or edit one lead by hand.
+ *
+ * It asks for the four things a person can actually supply — name, email,
+ * phone, LinkedIn — plus the consent attestation, and nothing else: stage,
+ * source, score, tags and owner are set by the server (or by an import), so
+ * showing them here would be asking the operator to invent them. An edit sends
+ * only these fields, so imported company/title/extra columns are never touched.
+ */
+export function LeadForm({
+  open,
+  lead,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  /** Present for an edit, absent for a new lead. */
+  lead?: Audience | null;
+  onClose: () => void;
+  onSaved: (saved: Audience) => void;
+}) {
+  const still = useReducedMotion();
+  const [name, setName] = useState(lead?.name ?? "");
+  const [email, setEmail] = useState(lead?.email ?? "");
+  const [phone, setPhone] = useState(lead?.phone ?? "");
+  const [linkedin, setLinkedin] = useState(lead?.linkedin ?? "");
+  const [consent, setConsent] = useState(lead ? lead.consent : false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save() {
+    setBusy(true);
+    setError("");
+    const patch: AudiencePatch = {
+      name: name.trim(),
+      email: email.trim() || null,
+      phone: phone.trim() || null,
+      linkedin: linkedin.trim() || null,
+      consent,
+    };
+    try {
+      const { audience } = lead ? await api.updateAudience(lead.id, patch) : await api.createAudience(patch);
+      onSaved(audience);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That didn't save.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const ready = name.trim().length > 0 && (consent || Boolean(lead));
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,20,19,0.28)] p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: still ? 0 : 0.14 }}
+          onClick={onClose}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label={lead ? `Edit ${lead.name}` : "Add a lead"}
+            className="w-full max-w-[440px] rounded-xl border border-border bg-card"
+            initial={{ opacity: 0, y: still ? 0 : 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: still ? 0 : 6 }}
+            transition={still ? { duration: 0 } : EASE_OUT}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-border px-[18px] py-[14px]">
+              <h2 className="font-mono text-[14.5px] font-bold tracking-[-0.01em]">
+                {lead ? "Edit lead" : "Add a lead"}
+              </h2>
+            </div>
+
+            <form
+              method="post"
+              className="flex flex-col gap-[13px] px-[18px] py-[16px]"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (ready && !busy) void save();
+              }}
+            >
+              <TextField id="lead-name" label="Name" value={name} onChange={setName} required />
+              <TextField id="lead-email" label="Email" value={email} onChange={setEmail} type="email" />
+              <TextField id="lead-phone" label="Phone" value={phone} onChange={setPhone} inputMode="tel" />
+              {/* Not type="url": the server normalises "linkedin.com/in/x", which the browser's
+                  own constraint check would refuse before onSubmit ever runs. */}
+              <TextField
+                id="lead-linkedin"
+                label="LinkedIn URL"
+                value={linkedin}
+                onChange={setLinkedin}
+                inputMode="url"
+              />
+
+              {!lead && (
+                <label className="flex items-start gap-[9px] rounded-[10px] bg-accent px-[13px] py-[11px] text-[12.5px] leading-[1.55] text-body">
+                  <input
+                    type="checkbox"
+                    checked={consent}
+                    onChange={(e) => setConsent(e.target.checked)}
+                    className="mt-[2px] size-[14px] shrink-0"
+                  />
+                  <span>I can contact this person about my product, and they can opt out at any time.</span>
+                </label>
+              )}
+
+              {error && (
+                <p role="alert" className="text-[12.5px] text-destructive">
+                  {error}
+                </p>
+              )}
+
+              <div className="flex flex-wrap justify-end gap-[8px] pt-[2px]">
+                <Button type="button" variant="outline" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={!ready || busy}>
+                  {busy ? "Saving…" : lead ? "Save changes" : "Add the lead"}
+                </Button>
+              </div>
+            </form>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function TextField({
+  id,
+  label,
+  value,
+  onChange,
+  type = "text",
+  inputMode,
+  required,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: "text" | "email";
+  inputMode?: "tel" | "url";
+  required?: boolean;
+}) {
+  return (
+    <span className="flex flex-col gap-[5px]">
+      <label htmlFor={id} className="label-mono">
+        {label}
+      </label>
+      <input
+        id={id}
+        type={type}
+        inputMode={inputMode}
+        value={value}
+        required={required}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-[34px] rounded-lg border border-input bg-card px-[11px] text-[13px]"
+      />
+    </span>
+  );
+}

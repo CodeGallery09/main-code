@@ -1,0 +1,163 @@
+@import "tailwindcss";
+
+/*
+ * Flightpath workspace design tokens.
+ *
+ * The signed-in app only. shadcn/ui convention: semantic CSS variables, mapped
+ * into Tailwind's theme with @theme inline. Use the semantic names in markup
+ * (bg-card, text-muted-foreground, border-border) — never raw hex.
+ *
+ * The variables sit on `.ws-root` (the dashboard shell), not `:root`, so the
+ * marketing pages' own palette in app/globals.css is never touched. Anything
+ * portalled out of the shell must carry `ws-root` to keep the tokens.
+ *
+ * Intent: a dense operations tool that stays calm. Flat white cards on a warm
+ * ground, hairline borders, one near-black accent. No gradients, no glass and
+ * no drop shadows — the single exception is the 1px lift on the active option
+ * of a segmented control.
+ */
+
+.ws-root {
+  /* Surfaces */
+  --background: #f7f6f3;        /* page ground */
+  --chrome: #fbfaf8;            /* sidebar, top bars, table headers, quiet panels */
+  --card: #ffffff;
+  --quiet: #fdfcfa;             /* thread footers and composer */
+
+  /* Ink */
+  --foreground: #141413;        /* primary text */
+  --body: #44423e;              /* body copy inside cards */
+  --muted-foreground: #6f6c66;  /* secondary text, labels — 4.9:1 on white */
+  --faint: #8a8780;             /* decorative only: dots, placeholders. Never body text. */
+  --prose: #2a2824;             /* long message bodies */
+
+  /* Fills */
+  --muted: #efede7;             /* active nav item, neutral tiles */
+  --accent: #f2f0ea;            /* chips, avatars, info panels */
+  --secondary: #f4f2ed;         /* segmented-control track */
+  --sunken: #e4e1d9;            /* switch track, mid score chip */
+
+  /* Lines */
+  --border: #e6e3dd;            /* card and layout borders */
+  --input: #dcd9d2;             /* control borders */
+  --divider: #f1efea;           /* row dividers inside a card */
+  --ring: #141413;
+
+  /* Primary action */
+  --primary: #141413;
+  --primary-foreground: #ffffff;
+  --on-primary-muted: #c9c5bc;  /* secondary text on a black surface */
+
+  /* Status — always used as a fg/bg pair, and always with a text label */
+  --success: #1a6b47;
+  --success-bg: #e7f2ec;
+  --warning: #7a5a12;
+  --warning-bg: #f4edde;
+  --warning-border: #e8dabb;
+  --warning-surface: #fdfaf4;
+  --destructive: #9a3412;
+  --destructive-bg: #f7e9e2;
+  --info: #1f4f8f;
+  --info-bg: #e7eef8;
+
+  /* Channel tiles — darkened from vendor brand colours so white text clears 4.5:1 */
+  --ch-linkedin: #0a66c2;
+  --ch-email: #0a5ea8;
+  --ch-google: #1a73e8;
+  --ch-whatsapp: #0f7a52;
+  --ch-calls: #6d28a8;
+  --ch-sms: #b45309;
+  --ch-hubspot: #c4451c;
+  --ch-salesforce: #0176d3;
+  --ch-pipedrive: #1f6b33;
+  --ch-zoho: #c62828;
+  --ch-meet: #00796b;
+  --ch-neutral: #44423e;
+}
+
+@theme inline {
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-code), ui-monospace, "DejaVu Sans Mono", monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-chrome: var(--chrome);
+  --color-card: var(--card);
+  --color-quiet: var(--quiet);
+  --color-body: var(--body);
+  --color-prose: var(--prose);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-secondary: var(--secondary);
+  --color-sunken: var(--sunken);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-divider: var(--divider);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-on-primary-muted: var(--on-primary-muted);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning-border: var(--warning-border);
+  --color-warning-surface: var(--warning-surface);
+  --color-destructive: var(--destructive);
+  --color-destructive-bg: var(--destructive-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+
+  --radius-sm: 6px;
+  --radius-md: 7px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}
+
+/*
+ * The shell owns the type stack and the ground. The root layout already loads
+ * Inter (--font-body) and JetBrains Mono (--font-code) through next/font, so
+ * nothing extra is fetched here.
+ */
+.ws-root {
+  font-family: var(--font-sans);
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+}
+
+.ws-root :where(button, [role="button"]) {
+  cursor: pointer;
+}
+
+.ws-root :where(*) {
+  border-color: var(--border);
+}
+
+.ws-root :where(:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Uppercase mono micro-label — section labels, column headers, field labels. */
+.ws-root .label-mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* Motion is subtle and opt-out. Transforms and opacity only. */
+@media (prefers-reduced-motion: reduce) {
+  .ws-root *,
+  .ws-root *::before,
+  .ws-root *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

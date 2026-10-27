@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { StrategiesScreen } from "@/components/app/StrategiesScreen";
+import { StrategiesView } from "@/components/ws/strategies/strategies-view";
 
 export const metadata: Metadata = { title: "Strategies" };
 
 export default function StrategiesPage() {
-  return <StrategiesScreen />;
+  return <StrategiesView />;
 }

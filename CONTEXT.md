@@ -15,7 +15,7 @@ Last updated: 2026-10-25 · ~31k lines of source across 165 files.
 | Surface | Routes | Stylesheet | Data |
 |---|---|---|---|
 | Marketing site | `/`, `/book-demo`, `/login`, `/signup` | `app/globals.css` | none (static) + demo-request webhook |
-| Signed-in workspace | `/dashboard/**` | `app/app.css` | `lib/data/` (repository) + `lib/app/` (hardcoded) |
+| Signed-in workspace | `/dashboard/**` | `app/workspace.css` | `lib/data/` (repository) + `lib/ws/` + `lib/app/` (presentation) |
 
 Stack: Next.js 15 App Router · React 19 · TS 5 (keep on 5.x) · Tailwind v4 (no config file,
 theme lives in CSS) · ESLint 9 flat · Drizzle + Postgres · runtime deps are only
@@ -39,12 +39,19 @@ npm run unipile:webhooks   # register the two Unipile webhooks (needs UNIPILE_* 
 These are the only genuinely confusing things in the codebase. Everything else is ordinary.
 
 ### 2a. Two stylesheets, deliberately separate
-`globals.css` (marketing) and `app.css` (workspace) are **not** shared. A redesign that put the
-landing page on `app.css` was rolled back. `app.css` is imported by `app/dashboard/layout.tsx`
-only. The marketing site still implements an iOS "liquid glass" look (`globals.css` +
-`SiteGlass.tsx`). **The workspace does not any more**: a later pass flattened every dashboard
-surface to opaque `var(--surface)` panels on a flat `#FAFAF8` background — see §5, "Workspace is
-flat, not glass."
+`globals.css` (marketing) and `workspace.css` (workspace) are **not** shared. A redesign that put
+the landing page on the workspace stylesheet was rolled back. `app/workspace.css` is imported by
+`app/dashboard/layout.tsx` only.
+
+The marketing site still implements an iOS "liquid glass" look (`globals.css` + `SiteGlass.tsx`).
+**The workspace is the opposite**: flat white cards on a warm paper ground, hairline borders, one
+near-black accent, **no shadows, gradients or glass** (the one exception is a 1px lift on the
+active `Segmented` option). The old `app/app.css` — a vendored, multi-pass stylesheet with a
+flattening block bolted on the end — is **deleted**; `app/workspace.css` (163L) replaced it and is
+the whole token layer. See §5, "Workspace design system."
+
+Its tokens are declared on **`.ws-root`, never `:root`** (the shell's outermost element), because
+`globals.css` is loaded app-wide: declaring them globally would repaint the marketing pages.
 
 ### 2b. Two vocabularies, bridged by an adapter
 | | `lib/data/` (canonical, DB-backed) | what some screens render (`lib/app/`) |
@@ -74,8 +81,8 @@ route. Never put figures, names, accounts or strategies in a component or in `li
 ### 2d. Five destinations, and one record is never two sections
 `DASHBOARD_NAV` in `lib/nav.ts` carries **Home, Inbox, Audiences, Strategies, Setup**, and the rail and
 the mobile tab bar render the same five. There used to be nine, which did not fit the tab bar, so
-below 820px — where `app.css` hides the rail — Configuration, Integrations and Settings were
-unreachable on a phone. Two merges fixed that:
+below `lg` — where the rail is replaced by a top bar and a sheet — Configuration, Integrations
+and Settings were unreachable on a phone. Two merges fixed that:
 
 - **A multichannel strategy *is* its workflow** (same id, one stored graph), so there is no
   Workflows section. Strategies is the list; `/dashboard/workflows/[id]` is still the builder, and
@@ -146,7 +153,7 @@ interface so the vendor can be replaced without touching a route, a screen or a 
 | `webhookAuth.ts` | Untested glue: pulls the header and query-param candidates out of a `Request` and `UNIPILE_WEBHOOK_SECRET` out of the environment, then calls `authorizeFromCarriers()`. |
 | `connect.ts` | Opens a connect session, asks for a hosted link, returns the URL. Shared by connect and reconnect. |
 | `index.ts` | `getLinkedInAdapter()` → `null` until `UNIPILE_DSN` + `UNIPILE_API_KEY` are set, and `appOrigin()`. |
-| `components/app/integrations/ConnectLinkedIn.tsx` | `useLinkedInConnect()` — popup + poll, and the one status line. |
+| `components/ws/setup/setup-config-view.tsx` + `setup-overview-view.tsx` | starting a hosted sign-in (`api.connectLinkedIn()`, a full-page redirect) and `ConnectResult`, which reads the `?connected=`/`?failed=` reference the provider sends back and polls the session for the real outcome. |
 | `scripts/register-unipile-webhooks.ts` | `npm run unipile:webhooks`. Idempotent; never deletes. |
 
 Five things about this that are not obvious:
@@ -247,7 +254,7 @@ strategy is. Each signup gets **its own workspace** — there is no way to join 
 | `scripts/set-password.ts` | `npm run db:set-password -- <email>`, password from `NEW_PASSWORD`. Updates an existing user only, and revokes their sessions. The only recovery path (no email sending). |
 | `SignOutItem` + `SignOutButton` in `AppShell.tsx` | The labelled rail item and the top-bar icon (the rail is hidden on phones). Both use `useSignOut()`: `api.logout()` → `POST /api/logout` deletes the session row, and it navigates only after the server confirms. |
 
-### Audiences, import review and prospect profiles — `lib/audiences/` + `components/app/audiences/`
+### Audiences, import review and prospect profiles — `lib/audiences/` + `components/ws/audiences/`
 The UI calls an uploaded segment an **audience** and an audience a **prospect**; the code and tables keep
 `segment`/`audience`.
 `parseFile.ts` (csv/xlsx via exceljs) · `validation.ts` (`ATTRIBUTES`, column mapping, `validateUpload`,
@@ -262,9 +269,15 @@ existing audience the file's company/title only where it has none — never its 
 both stores hand it their raw rows and it assembles the `ProspectProfile` — engagement counts,
 timeline; import-free, tested) · `analyse.ts` (server-only: the one pass the review step and the save
 step share; it adds `report.plan`, an `ImportPreview`) · `phone.ts` `segments.ts` `table.ts` `limits.ts` `ctx.ts`.
-UI: `UploadAudiences.tsx` is the three-step modal (File → Mapping → Review & import) · `ImportReview.tsx`
-is its last step (totals, filterable row review, invalid-vs-blank validation log, consent) ·
-`ProspectDrawer.tsx` is the profile drawer opened from an Audiences row.
+UI: `upload-audiences.tsx` (349L) is the three-step modal (File → Match columns → Review & save) ·
+`import-review.tsx` (272L) is its last step (totals, filterable row review, invalid-vs-blank
+validation log, consent attestation) · `lead-drawer.tsx` (216L) is the profile drawer opened from
+an Audiences row (the repository/route names stay `Prospect*` — see CLAUDE.md on the holdover) ·
+`lead-form.tsx` (170L) adds or edits one lead by hand, opened from the Audiences header and from
+the drawer's Edit button. **It asks only name, email, phone, LinkedIn (+ the consent attestation)**
+and sends only those, so an edit never touches imported company/title/extra columns and the server
+defaults the rest (stage `new`, source `form`, owner = creator). Stage, source, score, tags and
+next step are not shown anywhere in this UI — they still exist in the schema.
 
 **The review is the save, dry-run.** `planImport` runs the same `mergeAudiences` `createSegment` runs, on
 the same rows (in-journey people removed), so "N new · M existing updated" is what the save writes;
@@ -291,130 +304,150 @@ either. `tests/audiencesJourney.test.mjs` pins the "any field matches" rule.
 **Consent:** the modal asks the user to attest the people may be contacted; that sets `consent` on
 audiences the upload *creates*. It never changes an existing audience's consent.
 
-### Workspace screens — `components/app/`
+### Workspace screens — `components/ws/` (+ `lib/ws/`)
+Every `page.tsx` under `app/dashboard/` is a **thin server component**: it resolves the session,
+reads what only the server can read, and renders one `"use client"` view. Keep it that way.
+
 | File | L | Reads from | Notes |
 |---|---|---|---|
-| `AppShell.tsx` | ~370 | `/api/badges` | rail, top bar, mobile tab bar, sign-out. **Five destinations** (`DASHBOARD_NAV`), the same five in the rail and the tab bar — see §2d. Badges refetch on every navigation. The top bar carries the title and sign-out only: the Search (⌘K) button and the notification bell had no handler and the bell's dot was hardcoded |
-| `HomeScreen.tsx` | ~260 | `/api/overview`, `/api/strategies` | stats (fixed 7-day window; ranges belong to Analytics, which it links to), to-dos (completable), strategies. Each to-do's button **deep-links to its audience** (`?audience=<id>` on Inbox/Audiences) rather than to the list |
-| `InboxScreen.tsx` | ~300 | `/api/threads` | read-only: with `!SENDING_ENABLED` the composer is one line of text, not a disabled box plus a note plus a disabled button. Opens the thread named by `?audience=<id>`. One "Open audience", pointed at the audience |
-| `AudiencesScreen.tsx` + `AudienceEditor.tsx` | ~570 + 165 | `/api/audiences`, `/api/audiences/segments`, `/api/audiences/[id]/profile` | full CRUD, server-side filter/sort/page; audience cards narrow the table (`segmentId`); a row (or its name) opens `ProspectDrawer`; below 820px the table is replaced by the `.lcards` list. A saved import selects its new audience. Opens the audience named by `?audience=<id>`. **No row checkboxes** (nothing consumed the selection and there is no bulk action), **no "Avg call"/"Follow-ups" columns** (empty for every audience until calling and sending exist, and their sort only ordered the visible page) and no inline row Edit (the row opens the drawer, which edits). The UI says "audience" throughout; the `Prospect*` type and route names are unchanged. **The audience form asks only name, email, phone, LinkedIn URL (+ the consent attestation)**; the PATCH/POST sends only those, so an edit never touches imported company/title/extra and the server defaults the rest (stage `new`, source `form`, owner = creator). Status, source, tags and next step are not shown in the table, its filters or the drawer (user request: profiles get enriched later) — they still exist in the schema |
-| `StrategiesScreen.tsx` + `strategies/TemplatePicker.tsx` + `StrategyEditor.tsx` | ~320 + 105 + 100 | `/api/strategies` | **the only strategy list and the only place one is created** (§2d). New strategy = pick a template, which creates the strategy and its workflow and opens the builder. Row click opens the builder. Row actions are Pause (live/scheduled only), Rename, Delete. `StrategyEditor.tsx` is now just `RenameStrategy` |
-| `AnalyticsScreen.tsx` | ~420 | `/api/analytics` | **one report, no tabs.** The per-channel table sits under its own bar chart; per-strategy totals link to Strategies. No per-person or per-strategy daily data exists, so none is shown |
-| `ConfigurationScreen.tsx` + `configuration/` | ~120 + ~1700 | `/api/accounts`, `/api/strategies` | the **Setup** screen — see below |
-| `configuration/Connections.tsx` | ~370 | `/api/accounts`, `/api/workspace` | was `IntegrationsScreen.tsx`; now Setup's Connections tab. One card of collapsible sections (`.intg*` CSS at the end of `app.css`); provider state is *derived* (`providerView`). "Manage" switches tab instead of navigating |
-| `configuration/Workspace.tsx` | ~90 | `/api/workspace` | was `SettingsScreen.tsx`; now Setup's Workspace tab, team + plan only |
-| `SampleBanner.tsx` | 60 | `/api/workspace` | "this workspace includes sample data" + Remove button. **Home only** — it used to repeat on all eight screens, undismissable; the "Sample" pills on rows carry it elsewhere |
-| `ui.tsx` `charts.tsx` `icons.tsx` | 628 | — | shared controls, SVG charts, 24px icons |
-| `glass.ts` | ~230 | — | refraction + specular runtime, **marketing-only now** (see §5) |
+| `shell/AppShell.tsx` | 136 | — | the frame: `Sidebar` + children above `lg`, top bar + animated sheet below it. Detects the two **focus routes** (`/dashboard/strategies/new`, `/dashboard/workflows/[id]`) and renders them chromeless. Layout is `flex flex-wrap`, never `fixed`/`sticky`/`h-screen` |
+| `shell/sidebar.tsx` | 162 | — | `Sidebar` (252px) and `SidebarRail` (60px, builder only), `NavList`, `AccountCard`, `SignOutItem` (inline failure message), `NavBadge` (grey = information, black = needs you). **Five destinations** (`DASHBOARD_NAV` via `shell/nav.ts`) — see §2d |
+| `shell/page.tsx` | 95 | — | `TopBar`, `PageHeader`, `PageBody` (`px-8 pt-6 pb-12`, `gap-5`), `SetupTabs` (animated underline, Overview · Config · Messages) |
+| `shell/workspace-context.tsx` | 63 | `/api/badges` | user + workspace from the layout, badges refetched on every navigation, `refreshBadges()` for a screen that just changed one |
+| `shell/use-sign-out.ts` | 34 | `/api/logout` | navigates only after the server confirms, with a **full page load** — see §5 |
+| `home/home-view.tsx` | 388 | `/api/overview`, `/api/strategies`, `/api/tasks`, `/api/accounts` | four metric tiles (fixed 7-day window; ranges belong to Analytics, which it links to), To do with a Segmented filter and optimistic completion, Sending today from the accounts' quotas, Strategies, Setup health computed from `setupChecks`. The greeting is computed after mount (no date-dependent server markup) |
+| `inbox/inbox-view.tsx` + `composer.tsx` + `messages.tsx` | 425 + 105 + 43 | `/api/threads`, `/api/threads/[id]` | four channel blocks that double as the filter, each stating its **capability before its action** (email replies here; LinkedIn and WhatsApp hand off; calls log an outcome). The composer is closed by default and closes on any switch. With `!SENDING_ENABLED` a reply is saved as a note, never sent |
+| `audiences/audiences-view.tsx` | 456 | `/api/audiences`, `/api/audiences/segments` | drop zone, filters, segment cards that narrow the table, paged leads table, copy-email, Add a lead, delete with `Confirm`; a row opens `lead-drawer.tsx`, whose Edit opens `lead-form.tsx`. **No row checkboxes** — nothing consumed the selection and there is no bulk action |
+| `strategies/strategies-view.tsx` | 302 | `/api/strategies`, `/api/strategies/[id]` | **the only strategy list** (§2d). Status Segmented + search + channel select; Pause/Resume, Duplicate (creates the strategy *and* copies its graph), Delete. A row opens the builder |
+| `strategies/new-strategy-view.tsx` | 236 | `/api/strategies`, `/api/strategies/[id]/workflow` | focus route. Shape (multichannel / single channel), then a play or a blank sequence; creates the strategy + its workflow and opens the builder — **never on a GET** |
+| `builder/builder-view.tsx` | 452 | `/api/strategies/[id]/workflow` | see below |
+| `setup/setup-overview-view.tsx` + `account-settings.tsx` | 401 + 132 | `/api/accounts` | connected accounts, each account's dials behind its Settings, hosted-sign-in result banner, disconnect. No Pause: nothing is sending to pause |
+| `setup/setup-config-view.tsx` + `setup-rules.tsx` | 249 + 480 | `/api/accounts`, `/api/settings`, `/api/workspace/sample` | the provider catalogue (`providerView()`) and starting a LinkedIn sign-in; `setup-rules.tsx` is the stored rules (sending window, limits, stop rules, skip rules, variable fallbacks, compliance) plus the Workspace card and "Remove sample data" |
+| `setup/setup-messages-view.tsx` | 283 | `/api/workflows` | **all message copy in the workspace, in one place**, read out of every stored graph by `lib/ws/messages.ts`. The builder never edits copy (§5) |
+| `analytics/analytics-view.tsx` + `charts.tsx` | 138 + 89 | `/api/analytics` | one report, no tabs. Hairline grid, single near-black accent |
+| `ui/` | ~700 | — | `button` (cva: default/outline/ghost/dashed/danger/warning/inverse; sizes sm 30 · md 34 · lg 38 · icon 30 · icon-sm 28) · `card` · `status-pill` · `segmented` (shared-layout thumb) · `channel-tile` · `confirm` · `motion` (`Appear`, `Swap`, `Row`, `Expand`, and the one easing pair) · `misc` (`Initials, Meter, Switch, NativeSelect, SearchInput, Sparkline, MetricTile, EmptyState, Tag, ChannelChip, Skeleton, LoadError`) |
+| `lib/ws/` | 462 | — | `utils.ts` (`cn`, `fmt`, `pct`, `initialsOf`) · `channels.ts` (the domain `Channel` union → display name, monogram, colour, order) · `format.ts` (metric values and footers; says "Nothing yet"/"No comparison" rather than inventing a 0%) · `use-async.ts` (the loading/ready/failed/retry contract every card shares) · `plan.ts` (the graph ⇄ ordered-list seam — see below) · `messages.ts` (real copy out of stored graphs) |
+| `components/glass.ts` | ~230 | — | refraction + specular runtime, **marketing-only** (`SiteGlass.tsx` imports it). Was `components/app/glass.ts` |
 
-### Workflow builder — `components/app/builder/` (~2000L)
-`WorkflowBuilder.tsx` owns state (nodes, edges, undo/redo, toasts) · `Canvas.tsx` is the
-pannable/zoomable surface · `StepCard.tsx` the node · `Inspector.tsx` the right panel.
-Model is `lib/app/workflow.ts` (946L) — import-free and erasable, pinned by
-`tests/workflow.test.mjs`. **@xyflow/react is deliberately NOT a dependency**; the canvas is
-ours but keeps `.react-flow__*` class names because `app.css` styles them.
-**Persistence.** One `workflows` row per multichannel strategy (unique `strategy_id`; the route id
-*is* the strategy id). `workflow.ts` also holds the storage side: `WorkflowGraph`
-(`{nodes, edges, settings}`), `graphFromTemplate()`, `toGraph`/`fromGraph`, and
-`validateWorkflowGraph()` / `validateWorkflowName()` — a whitelist rebuild that rejects unknown
-step-data keys (incl. `__proto__`), bad sockets, a second Audience, **cycles** (the canvas walks the
-graph recursively and would hang) and oversize graphs; pinned by `tests/workflowPersist.test.mjs`.
-`WorkflowBuilder` autosaves 800 ms after the last change (a fingerprint of the content, so an
-unchanged graph never saves), serialises saves, flushes on `pagehide`/unmount with a `keepalive`
-fetch, and shows a truthful Saved / Unsaved changes / Saving… / "Couldn't save · Retry". Status
-(live/paused) belongs to the *strategy*, not the graph.
-**Audience lists** in the builder: `strategy` ("Audiences in this strategy") and `workspace` ("All
-audiences"), both counted live from `api.audiences`, then uploaded segments, then the demo `LISTS`
-relabelled "(demo)". The Audience step stores only the list key.
+**Motion.** `framer-motion` only, and only `transform`/`opacity`: `Appear` (a 4px rise, staggered
+by `index`), `Swap`/`Row` through `AnimatePresence`, `Expand` for a disclosure, and one
+`layoutId` thumb shared by `Segmented` and `SetupTabs`. Every one of them reads
+`useReducedMotion()`, and `workspace.css` zeroes durations under `prefers-reduced-motion` as a
+backstop.
 
-**Routes.** The builder has exactly one: `/dashboard/workflows/[id]` where `id` is a multichannel
-strategy's id (string). The page resolves the session itself, loads strategy + workflow through
-the repository, and 404s for an unknown id, another workspace's id or a standalone strategy.
-`/dashboard/workflows/new` and numeric (old demo) ids **redirect to Strategies**. The header
-`<select>` in the builder lists the workspace's multichannel strategies (a server-fed prop, not the
-demo `CAMPAIGNS`).
-`/dashboard/strategies/[id]` is a `permanentRedirect` to the builder, kept for old links — never
-render a second builder there. **`/dashboard/workflows` is a `permanentRedirect` to Strategies**:
-there is no separate library any more (§2d). Picking a template on Strategies **creates a draft
-multichannel strategy + its workflow, then opens the builder** (a workflow needs a strategy;
-creating on a GET would let link prefetch create rows).
+### Workflow builder — `components/ws/builder/builder-view.tsx` (452L)
+**It is an ordered list, not a canvas.** The node-graph surface (pannable canvas, step palette,
+property inspector, ~2000L across four files) is **deleted**: a sequence of touches is a list, and
+the graph bought nothing a list does not say more plainly. Do not reintroduce it.
 
-**The builder offers only steps that can run.** `PALETTE` in `lib/app/workflow.ts` lists LinkedIn
-invite, LinkedIn message, Email and Call task; WhatsApp and SMS need a business number and approved
-templates that do not exist, so a sequence built from them could never send with nothing on the
-canvas saying so. `STEPS` still describes them and `CHECKS` still holds `read` ("Read WhatsApp"),
-so a stored graph that holds one keeps validating and rendering — `OFFERED_CHECKS` is what the
-Inspector offers. No template builds one either (`tests/workflow.test.mjs` pins all of this).
-The Audience step's Job titles / Company size / Location fields were removed: they were stored and
-never read, so the audience count beside them never moved.
+The screen reads, top to bottom, in one 820px column: *Here's the plan* (the save state and the
+name) · *Who it goes to* · *What happens in order* (each touch's channel, template and day, plus
+one **Pace** control — gentle / standard / persistent — that rewrites every gap) · *When to stop*
+(stop-on-reply, locked) · *Nothing sends yet*.
+
+**`lib/ws/plan.ts` (219L) is the seam.** The stored shape is unchanged — still a node/edge graph in
+the `workflows` table, still validated by `validateWorkflowGraph()`. `readPlan(graph)` walks
+`audience → out`, folds each `wait.days` into the next touch's `gap`, and returns an ordered
+`Plan`; `writePlan()` rebuilds the audience → wait → touch chain, preserving each node's existing
+data, and re-runs `layout()`. `paceOf()`/`repace()` map gaps to a pace and back.
+
+**A plan that branches is read-only, not flattened.** `readPlan` sets `linear: false` on any fork,
+`cond` or `split`. The editor then disables every control (`Segmented` has a `disabled` prop for
+exactly this), makes the name `readOnly`, shows a banner saying why, and `change()` returns early —
+a stored branching graph is never silently rewritten into a straight line.
+
+**Model.** `lib/app/workflow.ts` (946L) still owns `WorkflowGraph`, the templates,
+`graphFromTemplate()`, `toGraph`/`fromGraph` and `validateWorkflowGraph()` /
+`validateWorkflowName()` — a whitelist rebuild that rejects unknown step-data keys (incl.
+`__proto__`), bad sockets, a second Audience, **cycles** and oversize graphs. Pinned by
+`tests/workflow.test.mjs` + `tests/workflowPersist.test.mjs`. **@xyflow/react was never a
+dependency** and the `.react-flow__*` class names are gone with `app.css`.
+
+**Autosave.** 800 ms after the last change, serialised, flushed on `pagehide`/unmount with a
+`keepalive` fetch. The save state is `idle | pending | saving | saved | failed` and starts at
+`idle` when a stored graph loaded — it used to start at "Unsaved changes" on a page that had
+changed nothing. Status (live/paused) belongs to the *strategy*, not the graph.
+
+**The builder never edits message copy.** Each touch selects a template; the copy lives on
+Setup → Messages. That is a product decision, not a missing feature.
+
+**Audience lists** come from the page as `AudienceOption[]`: "Audiences in this strategy", "All
+audiences" (both counted live) and the workspace's saved segments. The Audience step stores only
+the key.
+
+**Routes.** Exactly one builder route: `/dashboard/workflows/[id]`, `id` being a multichannel
+strategy's id. The page loads strategy + workflow through the repository and 404s for an unknown
+id, another workspace's id or a standalone strategy. `/dashboard/workflows/new`, numeric (old
+demo) ids and `/dashboard/workflows` itself **redirect to Strategies**;
+`/dashboard/strategies/[id]` is a `permanentRedirect` to the builder — never render a second
+builder there.
+
+**The builder offers only steps that can run.** `PALETTE` lists LinkedIn invite, LinkedIn message,
+Email and Call task. `STEPS` still *describes* WhatsApp and SMS and `CHECKS` still holds `read`, so
+a stored graph holding one keeps validating and rendering; `PALETTE`/`OFFERED_CHECKS` are what a
+user may add. No template builds one either (`tests/workflow.test.mjs` pins all of this).
 
 **Canvas figures are projections, and say so.** `stepStats()` multiplies the audience size by the
-fixed rates in `PASS`/`RATE`. Rates render with a `~` and the canvas carries a permanent line
-("Step counts are estimates from typical rates, not your results"). Replace them with real counts
-in the commit that lands a sender, not before.
+fixed rates in `PASS`/`RATE`. Rates render with a `~` and the screen carries a permanent
+"estimates, not your results" line. Replace them with real counts in the commit that lands a
+sender, not before.
 
-**Nothing sends, and the UI says so (`lib/capabilities.ts`).** `SENDING_ENABLED = false` gates every
-path to "live". The builder shows "Nothing sends yet" where Launch would be (a disabled Launch made
-its own confirmation dialog unreachable) and has no Test button (it was permanently disabled).
-The Strategies table offers Pause, not an on/off switch that could only fail in one direction.
-Pausing is always allowed. Flip the flag only in the commit that lands a sender.
+**Nothing sends, and the UI says so (`lib/capabilities.ts`).** `SENDING_ENABLED = false` gates
+every path to "live". The builder shows "Nothing sends yet" where Launch would be (a disabled
+Launch made its own confirmation dialog unreachable) and has no Test button. The Strategies table
+offers Pause, not a switch that could only fail one way. Flip the flag only in the commit that
+lands a sender.
 
-**Sample data.** `SampleBanner` (`components/app/SampleBanner.tsx`) asks `api.workspace()` for
-`workspace.sample` and renders **on Home only**, until the user clicks "Remove sample data"
-(`DELETE /api/workspace/sample`). It used to repeat at the top of all eight screens. Sample rows
-carry a "Sample" tag (`isSample` through `adapt.ts`) wherever they appear.
+**Sample data** carries a "Sample" tag on the row where it appears. The workspace-wide banner is
+gone: `SampleBanner.tsx` is deleted, and "Remove sample data" lives on the Workspace card of
+Setup → Config (`DELETE /api/workspace/sample`).
 
-**Strategy creation has one entry point.** `StrategiesScreen`'s "New strategy" opens
-`strategies/TemplatePicker.tsx`, and that is the only way in. It asks one question (which shape),
-because the old dialog's other four could not be answered before seeing the strategy: a
-standalone/multichannel type whose standalone branch had no detail screen at all, a status list
-including Completed, five channel checkboxes with a footnote saying three of them do not send, and
-a start date hinting it would "start now" when nothing starts. Channels follow from the steps and
-status follows from what the user does. `StrategyEditor.tsx` is now `RenameStrategy`.
+**Strategy creation has one entry point:** Strategies → New strategy → `/dashboard/strategies/new`
+(`new-strategy-view.tsx`). It asks the shape and nothing else, because the old dialog's other four
+questions could not be answered before seeing the strategy. Channels follow from the steps; status
+follows from what the user does.
 
-### Setup — `/dashboard/configuration`
-`ConfigurationScreen.tsx` + `components/app/configuration/` (`Overview`, `ChannelTabs`, `RuleTabs`,
-`Connections`, `Workspace`, `parts`). **Six tabs: Overview, LinkedIn, Email, Connections, Rules,
-Workspace** (`CONFIG_TABS` in `lib/app/configuration.ts`), titled "Setup" and reached from the main
-rail — it is one of the five `DASHBOARD_NAV` destinations, so it works on a phone.
+### Setup — `/dashboard/configuration` — one screen, three tabs
+`setup-overview-view.tsx` · `setup-config-view.tsx` (`/dashboard/configuration/config`) ·
+`setup-messages-view.tsx` (`/dashboard/configuration/messages`). Titled "Setup" and reached from
+the rail — it is one of the five `DASHBOARD_NAV` destinations, so it works on a phone.
 
-It was three rail destinations. WhatsApp, Calls and SMS each had a tab whose whole content was a
-paragraph saying there was nothing to configure (the Overview tiles and Connections say it once);
-Variables, Sending rules and Compliance are three groups of switches over one subject and share the
-Rules tab; Connections is the old Integrations screen; Workspace is what was left of Settings.
-`/dashboard/integrations` and `/dashboard/settings` are `permanentRedirect`s here, and the
-integrations route carries `?connected=`/`?failed=` across so an in-flight hosted sign-in still
-lands (the screen then opens the Connections tab). **`lib/channels/connect.ts` builds its
-success/failure URLs from `SETUP_HREF`.**
+**It was six tabs, and before that three rail destinations.** Overview · LinkedIn · Email ·
+Connections · Rules · Workspace collapsed to **Overview · Config · Messages**: LinkedIn and Email
+were two copies of one account register (now Overview), Connections and Rules are both "what is
+connected and how does sending behave" (now Config), Workspace held four read-only facts (now a
+card on Config), and message copy had no home at all (now Messages). `/dashboard/integrations`
+and `/dashboard/settings` are `permanentRedirect`s here, and the integrations route carries
+`?connected=`/`?failed=` across so an in-flight hosted sign-in still lands.
+**`lib/channels/connect.ts` builds its success/failure URLs from `SETUP_HREF`**, and
+`ConnectResult` in `setup-overview-view.tsx` is what reads them — it polls the connect session for
+the real outcome rather than trusting the query string, and clears the parameter so a refresh
+cannot replay a stale result.
+
+**Messages is new, and it is real copy.** `lib/ws/messages.ts` reads every stored workflow's
+channel steps and lists the actual subject/body/note per touch, per strategy (`bodyField()` knows
+`li_invite → note`, `call → notes`, else `body`). Nothing is invented: a strategy with no copy
+written says so. Editing copy in place is open work (§7).
 
 **The setup score only counts what the user can change.** "No mailbox connected" is `tone: "info"`,
 not a blocker: connecting a mailbox is not built, so scoring it left every workspace permanently
-short of full marks with a red row and no action. `CheckTab` is `"li" | "mail"`.
+short of full marks with no action available.
 
-**LinkedIn accounts and mailboxes belong to the workspace, not to a strategy.** There is no strategy
-scope on this screen. Each account tile has a "Used by strategies" control (real strategies, many to
-many for BOTH channels — a mailbox is no longer exclusive to one strategy) saved through
-`PUT /api/accounts/:id/strategies`; the daily caps and mailbox rotation are saved (debounced) through
-`PATCH /api/accounts/:id`. Domains show their SPF/DKIM/DMARC state. With nothing connected a tab says
-so and the Connect button is disabled: **connecting a LinkedIn account or mailbox is not built**.
+**LinkedIn accounts and mailboxes belong to the workspace, not to a strategy.** No strategy scope
+on this screen. Each account's "Used by strategies" control (real strategies, many-to-many for
+**both** channels) saves through `PUT /api/accounts/:id/strategies`; its daily caps and mailbox
+rotation save (debounced) through `PATCH /api/accounts/:id`. Domains show their SPF/DKIM/DMARC
+state. The Overview's checks come from `lib/data/setup.ts` (real state), never a constant.
+**Connecting a mailbox is not built** and the screen says so instead of offering a button.
 
-The Overview's checks come from `lib/data/setup.ts` (real state), not from a constant.
-**WhatsApp, Calls and SMS** have a tile each, marked Planned, which opens Connections — there is no
-account/number concept for them yet, so there is nothing to configure and nothing was scaffolded.
+**WhatsApp, Calls and SMS** are a Planned row on Config — no account or number concept exists, so
+there is nothing to configure and nothing was scaffolded. A tab whose whole content would be
+"nothing to configure yet" does not get a tab.
 
-**Variables, Sending rules and Compliance now persist** through `/api/settings` →
-`workspace_settings` (one row per workspace, three jsonb blobs). `RuleTabs.tsx`'s
-`useSavedSection` hook loads a section on mount and saves it (debounced, like `ChannelTabs.tsx`'s
-`useSavedSetting`) on every edit; `<SavedNote>` in `parts.tsx` says the values are saved but
-nothing enforces them, because nothing sends. `lib/app/configuration.ts#defaultWorkspaceSettings()`
-is the single source of the starting values (also what `MemoryRepository` seeds in demo mode) —
-the rule tables in that file (`STOP_RULES`, `AUDIENCE_RULES`, `REGIONAL_RULES`, `CONSENT`, …) still
-own each row's *label and hint*; only the on/off/chosen state moved to the store. Three controls on
-these tabs are still genuinely unbuilt, not because saving is fake but because there is nowhere to
-save them to yet — they keep their own inline "not available yet" text: "Add variable" (a new
-token), snippets, and the do-not-contact CSV upload. The **"All accounts" / Tracking rule
-switches** on the channel tabs (`ChannelTabs.tsx`) are unrelated and still in-component defaults —
-see §7.
+**Variables, sending rules and compliance persist** through `/api/settings` → `workspace_settings`
+(one row per workspace, three jsonb blobs); `lib/app/configuration.ts#defaultWorkspaceSettings()`
+is the single source of the starting values and the rule tables still own each row's label and
+hint. The screen says the values are saved but that nothing enforces them, because nothing sends.
 
 ### Presentation helpers — `lib/app/`
 `channels.ts` (the short channel keys and their colours) · `audiences.ts` (stage colours, score band,
@@ -441,7 +474,7 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 `adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `setup.test.mjs` · `workflowPersist.test.mjs` · `audiencesValidation` `audiencesMerge` `audiencesJourney` `audiencesProfile` `audiencesImportPlan` `prospect` `workflowSegment` ·
 `unipile.test.mjs` (the Unipile request contract + response readers) · `unipileEvents.test.mjs`
 (both documented webhook envelopes) · `webhookConfig.test.mjs` (the header/query-param match) —
-**217 tests**
+**220 tests**
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).
@@ -459,24 +492,25 @@ namespaces, no parameter properties).
 | Change the schema | edit `lib/db/schema.ts` → `npm run db:generate` → review the SQL → `npm run db:migrate`. Never hand-write a migration or `db:push`. |
 | Make another screen live | copy the Audiences pattern: `api.*` in a `useEffect`, map through `lib/app/adapt.ts`, server-side filters, optimistic writes with rollback |
 | Re-theme marketing | `:root` in `app/globals.css` + `@theme inline`. Grep `rgb(` and `pipSvg.ts` for hardcoded brand colours. |
-| Re-theme workspace | `:root` tokens in `app/app.css`. It is vendored, multi-pass — change the **final** `:root`/flattening block at the true end of the file, since same-specificity CSS means last-in-source wins over every earlier redeclaration. |
+| Re-theme workspace | the `.ws-root` token block at the top of `app/workspace.css`, and its `@theme inline` mapping right below it. Tokens are **never** on `:root` (that would repaint the marketing pages, which share the document) and components never carry hex — see §5. |
 | Add a glass surface (marketing only) | selector list in `globals.css`'s glass-skin block **AND** `SiteGlass.tsx`'s lens/specular lists. Miss one → renders flat. The workspace has no glass surfaces any more — see §5. |
 | Add a nav item | `lib/nav.ts` (workspace) or `lib/site.ts` (marketing). For the workspace, read §2d first: the rail and the mobile tab bar render the same five entries, and five is what fits the bar |
-| Add a Setup tab | `CONFIG_TABS` + `ConfigTab` in `lib/app/configuration.ts`, then a branch in `ConfigurationScreen.tsx`. A tab whose content is "nothing to configure yet" belongs on Connections as a Planned row instead |
+| Add a Setup tab | `SetupTabs` in `components/ws/shell/page.tsx` + a route under `app/dashboard/configuration/`. There are three (Overview · Config · Messages) and a tab whose content would be "nothing to configure yet" belongs on Config as a Planned row instead |
 | Offer a new builder step | `STEPS` + `defaults()` + `stepLabel()` **and** `PALETTE` in `lib/app/workflow.ts`. `STEPS` describes a step so stored graphs render; `PALETTE` is what a user may add, and only steps that can actually run go in it (`tests/workflow.test.mjs` pins that) |
 | Change what a new workspace starts with | `lib/data/sample.ts` (content, tested) and `sampleSeed.ts` (insert). Keep every email on `.example` and every phone in 555-01xx — the tests enforce it. |
 | Add a field to a stored workflow | `WorkflowGraph` + `validateWorkflowGraph` in `lib/app/workflow.ts` (the whitelist **drops/refuses** anything not listed) + a case in `tests/workflowPersist.test.mjs` |
-| Change what a connected account can do | `lib/data/types.ts` (`LinkedInSettings`/`EmailSettings`) → `validateAccountPatch` in `validate.ts` → `pg.ts` + `memory.ts` → `ChannelTabs.tsx` |
+| Change what a connected account can do | `lib/data/types.ts` (`LinkedInSettings`/`EmailSettings`) → `validateAccountPatch` in `validate.ts` → `pg.ts` + `memory.ts` → `components/ws/setup/account-settings.tsx` |
 | Add a setup check | `lib/data/setup.ts` (and its test). It is derived from `AccountsSnapshot`; do not hardcode |
 | Swap the LinkedIn vendor | implement `LinkedInChannelAdapter` (`lib/channels/adapter.ts`) and return it from `getLinkedInAdapter()`. Nothing else — that is what the interface is for. |
 | Handle another provider webhook | a reader in `lib/channels/events.ts` (+ a case in `tests/unipileEvents.test.mjs`), a writer in `inbound.ts`, a route under `app/api/webhooks/unipile/`, and the `source` in `webhookConfig.ts` so the registration script picks it up |
 | Add a per-account figure | `AccountActivity` in `lib/data/types.ts` → `accountActivity()` in **both** repository impls → `SeatActivity` in `ChannelTabs.tsx`. Count real `events` rows; never estimate |
 | Change how uploaded people are matched | `lib/audiences/merge.ts` (`mergeAudiences` + `findInJourney`; `planImport` follows `mergeAudiences` automatically) and `tests/audiencesMerge`/`audiencesJourney`/`audiencesImportPlan` |
-| Change what the import review shows | `ImportPreview`/`ReviewRow` in `lib/audiences/segments.ts` → `analyseUpload` in `lib/audiences/analyse.ts` → `components/app/audiences/ImportReview.tsx` |
-| Add something to the prospect profile | `ProspectProfile` in `lib/data/types.ts` → `ProspectFacts` + `buildProspect` in `lib/audiences/prospect.ts` (+ `tests/prospect.test.mjs`) → `getProspect` in **both** `pg.ts` and `memory.ts` (scope every query by `workspace_id`) → `ProspectDrawer.tsx` |
+| Change what the import review shows | `ImportPreview`/`ReviewRow` in `lib/audiences/segments.ts` → `analyseUpload` in `lib/audiences/analyse.ts` → `components/ws/audiences/import-review.tsx` |
+| Add something to the prospect profile | `ProspectProfile` in `lib/data/types.ts` → `ProspectFacts` + `buildProspect` in `lib/audiences/prospect.ts` (+ `tests/prospect.test.mjs`) → `getProspect` in **both** `pg.ts` and `memory.ts` (scope every query by `workspace_id`) → `components/ws/audiences/lead-drawer.tsx` |
 | Add a builder step kind | `STEPS` + `defaults()` + `stepLabel()` in `lib/app/workflow.ts`; tests pin the five seeded graphs |
-| Add a Configuration setting | the catalogue entry in `lib/app/configuration.ts` (and its default in `defaultWorkspaceSettings()` if it's one of Variables/Sending rules/Compliance), a field on `WorkspaceSettings` in `lib/data/types.ts`, a check in the matching `validate*Patch` function in `lib/data/validate.ts`, then the tab in `components/app/configuration/`. Rows are `<Row>`/`<ToggleRowView>` from `parts.tsx` — don't hand-roll one. |
-| Re-skin a single workspace screen | there is no scope mechanism for this any more (the old `.cfg` scope was removed once its palette became the dashboard-wide default — see §5). A screen that must differ needs its own new token scope, the same shape `.cfg` used to be. |
+| Add a Configuration setting | the catalogue entry in `lib/app/configuration.ts` (and its default in `defaultWorkspaceSettings()`), a field on `WorkspaceSettings` in `lib/data/types.ts`, a check in the matching `validate*Patch` in `lib/data/validate.ts`, then a row in `components/ws/setup/setup-rules.tsx`. Rows are its own `<Field>`/`<ToggleLine>` — don't hand-roll one, and don't write a rule's label or hint into the component: the catalogue owns that copy. |
+| Add a workspace UI primitive | `components/ws/ui/` (one file per family), styled from tokens only. Check the name against `globals.css` first — it is loaded on `/dashboard` too, so a class name both stylesheets use inherits the marketing rules. |
+| Add a screen state (loading / empty / failed) | `useAsync` in `lib/ws/use-async.ts` plus `Skeleton`/`EmptyState`/`LoadError` from `ui/misc.tsx`. Every card on these screens shows all three; a screen that shows only the happy path is unfinished. |
 
 ---
 
@@ -533,37 +567,51 @@ namespaces, no parameter properties).
   beats hydration navigates to `?email=…&password=…` — credentials into the URL bar, history
   and server logs. Found by a browser test clicking before React attached.
 
-**Workspace is flat, not glass**
-- The dashboard used to carry the same "liquid glass" material as the marketing site (blur,
-  translucent tint, specular rim). It was removed for performance and for a minimalist look, and
-  the fix lives in **one block at the true end of `app.css`**, after everything else — `app.css`
-  is a vendored, multi-pass file (its own header names 8 "layers," but in practice `:root` and the
-  master surface selector get redeclared several times across historical passes), so rather than
-  hunt every scattered `backdrop-filter`/`:root`/gradient declaration, the final block wins by
-  plain CSS cascade order (same specificity, last in source) and is the one place "the look"
-  belongs now. That block: disables `backdrop-filter` everywhere (`*, *::before, *::after`);
-  restores opaque `var(--surface)` + `var(--line)` on the master glass-surface selector list
-  (`.card,.pane,.side,.modal,…`) and `display:none`s its `:before`/`:after` specular/refraction
-  pseudo-elements; flattens `.btn.pri/.acc/.warn`, `.thumb`/`.navthumb`/`.vthumb`/`.tabthumb` and
-  the toggle switch from glossy gradients to solid token fills; sets `html, body` to `#FAFAF8` and
-  hides `.bgfx` (the animated blob wallpaper); and trims `.card`/`.wfc`/`.kpi`/`.cf-tile` padding
-  and radius plus the `--g`/`--pr` spacing tokens for smaller cards and shorter pages. **Add any
-  new dashboard surface's flat styling there, not to the older glass-era blocks above it** — they
-  still exist (harmless, since the final block overrides them) but are not where edits belong.
-- `components/app/glass.ts` (the refraction/specular runtime) **still exists but is no longer
-  mounted on the dashboard** — `components/app/Glass.tsx` (the component that mounted it there)
-  was deleted and `AppShell.tsx` no longer renders it. The module is kept because the marketing
-  site's `SiteGlass.tsx` still imports it; don't delete `glass.ts` itself.
-- The akkari palette/mono-font pair used to be scoped to Configuration alone via a `.cfg` class
-  (`Screen`'s `className`). That scope is gone — its tokens are now set directly in the base
-  `:root` at the top of `app.css` (further overridden by the final flattening block's `--accent`
-  values, same cascade rule as above), so the whole dashboard wears it by default. There is no
-  per-screen scope mechanism left; a screen that must differ needs a new one, shaped like `.cfg`
-  was.
-- `toAppAudience`'s `li` is the stored `audiences.linkedin` (or `""`). It used to be a `linkedin.com/in/<name>`
-  slug invented from the name — a profile nobody gave us. Don't reintroduce a derived URL.
-- `toAppAudience` (`lib/app/adapt.ts`) must not append a `Title: …` tag the stored tags already
-  carry — `AudiencesScreen` keys tag chips by text, so a repeat is a duplicate-key React warning.
+**Workspace design system (`app/workspace.css` + `components/ws/`)**
+- **Tokens live on `.ws-root`, never `:root`.** `app/globals.css` is loaded app-wide, including on
+  `/dashboard`; putting the workspace palette on `:root` would repaint every marketing page. The
+  dashboard layout puts `.ws-root` on the shell and `workspace.css` declares everything inside it,
+  then maps it with `@theme inline`. Same trap in the other direction: **a workspace class name
+  that also exists in `globals.css` inherits the marketing rules** — the workspace deliberately
+  avoids `.card`, `.btn`, `.field`, `.glass` and the rest of the glass-skin selector list.
+- **No shadows, gradients or glass in the workspace.** Surfaces separate by a hairline border
+  (`--border` between cards, the lighter `--divider` between rows inside one). The only shadow in
+  the whole workspace is the 1px lift on the active `Segmented` option. The old vendored
+  `app/app.css` (and its flattening block, its `.react-flow__*` rules, its `Thumb` material and
+  its `.intg*` block) is **deleted**, along with every component that depended on it.
+- **Mono carries structure, sans carries prose.** JetBrains Mono (`--font-code`, already loaded in
+  `app/layout.tsx`) for the brand, page and card titles, uppercase micro-labels (`.label-mono`) and
+  **every number** — counts, percentages, dates, times, ids. Inter for names, descriptions, body
+  copy and button text. Collapsing to one family loses the look.
+- **Colour never carries meaning alone.** Every status is a fg/bg token pair *with a text label*
+  (`StatusPill`), and a destructive action differs in icon shape as well as colour
+  (`variant="danger"` + `Trash2`/`Unlink`). The `--ch-*` channel colours are darkened from each
+  vendor's brand colour so a white monogram clears 4.5:1 — use them **on tiles only**, never as
+  text, and always beside the channel's name.
+- **Layout without breakpoints.** The shell is `flex flex-wrap` (sidebar `basis-[252px] grow`, main
+  `grow-[999] basis-[760px] min-w-0`), grids are `repeat(auto-fit,minmax(Npx,1fr))` — or
+  `auto-fill` where a single card must not stretch the full width — and a wide table sits in
+  `overflow-x-auto` with a `min-w`. **Never make the sidebar `fixed`, `sticky` or `h-screen`.** The
+  one breakpoint is `lg`, where the rail becomes a top bar and a sheet.
+- **Spacing is fixed, not improvised.** Page body `px-8 pt-6 pb-12`, `gap-5` between sections, card
+  header `px-[18px] py-[14px]`, rows `py-[11px]`–`py-[13px]`. Matching these is what makes the
+  margins line up across screens; a new card that invents its own padding shows immediately.
+- **Motion is `framer-motion`, `transform`/`opacity` only, and always reduced-motion aware.**
+  `components/ws/ui/motion.tsx` owns the easing and the four wrappers (`Appear`, `Swap`, `Row`,
+  `Expand`); `Segmented` and `SetupTabs` share one `layoutId` thumb. Every wrapper reads
+  `useReducedMotion()` and `workspace.css` zeroes durations under `prefers-reduced-motion` as a
+  backstop. Do not animate layout-affecting properties, and do not use CSS `zoom` to rescale the
+  app.
+- **Do not add a control that cannot act.** Carried over from the previous design and still
+  enforced: no global Search button without a palette behind it, no notification bell with a
+  hardcoded dot, no row checkboxes without a bulk action, no Test button that is permanently
+  disabled. A feature that is not built says so in words where the control would have been.
+- **`components/glass.ts`** (the refraction/specular runtime, moved from `components/app/`) is
+  **marketing-only** — `SiteGlass.tsx` imports it, nothing in `components/ws/` does. Don't delete
+  it, and don't mount it on the dashboard.
+- `toAppAudience`'s `li` is the stored `audiences.linkedin` (or `""`). It used to be a
+  `linkedin.com/in/<name>` slug invented from the name — a profile nobody gave us. Don't
+  reintroduce a derived URL.
 
 **CSS / glass (marketing site only — `globals.css` + `SiteGlass.tsx`)**
 - Three Chromium rules silently kill `backdrop-filter`, all found by testing the rendered page:
@@ -571,32 +619,24 @@ namespaces, no parameter properties).
   holding a transform — including the identity transform a forwards-filling animation leaves
   behind (hence `.intro-nav` fills `backwards`).
 - The wallpaper (`body::before` on the marketing pages) is **load-bearing** — glass needs colour
-  behind it to bend. Flatten it and every panel becomes a plain white card. (The dashboard's own
-  wallpaper/glass is gone on purpose — see "Workspace is flat, not glass" above; this rule is
-  marketing-only now.)
+  behind it to bend. Flatten it and every panel becomes a plain white card. (The dashboard has no
+  wallpaper and no glass on purpose — see "Workspace design system" above; this rule is
+  marketing-only.)
 - Shared component classes stay inside `@layer components` so utilities can still override them.
   A rule that must beat the global unlayered `:focus-visible` must itself be unlayered.
 - `--hl` must stay **inheriting** (pseudo-elements and inner pills read the animated value).
 - Grid columns holding wide content need `minmax(0,1fr)` or mobile overflows horizontally.
 
-**Workspace layout (still applies — not glass-related)**
-- The mobile tab bar sizes itself from `--tabs`, set inline by `AppShell` from
-  `DASHBOARD_NAV.length`. Add a nav item and it adapts; hardcoding the column count clips the last item.
-- **One sliding pill.** Every selector in the workspace — segmented controls and page tabs, the
-  nav rail and its Integrations/Settings foot group, the settings side tabs, the mobile tab bar —
-  renders `Thumb` from `components/app/ui.tsx`, which slides one raised pill across a recessed
-  track. The variant class (`.thumb` / `.tabthumb` / `.navthumb` / `.vthumb`) sets only the inset
-  and radius; the material is the single `--thumb-bg` / `--thumb-sh` pair (now flat `var(--surface)`
-  + a hairline, per the final flattening block above, not a glossy gradient), and `--track` is the
-  recess every pill travels along. **Add a new control to that pair rather than inventing a third
-  fill.**
-- `Thumb` measures from its own `parentElement`, not a ref passed in: React attaches a parent's
-  ref *after* its children's layout effects run, so a thumb handed its track's ref measures nothing
-  on the first pass and never appears. It measures with `getBoundingClientRect()` against the
-  track rather than `offsetTop` — the Audiences row sits inside the positioned `.navhas` dropdown
-  wrapper, which would otherwise be its offset parent and report zero.
-- The Configuration tab strip **scrolls, it does not wrap**: `Thumb` translates along one row, so
-  a second row leaves the pill sitting under the wrong tab.
+**Workspace layout**
+- The mobile navigation is a top bar plus an animated sheet below `lg` (`AppShell`), not a tab bar
+  sized from a CSS variable. It renders the same `DASHBOARD_NAV` as the rail, so a destination
+  missing from that list is unreachable on a phone — see §2d.
+- **Two routes are chromeless** (`/dashboard/strategies/new` and `/dashboard/workflows/[id]`):
+  `AppShell` detects them and renders the focus layout, the builder with a 60px `SidebarRail`. Add
+  a focus route to that check, not by nesting another layout.
+- The Setup tab strip wraps rather than scrolls — the underline is a `layoutId` element, so it
+  follows whichever tab is current on either row.
+
 - **Marketing typography (akkari.io-inspired pass).** `app/globals.css`'s `@theme inline` wires
   **both** `--font-serif` and `--font-mono` to `var(--font-code)` (JetBrains Mono, already loaded
   in `app/layout.tsx`) — akkari's own headlines render in a monospace face (confirmed via its
@@ -627,17 +667,16 @@ namespaces, no parameter properties).
 
 ---
 
-- **Sign-out must be a full page load** (`useSignOut()` uses `window.location.assign`, not
-  `router.push`). `app/app.css` is unscoped (it resets `*` and restyles `body`) and Next keeps a
-  visited route's CSS across client-side navigation, so a soft navigation to `/login` rendered the
-  marketing page with the workspace stylesheet still applied (left-aligned, no padding). A fresh
-  document loads only the marketing styles. Same rule for any future jump from the app to a
-  marketing route.
+- **Sign-out must be a full page load** (`useSignOut()` in `components/ws/shell/use-sign-out.ts`
+  uses `window.location.assign`, not `router.push`), and it navigates only after the server has
+  confirmed the session row is gone. Next keeps a visited route's CSS across client-side
+  navigation, so a soft navigation to `/login` rendered the marketing page with the workspace
+  stylesheet still applied. A fresh document loads only the marketing styles. Same rule for any
+  future jump from the app to a marketing route.
 
-- **Density lives in one block.** The "Minimal and compact" block near the end of `app/app.css`
-  (before the `.intg*` rules) is the workspace's type/control scale: 13px body, 11px sub-text, 30–32px
-  controls, 32px rail rows. It overrides the vendored rules above it, so it must stay after them. Do not
-  use CSS `zoom` to shrink the app: it breaks `glass.ts` lens sizing and the builder's pointer maths.
+- **Density is the type scale in `workspace.css` + the sizes baked into `ui/`.** 13px body, 11px
+  micro-labels, 30–38px controls. Re-tune by changing the primitive (`button`'s `size` variants,
+  `.label-mono`), not by scattering size overrides through screens — and never with CSS `zoom`.
 
 ## 6. Content rules (from the product brief — these are commitments, not preferences)
 
@@ -684,10 +723,10 @@ Roughly in the order they should be closed.
    so Analytics is real SQL over invented numbers until the engine lands. Rollups have no strategy
    or person dimension, so Analytics cannot filter by either. The prospect profile already reads
    `events` and `workflow_runs` per person, so its engagement section fills in once the engine writes them.
-   - **Audiences can't be renamed, deleted or exported yet**, and there is no bulk action on a
-     selection of audiences — the table's row checkboxes were removed with the rest of the dead
-     controls, so bringing bulk actions back means bringing the selection back with them. The
-     import review lists the first 500 rows; every row is still imported.
+   - **A segment can't be renamed or exported yet**, and there is no bulk action on a selection of
+     leads — the table has no row checkboxes, so bringing bulk actions back means bringing the
+     selection back with them. (A single lead can be added, edited and deleted.) The import review
+     lists the first 500 rows; every row is still imported.
 7. **Strategy counters are denormalised and nothing maintains them** (`sent`, `delivered`,
    rates): the sample's are derived from its rollups (a test pins that); real strategies show "—".
 8. **Auth has no email verification, password reset link, OAuth or login rate limiting.** Fine for
@@ -703,11 +742,16 @@ Roughly in the order they should be closed.
     unique key on an audience's email, by design: contacts without one exist). The second upload would
     merge into the first.
 12. **The Inbox cannot mark a thread read/handled** (no endpoint) and cannot reply (nothing sends).
-13. **Deferred from the UX audit.** An audience still has two detail surfaces: the read-only
-    `ProspectDrawer` and the `AudienceEditor` modal its Edit button opens. The inline row Edit is gone,
-    but making the drawer editable in place (and deleting the modal) is a real refactor and was
-    left out. There is also no global search: the top bar's Search button was removed because it
-    had no handler, so building search means building the palette, not re-adding the button.
+13. **Deferred.** A lead still has two detail surfaces: the read-only `lead-drawer.tsx` and the
+    `lead-form.tsx` modal its Edit button opens. Making the drawer editable in place (and deleting
+    the modal) is a real refactor and was left out. There is also no global search: the top bar has
+    no Search button because there is no palette behind it — building search means building the
+    palette, not adding the button.
+    **Setup → Messages is read-only.** It lists the real copy out of every stored workflow, but
+    editing a template there is not built: the touch's copy is still edited through the stored
+    graph. The template editor's own open questions (variables with fallbacks — the fallbacks
+    themselves do persist, see Config — the LinkedIn 300-character invite limit, and the
+    WhatsApp/DLT approval states) are unanswered, and WhatsApp and SMS cannot send anyway.
 14. **Workspace-level channel on/off switches do not exist.** The builder's `channelsOff` prop and
     its "…is off in Settings" tooltip are left in place for when they do; nothing passes it today.
 15. `gtm_mock.html` at the root is a standalone design reference, not part of the app.

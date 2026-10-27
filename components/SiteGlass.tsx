@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { mountLens, mountSpecular } from "./app/glass";
+import { mountLens, mountSpecular } from "./glass";
 
 /**
  * Mounts the liquid-glass runtime for the marketing pages: an SVG refraction

@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import "../app.css";
+import "../workspace.css";
 import { getRepository } from "@/lib/data";
 import { resolveSession, SESSION_COOKIE } from "@/lib/auth";
 import { LOGIN_HREF } from "@/lib/site";
-import { AppShell } from "@/components/app/AppShell";
+import { AppShell } from "@/components/ws/shell/AppShell";
 
 export const metadata: Metadata = {
   title: { default: "Workspace — Flightpath", template: "%s — Flightpath" },
@@ -20,10 +20,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!who) redirect(LOGIN_HREF);
 
   // Read straight from the repository on the server; the REST API is there for client components.
-  const user = await getRepository().getUser({ workspaceId: who.workspaceId, userId: who.userId });
-  // A valid session whose user or membership has since been removed: treat it as signed out
-  // rather than rendering a shell with no identity.
-  if (!user) redirect(LOGIN_HREF);
+  const ctx = { workspaceId: who.workspaceId, userId: who.userId };
+  const repo = getRepository();
+  const [user, workspace] = await Promise.all([repo.getUser(ctx), repo.getWorkspace(ctx)]);
+  // A valid session whose user, membership or workspace has since been removed: treat it as
+  // signed out rather than rendering a shell with no identity.
+  if (!user || !workspace) redirect(LOGIN_HREF);
 
-  return <AppShell user={user}>{children}</AppShell>;
+  return (
+    <AppShell user={user} workspace={workspace}>
+      {children}
+    </AppShell>
+  );
 }

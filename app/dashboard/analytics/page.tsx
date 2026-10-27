@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { AnalyticsScreen } from "@/components/app/AnalyticsScreen";
+import { AnalyticsView } from "@/components/ws/analytics/analytics-view";
 
 export const metadata: Metadata = { title: "Analytics" };
 
 export default function AnalyticsPage() {
-  return <AnalyticsScreen />;
+  return <AnalyticsView />;
 }

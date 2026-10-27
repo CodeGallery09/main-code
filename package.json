@@ -17,14 +17,18 @@
     "unipile:webhooks": "node --experimental-strip-types scripts/register-unipile-webhooks.ts"
   },
   "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.4",
     "exceljs": "^4.4.0",
+    "framer-motion": "^14.6.0",
     "libphonenumber-js": "^1.13.15",
     "lucide-react": "^1.54.0",
     "next": "^15.5.27",
     "pg": "^8.23.1",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.7",

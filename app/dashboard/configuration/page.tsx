@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { ConfigurationScreen } from "@/components/app/ConfigurationScreen";
+import { SetupOverviewView } from "@/components/ws/setup/setup-overview-view";
 import { linkedInConnectConfigured } from "@/lib/channels";
 
 export const metadata: Metadata = { title: "Setup" };
 
-export default function ConfigurationPage() {
-  return <ConfigurationScreen linkedInConfigured={linkedInConnectConfigured()} />;
+export default function SetupOverviewPage() {
+  return <SetupOverviewView linkedInConfigured={linkedInConnectConfigured()} />;
 }

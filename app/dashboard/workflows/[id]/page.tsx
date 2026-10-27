@@ -1,22 +1,24 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { WorkflowBuilder } from "@/components/app/builder/WorkflowBuilder";
+import { BuilderView, type AudienceOption } from "@/components/ws/builder/builder-view";
 import { resolveSession, SESSION_COOKIE } from "@/lib/auth";
 import { getRepository } from "@/lib/data";
 import {
-  fromGraph,
+  AUDIENCE_CAMPAIGN,
+  AUDIENCE_WORKSPACE,
   graphFromTemplate,
   TEMPLATES,
   validateWorkflowGraph,
   type WorkflowStatus,
 } from "@/lib/app/workflow";
+import { CAMPAIGNS_HREF } from "@/lib/nav";
 import type { StrategyStatus } from "@/lib/data/types";
 import { LOGIN_HREF } from "@/lib/site";
 
 type Params = { params: Promise<{ id: string }>; searchParams: Promise<{ template?: string }> };
 
-/** The builder knows three states; a strategy has six. Finished and scheduled ones read as the nearest. */
+/** The builder knows three states; a strategy has five. Finished and scheduled ones read as the nearest. */
 const STATUS_OF: Record<StrategyStatus, WorkflowStatus> = {
   live: "live",
   paused: "paused",
@@ -24,8 +26,6 @@ const STATUS_OF: Record<StrategyStatus, WorkflowStatus> = {
   draft: "draft",
   scheduled: "draft",
 };
-
-const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
 
 async function context() {
   const who = await resolveSession((await cookies()).get(SESSION_COOKIE)?.value);
@@ -35,29 +35,31 @@ async function context() {
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { id } = await params;
+  if (id === "new" || /^\d+$/.test(id)) return { title: "Strategy" };
   const strategy = await getRepository().getStrategy(await context(), id);
-  return { title: strategy ? strategy.name : "Workflow" };
+  return { title: strategy ? strategy.name : "Strategy" };
 }
 
 /**
- * The builder for one strategy's workflow. The route id is the strategy id; a workflow is stored
- * per multichannel strategy, so an unknown id, another workspace's id, or a standalone strategy
- * all read as "not found" — the repository filters by workspace, so there is nothing to leak.
+ * The builder for one strategy's plan. The route id is the strategy id, and a
+ * workflow is stored per multichannel strategy, so an unknown id, another
+ * workspace's id, or a standalone strategy all read as "not found" — the
+ * repository filters by workspace, so there is nothing to leak.
  */
-export default async function WorkflowBuilderPage({ params, searchParams }: Params) {
+export default async function BuilderPage({ params, searchParams }: Params) {
   const { id } = await params;
-  // Older links and the library's "new" route have no strategy to open: send them to the library,
-  // where a template creates a strategy first.
-  if (id === "new" || /^\d+$/.test(id)) redirect("/dashboard/workflows");
+  // Older links and the removed library's "new" route have no strategy to open.
+  if (id === "new" || /^\d+$/.test(id)) redirect(CAMPAIGNS_HREF);
 
   const ctx = await context();
   const repo = getRepository();
   const strategy = await repo.getStrategy(ctx, id);
   if (!strategy || strategy.type !== "multichannel") notFound();
 
-  const [record, { items }] = await Promise.all([
+  const [record, segments, everyone] = await Promise.all([
     repo.getWorkflow(ctx, id),
-    repo.listStrategies(ctx, { type: "multichannel" }),
+    repo.listSegments(ctx),
+    repo.listAudiences(ctx, { pageSize: 1 }),
   ]);
 
   let graph;
@@ -71,21 +73,21 @@ export default async function WorkflowBuilderPage({ params, searchParams }: Para
     graph = graphFromTemplate(TEMPLATES.some((t) => t.k === template) ? template : "blank");
   }
 
-  const status = STATUS_OF[strategy.status];
-  const workflow = fromGraph(graph, {
-    id: strategy.id,
-    name: record?.name ?? strategy.name,
-    status,
-    started: status === "draft" ? null : DATE.format(new Date(strategy.startedAt)),
-  });
+  const audiences: AudienceOption[] = [
+    { value: AUDIENCE_CAMPAIGN, label: "Leads in this strategy", size: strategy.audiences },
+    { value: AUDIENCE_WORKSPACE, label: "Every lead in the workspace", size: everyone.total },
+    ...segments.map((s) => ({ value: s.id, label: s.name, size: s.audienceCount })),
+  ];
 
   return (
-    <WorkflowBuilder
-      workflow={workflow}
+    <BuilderView
+      strategyId={strategy.id}
+      initialName={record?.name ?? strategy.name}
+      status={STATUS_OF[strategy.status]}
+      graph={graph}
       // No row yet: the builder saves the starting graph straight away so a reload finds it.
       stored={Boolean(record)}
-      isSample={Boolean(strategy.isSample)}
-      strategies={items.map((c) => ({ id: c.id, name: c.name }))}
+      audiences={audiences}
     />
   );
 }

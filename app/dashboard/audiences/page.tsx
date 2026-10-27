@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { AudiencesScreen } from "@/components/app/AudiencesScreen";
+import { AudiencesView } from "@/components/ws/audiences/audiences-view";
 
 export const metadata: Metadata = { title: "Audiences" };
 
 export default function AudiencesPage() {
-  return <AudiencesScreen />;
+  return <AudiencesView />;
 }
