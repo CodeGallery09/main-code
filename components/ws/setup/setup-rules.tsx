@@ -19,8 +19,6 @@ import type { Channel, Workspace, WorkspaceSettings } from "@/lib/data/types";
 import type { SettingsPatch } from "@/lib/data/repository";
 import { cn, fmt } from "@/lib/ws/utils";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ws/ui/card";
-import { Button } from "@/components/ws/ui/button";
-import { Confirm } from "@/components/ws/ui/confirm";
 import { Segmented } from "@/components/ws/ui/segmented";
 import { LoadError, NativeSelect, Skeleton, Switch, Tag } from "@/components/ws/ui/misc";
 import { Appear } from "@/components/ws/ui/motion";
@@ -394,25 +392,8 @@ export function RulesCards({ workspace, index = 0 }: { workspace: Workspace; ind
   );
 }
 
-/** The workspace's own facts, plus the one destructive action on this screen. */
+/** The workspace's own facts. */
 function WorkspaceCard({ workspace }: { workspace: Workspace }) {
-  const [removing, setRemoving] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [sample, setSample] = useState(workspace.sample);
-
-  const hasSample = sample.strategies > 0 || sample.audiences > 0;
-
-  async function remove() {
-    setBusy(true);
-    try {
-      await api.removeSampleData();
-      setSample({ strategies: 0, audiences: 0 });
-      setRemoving(false);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -427,29 +408,6 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
         <Fact label="Seats" value={`${fmt(workspace.seatsUsed)} of ${fmt(workspace.seats)} used`} />
         <Fact label="Workspace id" value={workspace.id} mono />
       </dl>
-
-      {hasSample && (
-        <div className="flex flex-wrap items-center gap-3 border-t border-border px-[18px] py-[13px]">
-          <span className="grow-[999] text-[12.5px] leading-[1.55] text-muted-foreground">
-            This workspace still has {fmt(sample.strategies)} sample{" "}
-            {sample.strategies === 1 ? "strategy" : "strategies"} and {fmt(sample.audiences)} sample{" "}
-            {sample.audiences === 1 ? "audience" : "audiences"}, labelled wherever they appear.
-          </span>
-          <Button variant="danger" size="sm" onClick={() => setRemoving(true)}>
-            Remove sample data
-          </Button>
-        </div>
-      )}
-
-      <Confirm
-        open={removing}
-        title="Remove the sample data?"
-        body="The sample strategy, its workflow and every sample audience are deleted. Nothing you created is touched, and this cannot be undone."
-        confirmLabel="Remove it"
-        busy={busy}
-        onConfirm={() => void remove()}
-        onCancel={() => setRemoving(false)}
-      />
     </Card>
   );
 }

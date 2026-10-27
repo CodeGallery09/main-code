@@ -1,4 +1,4 @@
-import { House, Inbox, SlidersHorizontal, Send, Users, type LucideIcon } from "lucide-react";
+import { ChartColumn, House, Inbox, SlidersHorizontal, Send, Users, type LucideIcon } from "lucide-react";
 import { DASHBOARD_NAV, type NavIcon } from "@/lib/nav";
 
 const ICONS: Record<NavIcon, LucideIcon> = {
@@ -6,11 +6,12 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   inbox: Inbox,
   audiences: Users,
   strategies: Send,
+  analytics: ChartColumn,
   configuration: SlidersHorizontal,
 };
 
 /**
- * The five destinations, straight off lib/nav.ts so the rail, the mobile sheet
+ * The six destinations, straight off lib/nav.ts so the rail, the mobile sheet
  * and the builder's icon rail can never drift apart.
  *
  * Badge rule: `info` is a grey count of things to look at (conversations

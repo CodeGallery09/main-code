@@ -705,9 +705,10 @@ export function blankWorkflow(template = "blank"): Workflow {
 }
 
 /**
- * The workflow behind each multichannel strategy in lib/app/strategies.ts. The
- * Q1 founders draft carries a stray SMS step with no message, so the builder
- * has something real to flag.
+ * Five fixed workflows the model tests run against (tests/workflow*.test.mjs). The app itself no
+ * longer reads them: the demo workspace seeds one strategy from the `outbound` template, the same
+ * as a database workspace. The Q1 founders draft carries a stray SMS step with no message, so the
+ * validation tests have something real to flag.
  */
 export const WORKFLOWS: Workflow[] = (() => {
   const draft = build(5, "Q1 founders", "outbound", "draft");

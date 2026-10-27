@@ -17,29 +17,6 @@
 import type { ChannelKey } from "@/lib/app/channels";
 import type { WorkspaceSettings } from "@/lib/data/types";
 
-/* ---------- the tabs ------------------------------------------------------ */
-
-export type ConfigTab = "overview" | "li" | "mail" | "connections" | "rules" | "workspace";
-
-/**
- * Tab key and label. The issue count on a tab's badge comes from `lib/data/setup.ts`.
- *
- * Six tabs, down from nine plus two whole screens. WhatsApp, Calls and SMS each had a tab whose
- * entire content was a paragraph saying there was nothing to configure — the Overview tiles and
- * the Connections list already say that once. Variables, Sending rules and Compliance are three
- * groups of switches over one subject, so they share the Rules tab. Connections is the provider
- * list that used to be its own Integrations screen, and Workspace is the team and plan that used
- * to be the Settings screen.
- */
-export const CONFIG_TABS: [ConfigTab, string][] = [
-  ["overview", "Overview"],
-  ["li", "LinkedIn"],
-  ["mail", "Email"],
-  ["connections", "Connections"],
-  ["rules", "Rules"],
-  ["workspace", "Workspace"],
-];
-
 /* ---------- rules ---------------------------------------------------------- */
 
 export type ToggleRow = {

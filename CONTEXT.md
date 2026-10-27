@@ -70,17 +70,23 @@ catalogue and the Configuration rule defaults.
 ### 2c. Every workspace screen reads its own workspace
 Home, Inbox, Audiences, Strategies (+ builder), Analytics and Setup all read through the repository /
 REST API, so a workspace only ever sees its own rows.
-**There is no demo content in the app any more except the sample world** (`lib/data/sample.ts` + `sampleSeed.ts`, §3):
-rows flagged `is_sample`, seeded at signup, labelled "Sample" in the UI and deleted by "Remove
-sample data". In the no-database demo mode (the `dev` deployment) `MemoryRepository` serves the
-old demo dataset (`lib/data/seed.ts`) through the same API, so the same screens work there.
+**There is no demo content in the app except the demo strategy** (`lib/data/sample.ts` + `sampleSeed.ts`, §3):
+one paused multichannel strategy and everything inside it (8 audiences, their conversations and
+to-dos, its funnel by day), rows flagged `is_sample` and labelled "Sample" in the UI. **Every
+workspace has it and nothing removes it**: signup seeds it, and `Repository.ensureDemo(ctx)`
+(called by `app/dashboard/layout.tsx`) seeds it for any workspace that lacks one — an advisory
+lock inside the transaction keeps concurrent first loads from seeding twice. It holds **no
+accounts, mailboxes or domains**: those are the workspace's own. In the no-database demo mode (the
+`dev` deployment) `MemoryRepository` is built from the same sample world (`lib/data/seed.ts`
+derives from `sample.ts`), so dev shows what production shows. Home and Analytics carry a "Demo
+figures" line (`shell/demo-note.tsx`) while it exists.
 
 **The rule for new work:** a screen that needs data gets it from a repository method + an API
 route. Never put figures, names, accounts or strategies in a component or in `lib/app/`.
 
-### 2d. Five destinations, and one record is never two sections
-`DASHBOARD_NAV` in `lib/nav.ts` carries **Home, Inbox, Audiences, Strategies, Setup**, and the rail and
-the mobile tab bar render the same five. There used to be nine, which did not fit the tab bar, so
+### 2d. Six destinations, and one record is never two sections
+`DASHBOARD_NAV` in `lib/nav.ts` carries **Home, Inbox, Audiences, Strategies, Analytics, Setup**, and the rail
+and the phone sheet render the same six. There used to be nine, which did not fit a phone tab bar, so
 below `lg` — where the rail is replaced by a top bar and a sheet — Configuration, Integrations
 and Settings were unreachable on a phone. Two merges fixed that:
 
@@ -92,10 +98,11 @@ and Settings were unreachable on a phone. Two merges fixed that:
   two, and Integrations drew a tab strip across the three. `/dashboard/settings` and
   `/dashboard/integrations` redirect to `/dashboard/configuration`.
 
-Analytics is a report rather than a place you live, so Home links to it instead of the rail.
+Analytics was a report Home linked to while the nav was a five-slot tab bar. The phone nav is a
+sheet now, so it has its own place as the sixth destination.
 
 **The rule for new work:** before adding a rail item, check the record it lists is not already
-listed somewhere else under another name. Five fits the tab bar; a sixth does not.
+listed somewhere else under another name.
 
 ---
 
@@ -109,9 +116,9 @@ listed somewhere else under another name. Five fits the tab bar; a sixth does no
 | `index.ts` | 22 | `getRepository()` factory. Returns Postgres when `DATABASE_URL` is set, memory otherwise. |
 | `memory.ts` | 971 | In-memory impl over the seed. No-config fallback; writes last until restart. **All its mutable state lives on `globalThis` via `shared()`** (see §5). Workflows: a `Map` by strategy id, falling back to the demo `WORKFLOWS` matched on strategy name, so the seed's four multichannel strategies open a real graph. |
 | `pg.ts` | 1759 | Postgres impl via Drizzle. Filters `workspace_id` on every read *and* write (the `ws()` helper). Audiences page in SQL; strategies aggregate in JS. Uploads, segments, accounts, workflows and the sample world are all real tables now. |
-| `seed.ts` | 831 | Demo dataset. The only file that goes away once real data exists. |
-| `sample.ts` | 214 | The sample content every new workspace starts with: one paused multichannel strategy + 8 audiences. Import-free; `tests/sample.test.mjs` pins that every email is on the reserved `.example` domain and every phone in the fictional 555-01xx range, so a sample audience can never be a real person. |
-| `sampleSeed.ts` | 216 | Server-only. Inserts the whole sample world **inside the `signUp` transaction**: strategy + workflow, 8 audiences, 4 conversations and 3 to-dos, the funnel by day, a LinkedIn account + mailbox + sending domain assigned to the strategy. All `is_sample`. |
+| `seed.ts` | 213 | The `dev` (no-database) workspace, **derived from `sample.ts`**: one demo strategy, its audiences, threads, messages, tasks and per-channel rollup rows (`ROLLUPS`), and no accounts or domains. Exports the same shapes the repository returns, so `memory.ts` reads it like rows. |
+| `sample.ts` | 195 | The demo strategy every workspace has: one paused multichannel strategy + 8 audiences, their conversations, to-dos and funnel. No accounts. Import-free; `tests/sample.test.mjs` pins that every email is on the reserved `.example` domain and every phone in the fictional 555-01xx range, so a sample audience can never be a real person. |
+| `sampleSeed.ts` | 174 | Server-only. Inserts the demo strategy, from the `signUp` transaction **and** from `PgRepository.ensureDemo`: strategy + workflow, 8 audiences, 4 conversations and 3 to-dos, the funnel by day. All `is_sample`. No accounts, mailboxes or domains. |
 | `setup.ts` | 151 | `setupChecks(accounts, domains)`: what is and is not set up, **computed from the workspace's own accounts**. Drives the Configuration overview, the tab badges and the rail badge. Import-free, tested. |
 | `query.ts` | 68 | Pure filter/sort/paginate helpers shared by both impls. Import-free, tested. |
 | `validate.ts` | 651 | Write-path validation, `{ok,data}|{ok,errors}`. Import-free, erasable, tested. An audience's `linkedin` goes through `normaliseUrl` (same rule as the upload's `checkUrl`: any web URL, `https://` added); a create with no stage starts at `new`. |
@@ -222,7 +229,6 @@ directly.
 | `/api/badges` | GET | `{ tasks, inbox, config }`: the rail counts, fetched on every navigation |
 | `/api/settings` | GET, PATCH | the Configuration screen's Variables/Sending rules/Compliance tabs (`workspace_settings`). PATCH body carries only the section(s) changed (`{ variableFallbacks? \| sendingRules? \| compliance? }`); shape/range checked in `validate.ts`, merged into the stored row by the repository. Always real for the signed-in workspace, but `SENDING_ENABLED` stays false so nothing acts on it — see Configuration below |
 | `/api/audiences/uploads`, `…/[id]/validate`, `/api/audiences/segments` | POST, GET | parked file → review (per-channel reach, **in-journey warning**, import plan) → saved segment. Segments carry a live `audienceCount`. Max 4 MB (Vercel's body cap) |
-| `/api/workspace/sample` | DELETE | removes the sample strategy (its workflow cascades) + sample audiences; idempotent |
 | `/api/threads`, `/api/threads/[id]`, `/api/threads/[id]/messages` | GET, POST | |
 | `/api/analytics` | GET | `?range=`, `?channels=` |
 | `/api/login`, `/api/logout`, `/api/signup` | POST | signup is invite-only; see Auth below |
@@ -239,11 +245,11 @@ instead of a forgeable request parameter.
 
 **Sign-up is invite-only.** `signUp()` runs only for an address in `SIGNUP_ALLOWED_EMAILS` (exact,
 case-insensitive, no wildcards; unset = nobody). It creates workspace + user + owner membership +
-default quota rows + **the sample content** + session in **one transaction**, so a failure leaves
+default quota rows + **the demo strategy** + session in **one transaction**, so a failure leaves
 no half-account. The form collects **name, company, email, password**. The workspace id is a fresh
 `org_<12 url-safe chars>` (`newOrgId()`, 72 random bits) — the tenant key stored as
 `workspaces.id` and `workspace_id` everywhere — and the workspace is named after the company.
-After signing up the user lands on `FIRST_RUN_HREF` (`/dashboard/strategies`), where the sample
+After signing up the user lands on `FIRST_RUN_HREF` (`/dashboard/strategies`), where the demo
 strategy is. Each signup gets **its own workspace** — there is no way to join one (§7).
 
 | File | Purpose |
@@ -322,7 +328,7 @@ reads what only the server can read, and renders one `"use client"` view. Keep i
 | `strategies/new-strategy-view.tsx` | 236 | `/api/strategies`, `/api/strategies/[id]/workflow` | focus route. Shape (multichannel / single channel), then a play or a blank sequence; creates the strategy + its workflow and opens the builder — **never on a GET** |
 | `builder/builder-view.tsx` | 452 | `/api/strategies/[id]/workflow` | see below |
 | `setup/setup-overview-view.tsx` + `account-settings.tsx` | 401 + 132 | `/api/accounts` | connected accounts, each account's dials behind its Settings, hosted-sign-in result banner, disconnect. No Pause: nothing is sending to pause |
-| `setup/setup-config-view.tsx` + `setup-rules.tsx` | 249 + 480 | `/api/accounts`, `/api/settings`, `/api/workspace/sample` | the provider catalogue (`providerView()`) and starting a LinkedIn sign-in; `setup-rules.tsx` is the stored rules (sending window, limits, stop rules, skip rules, variable fallbacks, compliance) plus the Workspace card and "Remove sample data" |
+| `setup/setup-config-view.tsx` + `setup-rules.tsx` | 249 + 539 | `/api/accounts`, `/api/settings` | the provider catalogue (`providerView()`) and starting a LinkedIn sign-in; `setup-rules.tsx` is the stored rules (sending window, limits, stop rules, skip rules, variable fallbacks, compliance) plus the Workspace card and "Remove sample data" |
 | `setup/setup-messages-view.tsx` | 283 | `/api/workflows` | **all message copy in the workspace, in one place**, read out of every stored graph by `lib/ws/messages.ts`. The builder never edits copy (§5) |
 | `analytics/analytics-view.tsx` + `charts.tsx` | 138 + 89 | `/api/analytics` | one report, no tabs. Hairline grid, single near-black accent |
 | `ui/` | ~700 | — | `button` (cva: default/outline/ghost/dashed/danger/warning/inverse; sizes sm 30 · md 34 · lg 38 · icon 30 · icon-sm 28) · `card` · `status-pill` · `segmented` (shared-layout thumb) · `channel-tile` · `confirm` · `motion` (`Appear`, `Swap`, `Row`, `Expand`, and the one easing pair) · `misc` (`Initials, Meter, Switch, NativeSelect, SearchInput, Sparkline, MetricTile, EmptyState, Tag, ChannelChip, Skeleton, LoadError`) |
@@ -398,9 +404,9 @@ Launch made its own confirmation dialog unreachable) and has no Test button. The
 offers Pause, not a switch that could only fail one way. Flip the flag only in the commit that
 lands a sender.
 
-**Sample data** carries a "Sample" tag on the row where it appears. The workspace-wide banner is
-gone: `SampleBanner.tsx` is deleted, and "Remove sample data" lives on the Workspace card of
-Setup → Config (`DELETE /api/workspace/sample`).
+**Sample data** carries a "Sample" tag on the row where it appears. It cannot be removed: there is
+no "Remove sample data" control, route or repository method (it used to live on the Workspace card
+and at `DELETE /api/workspace/sample`).
 
 **Strategy creation has one entry point:** Strategies → New strategy → `/dashboard/strategies/new`
 (`new-strategy-view.tsx`). It asks the shape and nothing else, because the old dialog's other four
@@ -410,7 +416,7 @@ follows from what the user does.
 ### Setup — `/dashboard/configuration` — one screen, three tabs
 `setup-overview-view.tsx` · `setup-config-view.tsx` (`/dashboard/configuration/config`) ·
 `setup-messages-view.tsx` (`/dashboard/configuration/messages`). Titled "Setup" and reached from
-the rail — it is one of the five `DASHBOARD_NAV` destinations, so it works on a phone.
+the rail — it is one of the six `DASHBOARD_NAV` destinations, so it works on a phone.
 
 **It was six tabs, and before that three rail destinations.** Overview · LinkedIn · Email ·
 Connections · Rules · Workspace collapsed to **Overview · Config · Messages**: LinkedIn and Email
@@ -452,7 +458,7 @@ hint. The screen says the values are saved but that nothing enforces them, becau
 ### Presentation helpers — `lib/app/`
 `channels.ts` (the short channel keys and their colours) · `audiences.ts` (stage colours, score band,
 phone mask, tag colours, avatar tints) · `strategies.ts` (status pill wording) · `configuration.ts`
-(tab list + rule catalogue + `defaultWorkspaceSettings()`, the one function that is a
+(rule catalogue + `defaultWorkspaceSettings()`, the one function that is a
 `WorkspaceSettings` — see Workspace data below) · `integrations.ts` (provider catalogue + `providerView`) ·
 `workflow.ts` (the graph model, templates, validation) · `segments.ts` (a
 tiny event so the builder refreshes when a segment is saved) · **`adapt.ts` bridges to `lib/data`**
@@ -474,7 +480,7 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 `adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `setup.test.mjs` · `workflowPersist.test.mjs` · `audiencesValidation` `audiencesMerge` `audiencesJourney` `audiencesProfile` `audiencesImportPlan` `prospect` `workflowSegment` ·
 `unipile.test.mjs` (the Unipile request contract + response readers) · `unipileEvents.test.mjs`
 (both documented webhook envelopes) · `webhookConfig.test.mjs` (the header/query-param match) —
-**220 tests**
+**221 tests**
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).
@@ -494,7 +500,7 @@ namespaces, no parameter properties).
 | Re-theme marketing | `:root` in `app/globals.css` + `@theme inline`. Grep `rgb(` and `pipSvg.ts` for hardcoded brand colours. |
 | Re-theme workspace | the `.ws-root` token block at the top of `app/workspace.css`, and its `@theme inline` mapping right below it. Tokens are **never** on `:root` (that would repaint the marketing pages, which share the document) and components never carry hex — see §5. |
 | Add a glass surface (marketing only) | selector list in `globals.css`'s glass-skin block **AND** `SiteGlass.tsx`'s lens/specular lists. Miss one → renders flat. The workspace has no glass surfaces any more — see §5. |
-| Add a nav item | `lib/nav.ts` (workspace) or `lib/site.ts` (marketing). For the workspace, read §2d first: the rail and the mobile tab bar render the same five entries, and five is what fits the bar |
+| Add a nav item | `lib/nav.ts` (workspace) or `lib/site.ts` (marketing). For the workspace, read §2d first: the rail and the phone sheet render the same six entries |
 | Add a Setup tab | `SetupTabs` in `components/ws/shell/page.tsx` + a route under `app/dashboard/configuration/`. There are three (Overview · Config · Messages) and a tab whose content would be "nothing to configure yet" belongs on Config as a Planned row instead |
 | Offer a new builder step | `STEPS` + `defaults()` + `stepLabel()` **and** `PALETTE` in `lib/app/workflow.ts`. `STEPS` describes a step so stored graphs render; `PALETTE` is what a user may add, and only steps that can actually run go in it (`tests/workflow.test.mjs` pins that) |
 | Change what a new workspace starts with | `lib/data/sample.ts` (content, tested) and `sampleSeed.ts` (insert). Keep every email on `.example` and every phone in 555-01xx — the tests enforce it. |
@@ -507,7 +513,7 @@ namespaces, no parameter properties).
 | Change how uploaded people are matched | `lib/audiences/merge.ts` (`mergeAudiences` + `findInJourney`; `planImport` follows `mergeAudiences` automatically) and `tests/audiencesMerge`/`audiencesJourney`/`audiencesImportPlan` |
 | Change what the import review shows | `ImportPreview`/`ReviewRow` in `lib/audiences/segments.ts` → `analyseUpload` in `lib/audiences/analyse.ts` → `components/ws/audiences/import-review.tsx` |
 | Add something to the prospect profile | `ProspectProfile` in `lib/data/types.ts` → `ProspectFacts` + `buildProspect` in `lib/audiences/prospect.ts` (+ `tests/prospect.test.mjs`) → `getProspect` in **both** `pg.ts` and `memory.ts` (scope every query by `workspace_id`) → `components/ws/audiences/lead-drawer.tsx` |
-| Add a builder step kind | `STEPS` + `defaults()` + `stepLabel()` in `lib/app/workflow.ts`; tests pin the five seeded graphs |
+| Add a builder step kind | `STEPS` + `defaults()` + `stepLabel()` in `lib/app/workflow.ts`; tests pin the five fixture graphs in `WORKFLOWS` |
 | Add a Configuration setting | the catalogue entry in `lib/app/configuration.ts` (and its default in `defaultWorkspaceSettings()`), a field on `WorkspaceSettings` in `lib/data/types.ts`, a check in the matching `validate*Patch` in `lib/data/validate.ts`, then a row in `components/ws/setup/setup-rules.tsx`. Rows are its own `<Field>`/`<ToggleLine>` — don't hand-roll one, and don't write a rule's label or hint into the component: the catalogue owns that copy. |
 | Add a workspace UI primitive | `components/ws/ui/` (one file per family), styled from tokens only. Check the name against `globals.css` first — it is loaded on `/dashboard` too, so a class name both stylesheets use inherits the marketing rules. |
 | Add a screen state (loading / empty / failed) | `useAsync` in `lib/ws/use-async.ts` plus `Skeleton`/`EmptyState`/`LoadError` from `ui/misc.tsx`. Every card on these screens shows all three; a screen that shows only the happy path is unfinished. |
@@ -754,7 +760,11 @@ Roughly in the order they should be closed.
     WhatsApp/DLT approval states) are unanswered, and WhatsApp and SMS cannot send anyway.
 14. **Workspace-level channel on/off switches do not exist.** The builder's `channelsOff` prop and
     its "…is off in Settings" tooltip are left in place for when they do; nothing passes it today.
-15. `gtm_mock.html` at the root is a standalone design reference, not part of the app.
+15. **The demo strategy's funnel is part of every workspace's Home and Analytics totals, for good.**
+    It is labelled (`DemoNote`), but real activity will add to it rather than replace it. When a
+    sender lands, decide whether the totals should exclude `is_sample` rollups by default; the rows
+    are already flagged for it.
+16. `gtm_mock.html` at the root is a standalone design reference, not part of the app.
 
 ## 8. Running it locally
 

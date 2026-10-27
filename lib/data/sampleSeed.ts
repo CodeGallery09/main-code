@@ -1,22 +1,22 @@
 /**
- * Inserts the sample world (lib/data/sample.ts) for a brand-new workspace.
+ * Inserts the demo strategy (lib/data/sample.ts) into a workspace.
  *
- * Called from inside the `signUp` transaction, so a workspace never exists half-seeded: either it
- * has the account, the quotas and the sample, or none of it was created. Server-only — it writes
- * through Drizzle.
+ * Called from inside the `signUp` transaction, so a workspace never exists half-seeded, and again
+ * by `PgRepository.ensureDemo` for any workspace that does not have one yet. Server-only — it
+ * writes through Drizzle.
  *
- * What a new workspace gets, all of it flagged as sample and removed by "Remove sample data":
+ * All of it is flagged as sample and lives inside the one strategy:
  * - one paused multichannel strategy with its workflow, and 8 audiences in it;
  * - conversations and to-dos for the audiences who replied, so Inbox and Home have something in them;
- * - the strategy's funnel by day, so Analytics has a chart, matching the strategy's own figures;
- * - one LinkedIn account, one mailbox and one sending domain, owned by the workspace and assigned
- *   to the sample strategy, so Configuration shows how accounts are shared across strategies.
+ * - the strategy's funnel by day, so Analytics has a chart, matching the strategy's own figures.
+ *
+ * It adds no accounts, mailboxes or domains: those are the workspace's own, and sample ones would
+ * make Setup claim something is connected that is not.
  */
 
 import { randomBytes } from "node:crypto";
 import { AUDIENCE_CAMPAIGN, graphFromTemplate } from "@/lib/app/workflow";
 import {
-  SAMPLE_ACCOUNTS,
   SAMPLE_CAMPAIGN,
   SAMPLE_LEADS,
   SAMPLE_ROLLUPS,
@@ -24,13 +24,10 @@ import {
   SAMPLE_THREADS,
 } from "@/lib/data/sample";
 import {
-  strategyAccounts,
   strategies,
-  channelAccounts,
   dailyRollups,
   audiences,
   messages,
-  sendingDomains,
   tasks,
   threads,
   workflows,
@@ -174,43 +171,4 @@ export async function seedSampleWorkspace(tx: Tx, workspaceId: string, ownerId: 
       isSample: true,
     })),
   );
-
-  /* Org-level accounts, shared by the sample strategy (and any the user makes later). */
-  const linkedinId = id("a");
-  const mailboxId = id("a");
-  await tx.insert(channelAccounts).values([
-    {
-      id: linkedinId,
-      workspaceId,
-      channel: "linkedin",
-      name: SAMPLE_ACCOUNTS.linkedin.name,
-      handle: SAMPLE_ACCOUNTS.linkedin.handle,
-      state: SAMPLE_ACCOUNTS.linkedin.state,
-      settings: SAMPLE_ACCOUNTS.linkedin.settings,
-      isSample: true,
-    },
-    {
-      id: mailboxId,
-      workspaceId,
-      channel: "email",
-      name: SAMPLE_ACCOUNTS.email.name,
-      handle: SAMPLE_ACCOUNTS.email.handle,
-      state: SAMPLE_ACCOUNTS.email.state,
-      settings: SAMPLE_ACCOUNTS.email.settings,
-      isSample: true,
-    },
-  ]);
-  await tx.insert(sendingDomains).values({
-    id: id("d"),
-    workspaceId,
-    host: SAMPLE_ACCOUNTS.domain.host,
-    spf: SAMPLE_ACCOUNTS.domain.spf,
-    dkim: SAMPLE_ACCOUNTS.domain.dkim,
-    dmarc: SAMPLE_ACCOUNTS.domain.dmarc,
-    isSample: true,
-  });
-  await tx.insert(strategyAccounts).values([
-    { workspaceId, strategyId, accountId: linkedinId },
-    { workspaceId, strategyId, accountId: mailboxId },
-  ]);
 }

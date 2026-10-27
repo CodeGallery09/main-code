@@ -1,11 +1,13 @@
 /**
- * The sample content every new workspace starts with: one multichannel strategy and a handful of
- * audiences, so a new account can see what the product does before it has any data of its own.
+ * The demo strategy every workspace has: one multichannel strategy, its audiences, their
+ * conversations and to-dos, and its funnel by day, so any account can see what the product does
+ * before it has data of its own.
  *
- * **Everything here is invented, and says so.** Rows seeded from it carry `is_sample = true`, the
- * UI shows a "Sample" label and a banner, and "Remove sample data" deletes them. The content
- * rules (CLAUDE.md) forbid presenting invented figures as real, so the labelling is the point of
- * the flag, not decoration.
+ * **It is the only invented content, it lives inside that one strategy, and it says so.** Rows
+ * seeded from it carry `is_sample = true` and the UI labels them "Sample". It deliberately holds no
+ * connected accounts, mailboxes or domains: those are the workspace's own, and a sample one would
+ * make Setup report something connected that is not. The content rules (CLAUDE.md) forbid
+ * presenting invented figures as real, so the labelling is the point of the flag, not decoration.
  *
  * Two safety properties, pinned by tests/sample.test.mjs because getting either wrong would be a
  * real incident rather than a cosmetic bug:
@@ -191,24 +193,3 @@ export const SAMPLE_TASKS: SampleTask[] = [
   { audienceEmail: "sofia@lumen.example", kind: "reply", channel: "email", summary: "Asked if it connects to HubSpot", when: "2h" },
   { audienceEmail: "hannah@parcel.example", kind: "review", channel: "linkedin", summary: "First LinkedIn message ready to review", when: "Waiting" },
 ];
-
-/**
- * The org-level accounts the sample workspace shows, so the Configuration screen has something to
- * explain. They are invented, flagged `is_sample`, assigned to the sample strategy, and removed with
- * it. Connecting a real LinkedIn account or mailbox is not built yet.
- */
-export const SAMPLE_ACCOUNTS = {
-  linkedin: {
-    name: "Sample LinkedIn account",
-    handle: "linkedin.com/in/sample-account",
-    state: "healthy",
-    settings: { connections: 20, messages: 50, visits: 60, inmail: 25 },
-  },
-  email: {
-    name: "Sample mailbox",
-    handle: "sample@sample.example",
-    state: "warm",
-    settings: { provider: "Sample provider", health: 92, cap: 40, rotate: true },
-  },
-  domain: { host: "sample.example", spf: true, dkim: true, dmarc: true },
-} as const;

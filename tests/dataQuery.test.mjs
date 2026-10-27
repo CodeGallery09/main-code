@@ -1,13 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  byDay,
   deltaPercent,
   matchesFacet,
   matchesText,
   normalise,
   paginate,
   rangeDays,
+  rollupWindows,
   sortBy,
+  sumOf,
   trendOf,
 } from "../lib/data/query.ts";
 
@@ -79,4 +82,21 @@ test("rangeDays falls back to 30 for anything unknown", () => {
   assert.equal(rangeDays("90d"), 90);
   assert.equal(rangeDays("nonsense"), 30);
   assert.equal(rangeDays(undefined), 30);
+});
+
+test("rollups collapse per channel into one point per day, oldest first", () => {
+  const row = (day, channel, reached, replied) => ({ day, channel, reached, engaged: 0, replied, positive: 0, meetings: 0 });
+  const points = byDay([row("2026-10-02", "email", 4, 1), row("2026-10-01", "linkedin", 3, 0), row("2026-10-02", "linkedin", 2, 1)]);
+  assert.deepEqual(points.map((p) => [p.date, p.reached, p.replied]), [["2026-10-01", 3, 0], ["2026-10-02", 6, 2]]);
+});
+
+test("the current window and the one before it split on the cutoff day", () => {
+  const now = new Date("2026-10-10T12:00:00Z");
+  const row = (day, channel) => ({ day, channel, reached: 1, engaged: 0, replied: 0, positive: 0, meetings: 0 });
+  const rows = [row("2026-10-10", "email"), row("2026-10-04", "email"), row("2026-10-03", "linkedin"), row("2026-09-20", "email")];
+  const { current, previous } = rollupWindows(rows, 7, null, now);
+  assert.deepEqual(current.map((p) => p.date), ["2026-10-04", "2026-10-10"]);
+  assert.deepEqual(previous.map((p) => p.date), ["2026-10-03"], "a day older than two windows is dropped");
+  const onlyEmail = rollupWindows(rows, 7, ["email"], now);
+  assert.equal(sumOf(onlyEmail.current, "reached") + sumOf(onlyEmail.previous, "reached"), 2);
 });

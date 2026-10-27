@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AnimatePresence } from "framer-motion";
 import { ChevronRight, TriangleAlert } from "lucide-react";
 import { api } from "@/lib/api";
-import { ANALYTICS_HREF, INBOX_HREF, SETUP_HREF } from "@/lib/nav";
+import { INBOX_HREF, SETUP_HREF } from "@/lib/nav";
 import { setupChecks, type SetupCheck } from "@/lib/data/setup";
 import type { Overview, Task, TaskKind } from "@/lib/data/types";
 import { CHANNEL_NAME, CHANNEL_ORDER, channelNames } from "@/lib/ws/channels";
@@ -14,6 +14,7 @@ import { useAsync } from "@/lib/ws/use-async";
 import { cn, fmt } from "@/lib/ws/utils";
 import { PageBody, PageHeader, TopBar } from "@/components/ws/shell/page";
 import { useWorkspace } from "@/components/ws/shell/workspace-context";
+import { DemoNote } from "@/components/ws/shell/demo-note";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ws/ui/card";
 import { Button, buttonVariants } from "@/components/ws/ui/button";
 import { Segmented } from "@/components/ws/ui/segmented";
@@ -96,16 +97,13 @@ export function HomeView() {
             }
             subtitle={
               data
-                ? `${fmt(replies?.value ?? 0)} replies and ${fmt(meetings?.value ?? 0)} meetings in the last 7 days across ${live.length} live ${live.length === 1 ? "strategy" : "strategies"}.`
+                ? `${fmt(replies?.value ?? 0)} ${replies?.value === 1 ? "reply" : "replies"} and ${fmt(meetings?.value ?? 0)} ${meetings?.value === 1 ? "meeting" : "meetings"} in the last 7 days across ${live.length} live ${live.length === 1 ? "strategy" : "strategies"}.`
                 : "Reading the last seven days."
-            }
-            actions={
-              <Link href={ANALYTICS_HREF} className={buttonVariants({ variant: "outline", size: "lg" })}>
-                See analytics
-              </Link>
             }
           />
         </Appear>
+
+        <DemoNote />
 
         {/* KPIs */}
         <Appear index={1}>

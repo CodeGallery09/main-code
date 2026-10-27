@@ -13,8 +13,11 @@ import {
   matchesText,
   paginate,
   rangeDays,
+  rollupWindows,
   sortBy,
+  sumOf,
   trendOf,
+  type RollupRow,
 } from "@/lib/data/query";
 import {
   ACCOUNTS,
@@ -24,10 +27,11 @@ import {
   LEADS,
   MESSAGES,
   QUOTAS,
+  ROLLUPS,
+  TASKS,
   TEAM,
   THREADS,
   WORKSPACE,
-  buildTrend,
 } from "@/lib/data/seed";
 import type {
   StrategyQuery,
@@ -40,7 +44,7 @@ import type {
   ThreadQuery,
   WriteError,
 } from "@/lib/data/repository";
-import { AUDIENCE_CAMPAIGN, WORKFLOWS, toGraph, type WorkflowGraph } from "@/lib/app/workflow";
+import { AUDIENCE_CAMPAIGN, graphFromTemplate, type WorkflowGraph } from "@/lib/app/workflow";
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
 import type { AccountSettingsPatch, StrategyPatch, AudiencePatch } from "@/lib/data/validate";
 import { findInJourney, mergeAudiences, type InJourneyRow, type AudienceProfile } from "@/lib/audiences/merge";
@@ -118,7 +122,7 @@ const strategies = shared<Strategy[]>("strategies", () => CAMPAIGNS.map((c) => (
 const messages = shared<Message[]>("messages", () => MESSAGES.map((m) => ({ ...m })));
 const threads = shared<Thread[]>("threads", () => THREADS.map((t) => ({ ...t })));
 const audienceRows = shared<Audience[]>("audienceRows", () => LEADS.map((l) => ({ ...l })));
-const trend = shared<TrendPoint[]>("trend", () => buildTrend(90));
+const rollups = shared<RollupRow[]>("rollups", () => ROLLUPS.map((r) => ({ ...r })));
 const accounts = shared<ChannelAccount[]>("accounts", () => ACCOUNTS.map((a) => structuredClone(a)));
 const domains = shared("domains", () => DOMAINS.map((d) => ({ ...d })));
 
@@ -142,94 +146,12 @@ function initialsOf(name: string): string {
   return (first + last).toUpperCase();
 }
 
-const tasks = shared<Task[]>("tasks", () => [
-  {
-    id: "tk_omar",
-    kind: "reply",
-    audienceId: "l_omar",
-    audienceName: "Omar Haddad",
-    company: "Brightline Logistics",
-    initials: "OH",
-    score: 80,
-    summary: "Asked about pricing for 8 seats",
-    when: "35m",
-    channel: "email",
-    done: false,
-  },
-  {
-    id: "tk_rohan",
-    kind: "reply",
-    audienceId: "l_rohan",
-    audienceName: "Rohan Desai",
-    company: "Tiffin Labs",
-    initials: "RD",
-    score: 58,
-    summary: "Asked for a deck",
-    when: "20m",
-    channel: "whatsapp",
-    done: false,
-  },
-  {
-    id: "tk_maya",
-    kind: "call",
-    audienceId: "l_maya",
-    audienceName: "Maya Reyes",
-    company: "Example Co",
-    initials: "MR",
-    score: 70,
-    summary: "Open to a chat · clicked pricing",
-    when: "Today",
-    channel: "call",
-    done: false,
-  },
-  {
-    id: "tk_priya",
-    kind: "call",
-    audienceId: "l_priya",
-    audienceName: "Priya Nair",
-    company: "Kitebox",
-    initials: "PN",
-    score: 72,
-    summary: "Visited pricing twice",
-    when: "Today",
-    channel: "call",
-    done: false,
-  },
-  {
-    id: "tk_kenji",
-    kind: "reply",
-    audienceId: "l_kenji",
-    audienceName: "Kenji Watanabe",
-    company: "Quanta Health",
-    initials: "KW",
-    score: 46,
-    summary: "Asked who else uses it",
-    when: "3h",
-    channel: "linkedin",
-    done: false,
-  },
-  {
-    id: "tk_daniel",
-    kind: "review",
-    audienceId: "l_daniel",
-    audienceName: "Daniel Kim",
-    company: "Northwind HR",
-    initials: "DK",
-    score: 10,
-    summary: "First LinkedIn message ready",
-    when: "Waiting",
-    channel: "linkedin",
-    done: false,
-  },
-]);
+const tasks = shared<Task[]>("tasks", () => TASKS.map((t) => ({ ...t })));
 
-/** Totals for a window of the daily series, plus the window before it, for the delta. */
-function windows(days: number) {
-  const current = trend.slice(-days);
-  const previous = trend.slice(-days * 2, -days);
-  const sum = (rows: TrendPoint[], key: keyof Omit<TrendPoint, "date">) =>
-    rows.reduce((total, row) => total + row[key], 0);
-  return { current, previous, sum };
+/** The window ending today and the one before it, read off the funnel rows like the SQL store does. */
+function windows(days: number, channels: Channel[] | null = null) {
+  const { current, previous } = rollupWindows(rollups, days, channels);
+  return { current, previous, sum: sumOf };
 }
 
 function metric(
@@ -249,6 +171,7 @@ function metric(
 
 function headlineMetrics(range: RangeKey): Metric[] {
   const days = rangeDays(range);
+  const active = audienceRows.filter((l) => l.stage !== "closed").length;
   const { current, previous, sum } = windows(days);
   const reached = sum(current, "reached");
   const reachedPrev = sum(previous, "reached");
@@ -264,16 +187,9 @@ function headlineMetrics(range: RangeKey): Metric[] {
   return [
     metric("replies", "Replies", replied, repliedPrev, "count", 0, spark("replied")),
     metric("meetings", "Meetings", meetings, meetingsPrev, "count", 0, spark("meetings")),
-    metric("reply-rate", "Reply rate", rate, ratePrev, "percent", 1, spark("replied"), "points"),
-    metric(
-      "active-audiences",
-      "Active audiences",
-      audienceRows.filter((l) => l.stage !== "closed").length * 92,
-      audienceRows.filter((l) => l.stage !== "closed").length * 88,
-      "count",
-      0,
-      spark("engaged"),
-    ),
+    // No earlier reach means no meaningful change in rate; comparing with 0 would read as a gain.
+    { ...metric("reply-rate", "Reply rate", rate, ratePrev, "percent", 1, spark("replied"), "points"), ...(reachedPrev ? {} : { delta: null, trend: "flat" as const }) },
+    metric("active-audiences", "Active audiences", active, active, "count", 0, spark("engaged")),
   ];
 }
 
@@ -289,7 +205,14 @@ export class MemoryRepository implements Repository {
   }
 
   async getWorkspace(_ctx: Ctx): Promise<Workspace> {
-    return { ...WORKSPACE, quotas: QUOTAS.map((q) => ({ ...q })) };
+    return {
+      ...WORKSPACE,
+      quotas: QUOTAS.map((q) => ({ ...q })),
+      sample: {
+        strategies: strategies.filter((c) => c.isSample).length,
+        audiences: audienceRows.filter((l) => l.isSample).length,
+      },
+    };
   }
 
   async getOverview(ctx: Ctx, range: RangeKey): Promise<Overview> {
@@ -409,20 +332,16 @@ export class MemoryRepository implements Repository {
   async getWorkflow(_ctx: Ctx, strategyId: string): Promise<WorkflowRecord | null> {
     const saved = workflowRows.get(strategyId);
     if (saved) return structuredClone(saved);
-    // The seed's multichannel strategies each have a demo workflow with the same name.
+    // The demo strategy has no saved graph until someone edits it: it starts from the same outbound
+    // template a database workspace's sample strategy is seeded with, reading the strategy's own audiences.
     const strategy = strategies.find((c) => c.id === strategyId);
-    const demo = strategy && WORKFLOWS.find((w) => w.name === strategy.name);
-    if (!strategy || !demo) return null;
-    return structuredClone({
+    if (!strategy || !strategy.isSample) return null;
+    return {
       strategyId,
-      name: demo.name,
-      // The demo graphs name invented audience lists; in a workspace they read the strategy's audiences.
-      graph: ((g) => ({
-        ...g,
-        nodes: g.nodes.map((n) => (n.kind === "audience" ? { ...n, data: { ...n.data, list: AUDIENCE_CAMPAIGN } } : n)),
-      }))(toGraph(demo)),
+      name: strategy.name,
+      graph: graphFromTemplate("outbound", AUDIENCE_CAMPAIGN),
       updatedAt: strategy.startedAt,
-    });
+    };
   }
 
   async listWorkflows(ctx: Ctx): Promise<WorkflowRecord[]> {
@@ -455,26 +374,8 @@ export class MemoryRepository implements Repository {
     return structuredClone(record);
   }
 
-  async removeSampleData(_ctx: Ctx): Promise<{ strategies: number; audiences: number }> {
-    let removedAudiences = 0;
-    for (let i = audienceRows.length - 1; i >= 0; i--) {
-      if (audienceRows[i].isSample) {
-        audienceRows.splice(i, 1);
-        removedAudiences++;
-      }
-    }
-    let removedStrategies = 0;
-    for (let i = strategies.length - 1; i >= 0; i--) {
-      if (strategies[i].isSample) {
-        workflowRows.delete(strategies[i].id);
-        strategies.splice(i, 1);
-        removedStrategies++;
-      }
-    }
-    for (let i = accounts.length - 1; i >= 0; i--) if (accounts[i].isSample) accounts.splice(i, 1);
-    for (let i = domains.length - 1; i >= 0; i--) if (domains[i].isSample) domains.splice(i, 1);
-    return { strategies: removedStrategies, audiences: removedAudiences };
-  }
+  /** The demo workspace is born with its demo strategy and nothing removes it. */
+  async ensureDemo(_ctx: Ctx): Promise<void> {}
 
   /* ------------------------------------------- org-level channel accounts -- */
 
@@ -761,39 +662,34 @@ export class MemoryRepository implements Repository {
 
   async getAnalytics(_ctx: Ctx, range: RangeKey, channels: Channel[] | null): Promise<Analytics> {
     const days = rangeDays(range);
-    const { current, previous, sum } = windows(days);
-    // Channel mix is a fixed split of the totals; a real store groups by channel.
-    const mix: Record<Channel, number> = {
-      linkedin: 0.34,
-      email: 0.41,
-      whatsapp: 0.12,
-      call: 0.08,
-      sms: 0.05,
-    };
-    const picked = channels && channels.length ? channels : (Object.keys(mix) as Channel[]);
-    const share = picked.reduce((total, channel) => total + mix[channel], 0);
+    const { current, previous, sum } = windows(days, channels);
+    const { rows } = rollupWindows(rollups, days, channels);
+    const cutoff = current[0]?.date ?? "";
 
-    const scale = (value: number) => Math.round(value * share);
-    const reached = scale(sum(current, "reached"));
-    const reachedPrev = scale(sum(previous, "reached"));
-    const replied = scale(sum(current, "replied"));
-    const repliedPrev = scale(sum(previous, "replied"));
-    const positive = scale(sum(current, "positive"));
-    const positivePrev = scale(sum(previous, "positive"));
-    const meetings = scale(sum(current, "meetings"));
-    const meetingsPrev = scale(sum(previous, "meetings"));
-    const engaged = scale(sum(current, "engaged"));
+    const reached = sum(current, "reached");
+    const reachedPrev = sum(previous, "reached");
+    const replied = sum(current, "replied");
+    const repliedPrev = sum(previous, "replied");
+    const positive = sum(current, "positive");
+    const positivePrev = sum(previous, "positive");
+    const meetings = sum(current, "meetings");
+    const meetingsPrev = sum(previous, "meetings");
+    const engaged = sum(current, "engaged");
     const rate = reached ? Number(((replied / reached) * 100).toFixed(1)) : 0;
     const ratePrev = reachedPrev ? Number(((repliedPrev / reachedPrev) * 100).toFixed(1)) : 0;
-    const spark = (key: keyof Omit<TrendPoint, "date">) =>
-      current.slice(-14).map((row) => Math.round(row[key] * share));
+    const spark = (key: keyof Omit<TrendPoint, "date">) => current.slice(-14).map((row) => row[key]);
 
-    const byChannel: ChannelBreakdown[] = picked.map((channel) => ({
-      channel,
-      reached: Math.round(sum(current, "reached") * mix[channel]),
-      replies: Math.round(sum(current, "replied") * mix[channel]),
-      meetings: Math.round(sum(current, "meetings") * mix[channel]),
-    }));
+    // Real per-channel grouping from the funnel rows, the way the SQL store does it.
+    const picked: Channel[] = channels && channels.length ? channels : ["linkedin", "email", "whatsapp", "call", "sms"];
+    const byChannel: ChannelBreakdown[] = picked.map((channel) => {
+      const inWindow = rows.filter((r) => r.channel === channel && r.day >= cutoff);
+      return {
+        channel,
+        reached: inWindow.reduce((total, r) => total + r.reached, 0),
+        replies: inWindow.reduce((total, r) => total + r.replied, 0),
+        meetings: inWindow.reduce((total, r) => total + r.meetings, 0),
+      };
+    });
 
     const funnel: FunnelStage[] = [
       { stage: "Reached", count: reached, share: 1 },
@@ -806,18 +702,11 @@ export class MemoryRepository implements Repository {
     return {
       metrics: [
         metric("reached", "Reached", reached, reachedPrev, "count", 0, spark("reached")),
-        metric("reply-rate", "Reply rate", rate, ratePrev, "percent", 1, spark("replied"), "points"),
+        { ...metric("reply-rate", "Reply rate", rate, ratePrev, "percent", 1, spark("replied"), "points"), ...(reachedPrev ? {} : { delta: null, trend: "flat" as const }) },
         metric("positive", "Positive replies", positive, positivePrev, "count", 0, spark("positive")),
         metric("meetings", "Meetings", meetings, meetingsPrev, "count", 0, spark("meetings")),
       ],
-      trend: current.map((row) => ({
-        date: row.date,
-        reached: Math.round(row.reached * share),
-        engaged: Math.round(row.engaged * share),
-        replied: Math.round(row.replied * share),
-        positive: Math.round(row.positive * share),
-        meetings: Math.round(row.meetings * share),
-      })),
+      trend: current,
       byChannel,
       funnel,
     };

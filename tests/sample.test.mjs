@@ -81,7 +81,7 @@ test("there are enough audiences to show the table, few enough to read at a glan
 
 /* ------------------------------------------- the rest of the sample world -- */
 
-import { SAMPLE_ACCOUNTS, SAMPLE_ROLLUPS, SAMPLE_TASKS, SAMPLE_THREADS } from "../lib/data/sample.ts";
+import { SAMPLE_ROLLUPS, SAMPLE_TASKS, SAMPLE_THREADS } from "../lib/data/sample.ts";
 
 const sum = (key) => SAMPLE_ROLLUPS.reduce((total, row) => total + row[key], 0);
 
@@ -128,11 +128,6 @@ test("a thread needing a reply ends with a message from the audience", () => {
     const latest = [...thread.messages].sort((a, b) => a.hoursAgo - b.hoursAgo)[0];
     assert.equal(latest.from, "them", thread.audienceEmail);
   }
-});
-
-test("sample accounts and domain use the reserved .example domain", () => {
-  assert.match(SAMPLE_ACCOUNTS.email.handle, /@[^@]+\.example$/);
-  assert.match(SAMPLE_ACCOUNTS.domain.host, /\.example$/);
 });
 
 test("sample messages never speak as a named real person", () => {

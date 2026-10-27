@@ -139,12 +139,6 @@ export const api = {
 
   workflows: () => request<{ items: WorkflowRecord[] }>("/api/workflows"),
 
-  /** Deletes the sample strategy, workflow and audiences the workspace started with. */
-  removeSampleData: () =>
-    request<{ removed: { strategies: number; audiences: number } }>("/api/workspace/sample", {
-      method: "DELETE",
-    }),
-
   accounts: () => request<AccountsSnapshot>("/api/accounts"),
 
   updateAccount: (id: string, patch: AccountSettingsPatch) =>

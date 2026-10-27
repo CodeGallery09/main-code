@@ -177,12 +177,12 @@ export interface Repository {
   ): Promise<WorkflowRecord | WriteError | null>;
 
   /**
-   * Deletes everything seeded at signup as an example: the sample strategy (its workflow goes with
-   * it), the sample audiences (their threads, messages and to-dos go with them), the sample LinkedIn
-   * account, mailbox and sending domain, and the sample figures. Returns how many strategies and
-   * audiences were removed; never touches anything the user created.
+   * Makes sure the workspace has the demo strategy: one multichannel strategy with its audiences,
+   * conversations, to-dos and funnel, all flagged sample. Every workspace has it and nothing
+   * removes it, so this is a no-op once it exists. Safe to call on every request and under
+   * concurrency: two first loads never seed it twice.
    */
-  removeSampleData(ctx: Ctx): Promise<{ strategies: number; audiences: number }>;
+  ensureDemo(ctx: Ctx): Promise<void>;
 
   /* ------------------------------------------------- org-level channel accounts -- */
 

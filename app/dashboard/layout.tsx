@@ -22,6 +22,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Read straight from the repository on the server; the REST API is there for client components.
   const ctx = { workspaceId: who.workspaceId, userId: who.userId };
   const repo = getRepository();
+  // Every workspace has the demo strategy; a first load seeds it if signup did not.
+  await repo.ensureDemo(ctx);
   const [user, workspace] = await Promise.all([repo.getUser(ctx), repo.getWorkspace(ctx)]);
   // A valid session whose user, membership or workspace has since been removed: treat it as
   // signed out rather than rendering a shell with no identity.

@@ -46,7 +46,8 @@ import {
   workspaces,
   workspaceSettings as workspaceSettingsTable,
 } from "@/lib/db/schema";
-import { deltaPercent, rangeDays, trendOf } from "@/lib/data/query";
+import { seedSampleWorkspace } from "@/lib/data/sampleSeed";
+import { byDay, deltaPercent, rangeDays, sumOf, trendOf, type RollupRow } from "@/lib/data/query";
 import type {
   StrategyQuery,
   StrategyTotals,
@@ -184,41 +185,6 @@ function metric(
     deltaUnit === "points" ? Number((value - previous).toFixed(1)) || null : deltaPercent(value, previous);
   return { id, label, value, format, decimals, delta, deltaUnit, trend: trendOf(delta), spark };
 }
-
-type RollupRow = {
-  day: string;
-  channel: Channel;
-  reached: number;
-  engaged: number;
-  replied: number;
-  positive: number;
-  meetings: number;
-};
-
-/** Collapses per-channel rows into one point per day, oldest first. */
-function byDay(rows: RollupRow[]): TrendPoint[] {
-  const map = new Map<string, TrendPoint>();
-  for (const row of rows) {
-    const point = map.get(row.day) ?? {
-      date: row.day,
-      reached: 0,
-      engaged: 0,
-      replied: 0,
-      positive: 0,
-      meetings: 0,
-    };
-    point.reached += row.reached;
-    point.engaged += row.engaged;
-    point.replied += row.replied;
-    point.positive += row.positive;
-    point.meetings += row.meetings;
-    map.set(row.day, point);
-  }
-  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
-}
-
-const sumOf = (rows: TrendPoint[], key: keyof Omit<TrendPoint, "date">) =>
-  rows.reduce((total, row) => total + row[key], 0);
 
 /* ------------------------------------------------------------ repository -- */
 
@@ -679,27 +645,23 @@ export class PgRepository implements Repository {
     return row ? this.toWorkflow(row) : null;
   }
 
-  async removeSampleData(ctx: Ctx): Promise<{ strategies: number; audiences: number }> {
-    return this.db.transaction(async (tx) => {
-      const sampleOnly = (table: { workspaceId: AnyPgColumn; isSample: AnyPgColumn }) =>
-        and(this.ws(table.workspaceId, ctx), eq(table.isSample, true));
+  async ensureDemo(ctx: Ctx): Promise<void> {
+    const has = (db: Pick<ReturnType<typeof getDb>, "select">) =>
+      db
+        .select({ id: strategiesTable.id })
+        .from(strategiesTable)
+        .where(and(this.ws(strategiesTable.workspaceId, ctx), eq(strategiesTable.isSample, true)))
+        .limit(1);
 
-      // Audiences first: their threads, messages, to-dos and segment links cascade, and the strategy
-      // FK is SET NULL anyway.
-      const audiencesGone = await tx
-        .delete(audiencesTable)
-        .where(sampleOnly(audiencesTable))
-        .returning({ id: audiencesTable.id });
-      // Deleting a strategy cascades to its workflow and its account assignments.
-      const strategiesGone = await tx
-        .delete(strategiesTable)
-        .where(sampleOnly(strategiesTable))
-        .returning({ id: strategiesTable.id });
-      // The invented LinkedIn account, mailbox and domain, and the invented funnel figures.
-      await tx.delete(channelAccounts).where(sampleOnly(channelAccounts));
-      await tx.delete(sendingDomains).where(sampleOnly(sendingDomains));
-      await tx.delete(dailyRollups).where(sampleOnly(dailyRollups));
-      return { strategies: strategiesGone.length, audiences: audiencesGone.length };
+    // The common case is one indexed read and no write.
+    if ((await has(this.db)).length > 0) return;
+
+    await this.db.transaction(async (tx) => {
+      // Serialise first loads of the same workspace, then look again: whoever lost the race finds
+      // the demo already there and seeds nothing.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${ctx.workspaceId}))`);
+      if ((await has(tx)).length > 0) return;
+      await seedSampleWorkspace(tx, ctx.workspaceId, ctx.userId);
     });
   }
 

@@ -8,6 +8,7 @@ import { metricFooter, metricValue } from "@/lib/ws/format";
 import { useAsync } from "@/lib/ws/use-async";
 import { fmt } from "@/lib/ws/utils";
 import { PageBody, PageHeader, TopBar } from "@/components/ws/shell/page";
+import { DemoNote } from "@/components/ws/shell/demo-note";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ws/ui/card";
 import { Segmented } from "@/components/ws/ui/segmented";
 import { Appear } from "@/components/ws/ui/motion";
@@ -32,12 +33,14 @@ export function AnalyticsView() {
         <Appear>
           <PageHeader
             title="Analytics"
-            subtitle="What has actually been recorded: people reached, replies, meetings. Nothing here is projected."
+            subtitle="What has been recorded: people reached, replies, meetings. Nothing here is projected."
             actions={
               <Segmented<RangeKey> label="Date range" value={range} onChange={setRange} options={RANGES} />
             }
           />
         </Appear>
+
+        <DemoNote />
 
         <Appear index={1}>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-4">
