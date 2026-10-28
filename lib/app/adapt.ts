@@ -217,7 +217,7 @@ export function toAppStrategy(strategy: Strategy): AppStrategy {
   return {
     id: strategy.id,
     name: strategy.name,
-    type: strategy.type === "multichannel" ? "multi" : "single",
+    type: strategy.type === "multichannel" && strategy.channels.length > 1 ? "multi" : "single",
     status: strategy.status,
     channels: strategy.channels.map(toChannelKey),
     audiences: strategy.audiences,

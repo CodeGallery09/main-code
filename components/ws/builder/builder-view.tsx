@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, LayoutTemplate, Minus, Plus, Redo2, Trash2, TriangleAlert, Undo2 } from "lucide-react";
+import { ArrowLeft, Check, CircleDashed, LayoutTemplate, Minus, Plus, Redo2, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { SENDING_ENABLED } from "@/lib/capabilities";
 import {
@@ -36,7 +36,8 @@ import { SidebarRail } from "@/components/ws/shell/sidebar";
 import { Button } from "@/components/ws/ui/button";
 import { EASE_OUT } from "@/components/ws/ui/motion";
 import { Switch } from "@/components/ws/ui/misc";
-import { Canvas, StepTile, type Selection } from "./canvas";
+import { ChannelTile } from "@/components/ws/ui/channel-tile";
+import { Canvas, CHANNEL_OF, StepTile, type Selection } from "./canvas";
 import { Inspector } from "./inspector";
 
 export type AudienceOption = { value: string; label: string; size: number | null };
@@ -50,6 +51,19 @@ const ZOOMS = [0.6, 0.7, 0.8, 0.9, 1, 1.15];
 
 /** The two channels a user can connect today; a step on one without an account can't run. */
 const ACCOUNT_OF: Partial<Record<StepChannel, Channel>> = { li: "linkedin", mail: "email" };
+
+/** One line under each palette step, so the list explains itself. */
+const HINT: Partial<Record<StepKind, string>> = {
+  li_invite: "A connection request",
+  li_msg: "A direct message",
+  email: "An email message",
+  call: "A to-do for a person",
+  wait: "Pause, then continue",
+  cond: "Branch on a result",
+  split: "Test two paths",
+  goal: "Mark it a success",
+  exit: "Leave the plan",
+};
 
 /**
  * The strategy builder: the plan as steps you drag, wire and fill in.
@@ -66,6 +80,7 @@ export function BuilderView({
   graph,
   stored,
   audiences,
+  channels,
 }: {
   strategyId: string;
   initialName: string;
@@ -73,6 +88,8 @@ export function BuilderView({
   graph: WorkflowGraph;
   stored: boolean;
   audiences: AudienceOption[];
+  /** The channels this strategy was started on; a single one keeps the palette to that channel. */
+  channels: Channel[];
 }) {
   const still = useReducedMotion();
   const [name, setName] = useState(initialName);
@@ -122,6 +139,23 @@ export function BuilderView({
   }, [nodes, edges, channelOff]);
 
   const stats = useMemo(() => stepStats(nodes, edges, lists), [nodes, edges, lists]);
+  const palette = useMemo(
+    () =>
+      PALETTE.map(([group, kinds]): [string, StepKind[]] => [
+        group,
+        channels.length === 1
+          ? kinds.filter((k) => {
+              const ch = STEPS[k].ch;
+              return !ch || CHANNEL_OF[ch] === channels[0];
+            })
+          : kinds,
+      ]).filter(([, kinds]) => kinds.length > 0),
+    [channels],
+  );
+  const usedChannels = useMemo(
+    () => [...new Set(nodes.map((n) => STEPS[n.kind].ch).filter((c): c is StepChannel => Boolean(c)))],
+    [nodes],
+  );
   const audienceNode = nodes.find((n) => n.kind === "audience");
   const chosen = lists.find((l) => l.k === audienceNode?.data.list);
 
@@ -375,6 +409,13 @@ export function BuilderView({
             >
               {status === "draft" ? "Draft" : status === "live" ? "Live" : "Paused"} · {saveLabel[save]}
             </span>
+            {usedChannels.length ? (
+              <span className="hidden items-center gap-[3px] md:flex" aria-label="Channels in this plan">
+                {usedChannels.map((c) => (
+                  <ChannelTile key={c} channel={CHANNEL_OF[c]} size="xs" />
+                ))}
+              </span>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-[6px]">
@@ -412,13 +453,13 @@ export function BuilderView({
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[188px_minmax(0,1fr)_292px] lg:grid-rows-1">
+        <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[200px_minmax(0,1fr)_292px] lg:grid-rows-1">
           {/* Palette */}
           <aside
             aria-label="Steps you can add"
             className="flex shrink-0 gap-3 overflow-x-auto border-b border-border bg-chrome p-3 lg:flex-col lg:overflow-y-auto lg:border-b-0 lg:border-r"
           >
-            {PALETTE.map(([group, kinds]) => (
+            {palette.map(([group, kinds]) => (
               <div key={group} className="flex shrink-0 flex-col gap-[6px]">
                 <h2 className="label-mono">{group}</h2>
                 <div className="flex gap-[6px] lg:flex-col">
@@ -432,10 +473,13 @@ export function BuilderView({
                         e.dataTransfer.effectAllowed = "copy";
                       }}
                       onClick={() => addStep(kind)}
-                      className="flex shrink-0 cursor-grab items-center gap-2 rounded-lg border border-border bg-card px-2 py-[6px] text-left text-[12px] transition-colors hover:border-input active:cursor-grabbing"
+                      className="flex shrink-0 cursor-grab items-center gap-[9px] rounded-lg border border-border bg-card px-2 py-[6px] text-left text-[12px] transition-colors hover:border-input active:cursor-grabbing"
                     >
-                      <StepTile kind={kind} size="xs" />
-                      <span className="whitespace-nowrap">{STEPS[kind].label}</span>
+                      <StepTile kind={kind} size="sm" />
+                      <span className="flex flex-col leading-[1.3]">
+                        <span className="whitespace-nowrap font-medium">{STEPS[kind].label}</span>
+                        <span className="whitespace-nowrap text-[10.5px] text-muted-foreground">{HINT[kind]}</span>
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -521,8 +565,55 @@ export function BuilderView({
                   <p className="mt-1 text-[12px] leading-[1.5] text-muted-foreground">
                     {steps === 0
                       ? "Nothing in it yet. Add the first step from the left."
-                      : `${steps} ${steps === 1 ? "step" : "steps"}${chosen ? `, going to ${chosen.name}${chosen.n ? ` (${fmt(chosen.n)} ${chosen.n === 1 ? "lead" : "leads"})` : ""}` : ""}. Select a step to edit it.`}
+                      : "Select a step to edit it, or drag between the dots to connect two."}
                   </p>
+                </div>
+
+                <dl className="grid grid-cols-3 gap-2">
+                  {[
+                    [fmt(chosen?.n ?? 0), chosen?.n === 1 ? "lead" : "leads"],
+                    [String(steps), steps === 1 ? "step" : "steps"],
+                    [String(usedChannels.length), usedChannels.length === 1 ? "channel" : "channels"],
+                  ].map(([value, label]) => (
+                    <div key={label} className="flex flex-col gap-[3px] rounded-lg border border-border px-[10px] py-2">
+                      <dd className="font-mono text-[18px] font-bold leading-none tracking-[-0.02em]">{value}</dd>
+                      <dt className="label-mono">{label}</dt>
+                    </div>
+                  ))}
+                </dl>
+
+                <div className="flex flex-col gap-[7px] border-t border-divider pt-3">
+                  <h3 className="label-mono">Before it can go</h3>
+                  {[
+                    {
+                      done: Boolean(chosen?.n),
+                      text: chosen?.n ? `Audience chosen — ${chosen.name}` : "Choose an audience with leads in it",
+                    },
+                    {
+                      done: steps > 0 && problemCount === 0,
+                      text:
+                        steps === 0
+                          ? "Add at least one step"
+                          : problemCount === 0
+                            ? "Every step is filled in"
+                            : `${problemCount} ${problemCount === 1 ? "step needs" : "steps need"} attention`,
+                    },
+                    {
+                      done: !Object.values(problems).some((p) => /isn't connected/.test(p)),
+                      text: Object.values(problems).some((p) => /isn't connected/.test(p))
+                        ? "Connect the account a step sends from"
+                        : "Accounts for these steps are connected",
+                    },
+                  ].map((row) => (
+                    <p key={row.text} className="flex items-start gap-2 text-[12px] leading-[1.45]">
+                      {row.done ? (
+                        <Check aria-hidden className="mt-[2px] size-[13px] shrink-0 text-success" strokeWidth={2.4} />
+                      ) : (
+                        <CircleDashed aria-hidden className="mt-[2px] size-[13px] shrink-0 text-warning" strokeWidth={2.2} />
+                      )}
+                      <span className={row.done ? "text-body" : "font-medium"}>{row.text}</span>
+                    </p>
+                  ))}
                 </div>
 
                 <div className="flex items-start justify-between gap-3 border-t border-divider pt-3">

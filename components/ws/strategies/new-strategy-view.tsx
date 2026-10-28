@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus } from "lucide-react";
 import { api, fieldErrorsOf } from "@/lib/api";
-import { graphFromTemplate, TEMPLATES } from "@/lib/app/workflow";
+import { graphForChannel, graphFromTemplate, TEMPLATES, type StepChannel, type WorkflowGraph } from "@/lib/app/workflow";
 import { SETUP_HREF } from "@/lib/nav";
 import type { Channel } from "@/lib/data/types";
 import { CHANNEL_NAME } from "@/lib/ws/channels";
@@ -38,6 +38,8 @@ const CHANNEL_OF: Record<string, Channel> = {
   sms: "sms",
 };
 
+const SHORT_OF: Record<string, StepChannel> = { linkedin: "li", email: "mail", call: "call", whatsapp: "wa", sms: "sms" };
+
 /** Only channels that can run today are offered — the same rule the palette follows. */
 const SINGLE: Channel[] = ["linkedin", "email", "call"];
 
@@ -53,7 +55,7 @@ export function NewStrategyView() {
 
   const plays = TEMPLATES.filter((t) => t.k !== "blank");
 
-  async function start(key: string, name: string, channels: Channel[]) {
+  async function start(key: string, name: string, channels: Channel[], graph?: WorkflowGraph) {
     if (busy) return;
     setBusy(key);
     setError(null);
@@ -64,7 +66,7 @@ export function NewStrategyView() {
         status: "draft",
         channels: channels.length ? channels : ["linkedin", "email"],
       });
-      await api.saveWorkflow(strategy.id, { name, graph: graphFromTemplate(key === "blank" ? "blank" : key) });
+      await api.saveWorkflow(strategy.id, { name, graph: graph ?? graphFromTemplate(key === "blank" ? "blank" : key) });
       router.push(`/dashboard/workflows/${strategy.id}`);
     } catch (caught) {
       const fields = fieldErrorsOf(caught);
@@ -189,14 +191,16 @@ export function NewStrategyView() {
                       key={channel}
                       type="button"
                       disabled={busy !== null}
-                      onClick={() => void start("blank", `${CHANNEL_NAME[channel]} sequence`, [channel])}
+                      onClick={() =>
+                        void start(channel, `${CHANNEL_NAME[channel]} sequence`, [channel], graphForChannel(SHORT_OF[channel]))
+                      }
                       className="flex items-center gap-[10px] rounded-[11px] border border-border bg-card px-[15px] py-[10px] text-left transition-colors hover:border-input disabled:opacity-60"
                     >
                       <ChannelTile channel={channel} size="sm" />
                       <span className="flex min-w-0 flex-col gap-[2px]">
                         <span className="text-[12.5px] font-semibold">{CHANNEL_NAME[channel]}</span>
                         <span className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-muted-foreground">
-                          {busy === "blank" ? "Opening…" : "Start empty"}
+                          {busy === channel ? "Opening…" : "Touch · pause · follow-up"}
                         </span>
                       </span>
                     </button>

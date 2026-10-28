@@ -20,10 +20,11 @@ import {
 import { refuseConnect } from "@/lib/ws/graphEdit";
 import type { Channel } from "@/lib/data/types";
 import { cn } from "@/lib/ws/utils";
+import { CHANNEL_COLOR } from "@/lib/ws/channels";
 import { ChannelTile } from "@/components/ws/ui/channel-tile";
 
 /** Which workspace channel a sending step belongs to, for its tile. */
-const CHANNEL_OF: Record<string, Channel> = { li: "linkedin", mail: "email", wa: "whatsapp", call: "call", sms: "sms" };
+export const CHANNEL_OF: Record<string, Channel> = { li: "linkedin", mail: "email", wa: "whatsapp", call: "call", sms: "sms" };
 
 const LOGIC_ICON: Partial<Record<StepKind, typeof Clock>> = {
   audience: Users,
@@ -208,10 +209,14 @@ export function Canvas({
         >
           <svg className="pointer-events-none absolute inset-0" width={width} height={height} aria-hidden>
             <defs>
+              <pattern id="wf-dots" width="24" height="24" patternUnits="userSpaceOnUse">
+                <circle cx="1.5" cy="1.5" r="1.1" fill="#d9d5ca" />
+              </pattern>
               <marker id="wf-arrow" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="7" markerHeight="7" orient="auto">
-                <path d="M1 1L6 4L1 7" fill="none" stroke="#b9b5ab" strokeWidth="1.4" strokeLinecap="round" />
+                <path d="M1 1L6 4L1 7" fill="none" stroke="#8d897e" strokeWidth="1.4" strokeLinecap="round" />
               </marker>
             </defs>
+            <rect width={width} height={height} fill="url(#wf-dots)" />
             {edges.map((edge) => {
               const from = byId.get(edge.source);
               const to = byId.get(edge.target);
@@ -223,8 +228,8 @@ export function Canvas({
                   <path
                     d={d}
                     fill="none"
-                    stroke={on ? "var(--primary)" : "#b9b5ab"}
-                    strokeWidth={on ? 2 : 1.5}
+                    stroke={on ? "var(--primary)" : "#8d897e"}
+                    strokeWidth={on ? 2.2 : 1.7}
                     markerEnd="url(#wf-arrow)"
                   />
                   <path
@@ -278,6 +283,15 @@ export function Canvas({
               })()
             : null}
 
+          {nodes.length === 1 && nodes[0].kind === "audience" ? (
+            <div
+              className="absolute flex items-center justify-center rounded-xl border border-dashed border-[#bdb8ac] px-4 text-center text-[12px] text-muted-foreground"
+              style={{ left: nodes[0].x, top: nodes[0].y + NODE_H + 40, width: NODE_W, height: NODE_H }}
+            >
+              Start here — drag a step in from the left, or click one.
+            </div>
+          ) : null}
+
           {nodes.map((node) => {
             const step = STEPS[node.kind];
             const on = selection?.type === "node" && selection.id === node.id;
@@ -304,17 +318,25 @@ export function Canvas({
                 onPointerUp={endMove}
                 onPointerCancel={endMove}
                 className={cn(
-                  "absolute flex touch-none select-none flex-col justify-between rounded-xl border bg-card px-3 py-[9px]",
+                  "absolute flex touch-none select-none flex-col justify-between rounded-xl border border-t-[4px] bg-card px-3 py-[8px] transition-[border-color,outline-color] duration-150",
                   readOnly ? "cursor-default" : "cursor-grab active:cursor-grabbing",
-                  on ? "border-2 border-primary" : problem ? "border-warning-border bg-warning-surface" : "border-border",
-                  target && "ring-2 ring-primary ring-offset-2",
+                  on ? "outline outline-2 outline-offset-2 outline-primary" : "hover:border-input",
+                  problem ? "border-warning-border bg-warning-surface" : "border-border",
+                  target && "outline outline-2 outline-offset-2 outline-primary",
                 )}
-                style={{ left: node.x, top: node.y, width: NODE_W, height: NODE_H }}
+                style={{
+                  left: node.x,
+                  top: node.y,
+                  width: NODE_W,
+                  height: NODE_H,
+                  // The channel's own colour crowns the card, so the plan reads at a glance.
+                  borderTopColor: step.ch ? CHANNEL_COLOR[CHANNEL_OF[step.ch]] : node.kind === "audience" ? "var(--primary)" : "#cfcbc0",
+                }}
               >
                 <span className="flex items-center gap-[9px]">
                   <StepTile kind={node.kind} size="sm" />
                   <span className="flex min-w-0 flex-1 flex-col leading-[1.3]">
-                    <span className="truncate text-[12px] font-semibold">{step.label}</span>
+                    <span className="truncate text-[12.5px] font-semibold">{step.label}</span>
                     <span className="truncate text-[11px] text-muted-foreground">
                       {stepLabel(node.kind, node.data, lists)}
                     </span>

@@ -88,6 +88,7 @@ export default async function BuilderPage({ params, searchParams }: Params) {
       // No row yet: the builder saves the starting graph straight away so a reload finds it.
       stored={Boolean(record)}
       audiences={audiences}
+      channels={strategy.channels}
     />
   );
 }

@@ -130,10 +130,8 @@ test("a strategy needs a name and at least one channel", () => {
   assert.equal(validateStrategy({ name: "Q4 push", channels: [] }).errors.channels, "Pick at least one channel.");
 });
 
-test("a multichannel strategy needs two or more channels", () => {
-  const one = validateStrategy({ name: "Flow", type: "multichannel", channels: ["email"] });
-  assert.equal(one.ok, false);
-  assert.match(one.errors.channels, /two or more/);
+test("a strategy with a workflow may stay on one channel", () => {
+  assert.equal(validateStrategy({ name: "Flow", type: "multichannel", channels: ["email"] }).ok, true);
   assert.equal(validateStrategy({ name: "Flow", type: "multichannel", channels: ["email", "linkedin"] }).ok, true);
 });
 

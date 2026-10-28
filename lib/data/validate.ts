@@ -301,12 +301,8 @@ export function validateStrategy(input: unknown, partial = false): Validation<St
     }
   }
 
-  // A multichannel strategy with one channel is a standalone strategy wearing a hat: the
-  // workflow builder only opens for `multichannel`, so an empty graph would be unreachable.
-  const type = out.type ?? (partial ? null : "standalone");
-  if (type === "multichannel" && out.channels && out.channels.length < 2) {
-    errors.channels = "A multichannel strategy needs two or more channels.";
-  }
+  // `multichannel` is the type that has a workflow: the builder only opens for it. A strategy
+  // that stays on one channel is still built in the builder, so it carries the type with one channel.
 
   if (has("startedAt")) {
     const raw = text(input.startedAt);

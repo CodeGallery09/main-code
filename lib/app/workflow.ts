@@ -762,6 +762,31 @@ export function graphFromTemplate(template = "blank", audience: string = AUDIENC
   };
 }
 
+/**
+ * A starting plan that stays on one channel: a first touch, a pause, a follow-up and the exit.
+ * Only the channels that can run today have one; anything else gets the blank plan.
+ */
+const SINGLE_CHANNEL: Partial<Record<StepChannel, [first: StepKind, follow: StepKind]>> = {
+  li: ["li_invite", "li_msg"],
+  mail: ["email", "email"],
+  call: ["call", "call"],
+};
+
+export function graphForChannel(channel: StepChannel, audience: string = AUDIENCE_CAMPAIGN): WorkflowGraph {
+  const kinds = SINGLE_CHANNEL[channel];
+  if (!kinds) return graphFromTemplate("blank", audience);
+  const [first, follow] = kinds;
+  const spec: Spec = [
+    "audience",
+    { list: audience },
+    {
+      out: [first, {}, { out: ["wait", { days: 3, biz: true }, { out: [follow, {}, { out: ["exit"] }] }] }],
+    },
+  ];
+  const { nodes, edges } = fromSpec(spec);
+  return { nodes, edges, settings: { ...DEFAULT_SETTINGS, days: [...DEFAULT_SETTINGS.days] } };
+}
+
 export const toGraph = (
   w: Pick<Workflow, "nodes" | "edges" | "days" | "from" | "to" | "daily" | "skipOther">,
 ): WorkflowGraph => ({
