@@ -13,6 +13,8 @@ test("every documented status word maps to a state, and an unknown one is never 
   assert.equal(readAccountStatus("OK"), "ok");
   assert.equal(readAccountStatus("RECONNECTED"), "ok");
   assert.equal(readAccountStatus("SYNC_SUCCESS"), "ok");
+  // The hosted-auth notify callback reports a finished sign-in as CREATION_SUCCESS.
+  assert.equal(readAccountStatus("CREATION_SUCCESS"), "ok");
   assert.equal(readAccountStatus("CREDENTIALS"), "credentials");
   assert.equal(readAccountStatus("ERROR"), "error");
   assert.equal(readAccountStatus("STOPPED"), "error");
@@ -93,4 +95,12 @@ test("our own sends are recognised, however the payload spells it", () => {
 test("a message with no id is refused, because dedupe would be impossible", () => {
   assert.equal(parseMessageEvent({ account_id: "u_1", text: "Hi" }), null);
   assert.equal(parseMessageEvent({ message_id: "m_1", text: "Hi" }), null);
+});
+
+test("the hosted-auth notify body reads as a connected account", () => {
+  // Exactly what Unipile posts to notify_url when the wizard succeeds: the status word is
+  // CREATION_SUCCESS and `name` echoes our connect-session reference.
+  const event = parseAccountStatusEvent({ status: "CREATION_SUCCESS", account_id: "acc_1", name: "cx_abc" });
+  assert.equal(event?.accountId, "acc_1");
+  assert.equal(event?.status, "ok");
 });

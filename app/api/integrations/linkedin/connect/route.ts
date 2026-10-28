@@ -20,7 +20,12 @@ export async function POST(request: Request) {
       ? body.accountId
       : undefined;
 
-  const result = await startLinkedInConnect({ workspaceId: who.workspaceId, userId: who.userId }, accountId);
+  // The member's own origin, so the hosted sign-in returns them to the host their cookie is for.
+  const result = await startLinkedInConnect(
+    { workspaceId: who.workspaceId, userId: who.userId },
+    accountId,
+    new URL(request.url).origin,
+  );
   if (result.ok) return json({ url: result.url, sessionId: result.sessionId, expiresAt: result.expiresAt }, 201);
 
   const status =

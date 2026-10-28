@@ -26,7 +26,16 @@ export type StartConnectResult =
  * maps the resulting account to this workspace, which is why it is created before the link and
  * never derived from the workspace id.
  */
-export async function startLinkedInConnect(ctx: Ctx, accountId?: string): Promise<StartConnectResult> {
+export async function startLinkedInConnect(
+  ctx: Ctx,
+  accountId?: string,
+  /**
+   * The origin the member is browsing on. The hosted sign-in sends them back here, and the session
+   * cookie belongs to this exact host: returning them to the canonical domain instead lands a
+   * member who signed in on a deployment URL on a host with no cookie, which reads as a logout.
+   */
+  returnOrigin?: string,
+): Promise<StartConnectResult> {
   const adapter = getLinkedInAdapter();
   if (!adapter) {
     return {
@@ -43,6 +52,10 @@ export async function startLinkedInConnect(ctx: Ctx, accountId?: string): Promis
       message: "This deployment has no public URL set, so the provider has nowhere to send you back to.",
     };
   }
+
+  // The provider's server-to-server callback stays on the public domain; only the browser's
+  // return trip follows the host the member is on.
+  const back = returnOrigin ?? origin;
 
   const session = await getRepository().createConnectSession(ctx, {
     channel: "linkedin",
@@ -82,8 +95,8 @@ export async function startLinkedInConnect(ctx: Ctx, accountId?: string): Promis
       kind: accountId ? "reconnect" : "create",
       reference: session.id,
       providerAccountId,
-      successUrl: `${origin}${SETUP_HREF}?connected=${encodeURIComponent(session.id)}`,
-      failureUrl: `${origin}${SETUP_HREF}?failed=${encodeURIComponent(session.id)}`,
+      successUrl: `${back}${SETUP_HREF}?connected=${encodeURIComponent(session.id)}`,
+      failureUrl: `${back}${SETUP_HREF}?failed=${encodeURIComponent(session.id)}`,
       notifyUrl: `${origin}/api/webhooks/unipile/notify`,
       expiresAt: new Date(session.expiresAt),
     });

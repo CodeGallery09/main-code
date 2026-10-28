@@ -188,6 +188,7 @@ Five things about this that are not obvious:
   by hand). The comparison is the pure half in `webhookConfig.ts` (`authorizeFromCarriers`,
   tested); `webhookAuth.ts` pulls the candidates out of the `Request`. No `UNIPILE_WEBHOOK_SECRET`,
   no deliveries accepted on either carrier.
+- **The hosted sign-in returns to the host the member is on, not the canonical domain.** The session cookie is bound to the exact host, so a member who signed in on a deployment URL and came back on `VERCEL_PROJECT_PRODUCTION_URL` landed on `/login` as if logged out. `startLinkedInConnect(ctx, accountId, returnOrigin)` takes the request's own origin for `successUrl`/`failureUrl`; only `notifyUrl` (server-to-server) uses `appOrigin()`. Unipile's notify body reports success as `CREATION_SUCCESS`, which `readAccountStatus` maps to `ok` (it used to fall through to `error`, failing every connect).
 - **Unipile's v1 and v2 docs disagree on webhook field names** (`AccountStatus` wrapper vs
   `{event,data}`; `message_received` vs `message.created` vs `message.new`). `events.ts` reads
   every documented spelling and refuses a payload missing what it needs, rather than betting on

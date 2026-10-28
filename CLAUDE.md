@@ -197,6 +197,7 @@ node --test --test-name-pattern="validates email" tests/demoRequest.test.mjs   #
   is the import-free, pure half in `lib/channels/webhookConfig.ts`
   (`tests/webhookConfig.test.mjs`); `webhookAuth.ts` is just the untested `Request`/env glue around
   it. Unset secret ⇒ every delivery refused, whichever carrier it arrives on.
+- **The hosted sign-in returns to the host the member is on, not the canonical domain.** The session cookie is bound to the exact host, so a member who signed in on a deployment URL and came back on `VERCEL_PROJECT_PRODUCTION_URL` landed on `/login` as if logged out. `startLinkedInConnect(ctx, accountId, returnOrigin)` takes the request's own origin for `successUrl`/`failureUrl`; only `notifyUrl` (server-to-server) uses `appOrigin()`. Unipile's notify body reports success as `CREATION_SUCCESS`, which `readAccountStatus` maps to `ok` (it used to fall through to `error`, failing every connect).
 - **Unipile's v1 and v2 docs disagree on webhook field names**, so `lib/channels/events.ts` reads
   every documented spelling and refuses a payload missing what it needs. An unrecognised status is
   `error`, never `ok`. `event: "account.status"` is an event name, not a status — do not read it as

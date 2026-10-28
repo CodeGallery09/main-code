@@ -98,7 +98,7 @@ function layers(body: unknown): unknown[] {
 export function readAccountStatus(raw: string): ProviderAccountStatus {
   const word = raw.trim().toUpperCase().replace(/[\s-]+/g, "_");
   if (!word) return "error";
-  if (word === "OK" || word === "CONNECTED" || word === "RECONNECTED" || word === "SYNC_SUCCESS") return "ok";
+  if (word === "OK" || word === "CONNECTED" || word === "RECONNECTED" || word === "SYNC_SUCCESS" || word === "CREATION_SUCCESS") return "ok";
   if (word === "CREDENTIALS" || word === "CREDENTIALS_ERROR" || word === "DISCONNECTED") return "credentials";
   if (word === "DELETED" || word === "DELETED_ACCOUNT") return "deleted";
   // LinkedIn restrictions arrive under several names across the docs and the dashboard.
