@@ -18,7 +18,7 @@
  * so rather than dropping deliveries silently.
  */
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import {
   channelAccounts,
@@ -69,6 +69,7 @@ export async function resolveProviderAccount(provider: string, providerAccountId
 export function accountStateFor(status: ProviderAccountStatus): string {
   if (status === "ok") return "healthy";
   if (status === "restricted") return "restricted";
+  if (status === "connecting") return "connecting";
   return "signed_out";
 }
 
@@ -115,6 +116,8 @@ export async function attachConnectedAccount(
   // good value on a reconnect, so each field only overwrites when the provider gave one.
   const name = account.name || existing?.name || "LinkedIn account";
   const handle = account.handle || existing?.handle || "";
+  // Name the provider's word when the account is not healthy, so the screen is not guessing.
+  const detail = state === "healthy" || !account.rawStatus ? "" : `The provider reports ${account.rawStatus}.`;
 
   const accountId = await db.transaction(async (tx) => {
     let id = existing?.accountId ?? session.accountId ?? null;
@@ -127,7 +130,7 @@ export async function attachConnectedAccount(
           state,
           provider: adapter.provider,
           providerAccountId,
-          statusDetail: "",
+          statusDetail: detail,
           connectedAt: now,
           lastEventAt: now,
         })
@@ -143,7 +146,7 @@ export async function attachConnectedAccount(
         state,
         provider: adapter.provider,
         providerAccountId,
-        statusDetail: "",
+        statusDetail: detail,
         connectedAt: now,
         lastEventAt: now,
         // The daily caps a new seat starts on: the conservative end of what operators report as
@@ -178,6 +181,49 @@ export async function failConnectSession(reference: string, detail: string): Pro
     .update(connectSessions)
     .set({ state: "failed", detail: detail.slice(0, 300) })
     .where(and(eq(connectSessions.id, reference), eq(connectSessions.state, "pending")));
+}
+
+/**
+ * Re-reads, from the provider, every LinkedIn account of this workspace that is waiting on one —
+ * still syncing, or signed out — and stores what it now says. The status webhook is the normal
+ * path, but a freshly connected account is often still syncing when we first read it, and a
+ * webhook that is unregistered or lost would leave it flagged "needs to log in" for good.
+ * A restriction is left alone: signing in again does not lift it. A provider error leaves the
+ * stored state as it was.
+ */
+export async function refreshAccountStates(adapter: LinkedInChannelAdapter, workspaceId: string): Promise<void> {
+  const db = getDb();
+  const rows = await db
+    .select({ id: channelAccounts.id, providerAccountId: channelAccounts.providerAccountId, state: channelAccounts.state })
+    .from(channelAccounts)
+    .where(
+      and(
+        eq(channelAccounts.workspaceId, workspaceId),
+        eq(channelAccounts.provider, adapter.provider),
+        inArray(channelAccounts.state, ["connecting", "signed_out"]),
+      ),
+    );
+  await Promise.all(
+    rows.map(async (row) => {
+      if (!row.providerAccountId) return;
+      try {
+        const account = await adapter.getAccount(row.providerAccountId);
+        if (!account) return;
+        const state = accountStateFor(account.status);
+        if (state === row.state) return;
+        await db
+          .update(channelAccounts)
+          .set({
+            state,
+            statusDetail: state === "healthy" || !account.rawStatus ? "" : `The provider reports ${account.rawStatus}.`,
+            lastEventAt: new Date(),
+          })
+          .where(and(eq(channelAccounts.id, row.id), eq(channelAccounts.workspaceId, workspaceId)));
+      } catch (caught) {
+        console.error("[linkedin-refresh]", caught);
+      }
+    }),
+  );
 }
 
 /* ---------- the provider changed an account's status ---------------------- */

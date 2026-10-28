@@ -15,6 +15,8 @@ test("every documented status word maps to a state, and an unknown one is never 
   assert.equal(readAccountStatus("SYNC_SUCCESS"), "ok");
   // The hosted-auth notify callback reports a finished sign-in as CREATION_SUCCESS.
   assert.equal(readAccountStatus("CREATION_SUCCESS"), "ok");
+  // A freshly connected account is still syncing: not usable yet, but not signed out either.
+  assert.equal(readAccountStatus("CONNECTING"), "connecting");
   assert.equal(readAccountStatus("CREDENTIALS"), "credentials");
   assert.equal(readAccountStatus("ERROR"), "error");
   assert.equal(readAccountStatus("STOPPED"), "error");

@@ -51,7 +51,7 @@ export const linkedInNeedsAction = (state: string): boolean =>
 /** The wording each blocked state deserves. A restriction is not a sign-out and must not say so. */
 export function linkedInStateNote(state: string): string {
   if (state === "restricted") return "LinkedIn has restricted this account";
-  if (state === "connecting") return "sign-in not finished";
+  if (state === "connecting") return "still syncing";
   return "needs to log in again";
 }
 

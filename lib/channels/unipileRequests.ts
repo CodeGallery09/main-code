@@ -98,6 +98,8 @@ export function readAccount(body: unknown, readStatus: (raw: string) => Provider
   // "ok" only when nothing reported anything else. No signal at all is an error, not health.
   const status: ProviderAccountStatus = statuses.find((s) => s !== "ok") ?? (statuses.length ? "ok" : "error");
 
+  const rawStatus = rawStatuses.find((_, i) => statuses[i] !== "ok") ?? "";
+
   const connection = isRecord(root.connection_params) ? root.connection_params : null;
   const im = connection && isRecord(connection.im) ? connection.im : null;
   const publicId = first([im, root], ["public_identifier", "username", "email"]);
@@ -105,6 +107,7 @@ export function readAccount(body: unknown, readStatus: (raw: string) => Provider
   return {
     id,
     status,
+    rawStatus,
     name: first([root, im], ["name", "display_name", "account_name"]),
     handle: publicId ? (publicId.includes("/") ? publicId : `linkedin.com/in/${publicId}`) : "",
     createdAt: first([root], ["created_at", "createdAt"]),

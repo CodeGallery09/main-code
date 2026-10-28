@@ -73,6 +73,11 @@ test("an account's status comes from its sources, and a broken source wins", () 
 
   // No status at all is not health: an account we know nothing about must not read as ready.
   assert.equal(readAccount({ id: "u_3" }, readAccountStatus).status, "error");
+  // The provider's own word is kept, so a screen can say what it actually reported.
+  const syncing = readAccount({ id: "u_4", sources: [{ status: "CONNECTING" }] }, readAccountStatus);
+  assert.equal(syncing.status, "connecting");
+  assert.equal(syncing.rawStatus, "CONNECTING");
+  assert.equal(readAccount({ id: "u_5", sources: [{ status: "OK" }] }, readAccountStatus).rawStatus, "");
   assert.equal(readAccount({ name: "no id" }, readAccountStatus), null);
 });
 

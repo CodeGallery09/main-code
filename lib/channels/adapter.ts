@@ -18,6 +18,8 @@ export type ProviderAccount = {
   /** The provider's own id for the connection. Our side of the mapping is `provider_account_id`. */
   id: string;
   status: ProviderAccountStatus;
+  /** The provider's own word for the first status that was not OK, or "" when everything was OK. */
+  rawStatus: string;
   /** The member's display name, as the provider reports it. Empty when it reports none. */
   name: string;
   /** Profile URL or public identifier. Empty when the provider reports none. */
