@@ -364,6 +364,7 @@ export class MemoryRepository implements Repository {
     if (strategy.type !== "multichannel") {
       return { error: { field: "strategy", message: "Only multichannel strategies have a workflow." } };
     }
+    strategy.name = input.name;
     const record: WorkflowRecord = {
       strategyId,
       name: input.name,

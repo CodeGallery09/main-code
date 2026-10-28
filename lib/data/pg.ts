@@ -624,6 +624,13 @@ export class PgRepository implements Repository {
       return { error: { field: "strategy", message: "Only multichannel strategies have a workflow." } };
     }
     const now = new Date();
+    // The name is typed in the builder but listed on Strategies, so it is the strategy's own.
+    if (input.name !== strategy.name) {
+      await this.db
+        .update(strategiesTable)
+        .set({ name: input.name, updatedAt: now })
+        .where(and(eq(strategiesTable.id, strategyId), this.ws(strategiesTable.workspaceId, ctx)));
+    }
     const [row] = await this.db
       .insert(workflowsTable)
       .values({

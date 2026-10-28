@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, Check, CircleDashed, LayoutTemplate, Minus, Plus, Redo2, Trash2, TriangleAlert, Undo2 } from "lucide-react";
+import { ArrowLeft, Check, CircleDashed, LayoutTemplate, Minus, Plus, Redo2, Save, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { SENDING_ENABLED } from "@/lib/capabilities";
 import {
@@ -329,6 +329,12 @@ export function BuilderView({
   // Keyboard: delete, undo and redo, unless the user is typing in a field.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Save works from anywhere, typing included — that is where people reach for it.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void persist();
+        return;
+      }
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT")) return;
       const mod = e.metaKey || e.ctrlKey;
@@ -351,7 +357,7 @@ export function BuilderView({
     return () => window.removeEventListener("keydown", onKey);
     // deleteStep and deleteEdge close over the current graph, so the listener follows it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection, nodes, edges, undo, redo]);
+  }, [selection, nodes, edges, undo, redo, persist]);
 
   const moveStart = useCallback(() => remember(), [remember]);
   const moveStep = useCallback(
@@ -402,7 +408,7 @@ export function BuilderView({
                 setName(e.target.value);
                 touch();
               }}
-              className="w-[260px] max-w-full rounded-md border border-transparent bg-transparent px-2 py-[4px] font-mono text-[13px] font-bold tracking-[-0.01em] hover:border-input"
+              className="w-[260px] max-w-full rounded-md border border-border bg-card px-2 py-[4px] font-mono text-[13px] font-bold tracking-[-0.01em] hover:border-input"
             />
             <span
               className={cn("whitespace-nowrap font-mono text-[11px]", save === "failed" ? "text-warning" : "text-muted-foreground")}
@@ -419,6 +425,27 @@ export function BuilderView({
           </div>
 
           <div className="flex items-center gap-[6px]">
+            <Button
+              size="sm"
+              onClick={() => void persist()}
+              disabled={save === "saving" || save === "saved" || save === "idle"}
+              title="Save this plan (Ctrl/⌘ + S)"
+              className="min-w-[72px]"
+            >
+              {save === "saving" ? (
+                "Saving…"
+              ) : save === "saved" || save === "idle" ? (
+                <>
+                  <Check aria-hidden strokeWidth={2.4} />
+                  Saved
+                </>
+              ) : (
+                <>
+                  <Save aria-hidden strokeWidth={2} />
+                  Save
+                </>
+              )}
+            </Button>
             <Button variant="outline" size="icon" aria-label="Undo" disabled={depth.past === 0} onClick={undo}>
               <Undo2 aria-hidden strokeWidth={1.9} />
             </Button>
