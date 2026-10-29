@@ -159,13 +159,20 @@ The stores apply the result: `launchStrategy`, `runDueSteps`, `runSummary` and `
   `run_at`) and sets the strategy live. Refused with a reason for the demo strategy, an empty plan,
   or nobody to enrol. `PATCH /api/strategies/[id]` with `status: live|scheduled` and a POST with
   those statuses are **422** — only Launch goes live; Pause is a plain `PATCH status: paused`.
-- **Plans run on a schedule.** `POST|GET /api/jobs/tick` → `runScheduledTick()`, on a Vercel cron
-  every 10 minutes (`vercel.json`). It is the **only route with no session**, because it acts for
-  every workspace, so it is authorised by `CRON_SECRET` carried as `Authorization: Bearer …` (what
-  Vercel Cron sends) or `?token=` (what GitHub Actions or cron-job.org can send). **Unset refuses
-  every call**: an open endpoint that advances everybody's outreach is not something to leave
-  lying around, and the Home setup card then says the deployment has no scheduler. Vercel's Hobby
-  plan runs a cron once a day, so a faster beat needs an external poke at that same URL.
+- **Plans run on a schedule.** `POST|GET /api/jobs/tick` → `runScheduledTick()`. It is the
+  **only route with no session**, because it acts for every workspace, so it is authorised by
+  `CRON_SECRET` carried as `Authorization: Bearer …` (what Vercel Cron and the workflow send) or
+  `?token=` (what a scheduler with no header field can send). **Unset refuses every call**: an
+  open endpoint that advances everybody's outreach is not something to leave lying around, and the
+  Home setup card then says the deployment has no scheduler.
+- **The beat is GitHub Actions, not Vercel.** A Hobby plan allows **one cron a day**, and a `*/10`
+  schedule in `vercel.json` fails the build with "Hobby accounts are limited to daily cron jobs" —
+  it is a deploy-time refusal, not a runtime one, so it cannot be left in hopefully.
+  `.github/workflows/tick.yml` runs every 10 minutes and curls the endpoint with the secret in the
+  header (never the URL, so it stays out of the run log); `vercel.json` keeps `0 3 * * *` as a
+  backstop. The endpoint is idempotent, so the two overlapping costs nothing. Two GitHub habits to
+  know: a scheduled workflow only runs from the **default branch**, and GitHub **disables the
+  schedule after 60 days** with no commits. Secrets: `FLIGHTPATH_URL`, `FLIGHTPATH_CRON_SECRET`.
   `POST /api/engine/run` still exists and is called by the builder (every 8 s) and the Strategies,
   Home and Analytics screens (every 10 s) while open — the same work, done sooner.
 - **A touch is deferred, never dropped.** `whenCanSend` decides in order: outside the account's
