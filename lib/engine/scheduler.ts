@@ -15,12 +15,29 @@
  * Server-only.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getRepository } from "@/lib/data";
 import { getDb } from "@/lib/db/client";
 import { memberships, strategies } from "@/lib/db/schema";
 import { getLinkedInAdapter } from "@/lib/channels";
 import { pullRecentMessages } from "@/lib/channels/pull";
+
+/**
+ * The shared lock a tick holds, so two of them never run at once.
+ *
+ * A session lock rather than a transaction lock, because the tick is a long sequence of separate
+ * statements. `pg_try_advisory_lock` returns false rather than waiting, which is what we want: a
+ * second caller should skip the beat, not queue behind it.
+ */
+const TICK_LOCK = 713_481_002;
+
+/**
+ * How long a traffic-driven tick waits before the next one. Per instance, not shared — a serverless
+ * instance has no memory of its siblings — so it is a hint, not a guarantee. The lock is what makes
+ * it safe; this only keeps a busy screen from asking every few seconds.
+ */
+const TRAFFIC_TICK_MS = 60_000;
+let lastTrafficTick = 0;
 
 export type TickResult = {
   workspaces: number;
@@ -41,7 +58,44 @@ const WORKSPACES_PER_TICK = 40;
  */
 export async function runScheduledTick(): Promise<TickResult> {
   const result: TickResult = { workspaces: 0, processed: 0, pulled: 0, failed: [] };
+  // No database means the memory store, whose writes do not outlive the server — there is nothing
+  // for a schedule to advance, and asking for a connection would only throw.
+  if (!process.env.DATABASE_URL) return result;
   const db = getDb();
+
+  // One tick at a time across the whole deployment. Two overlapping ticks would not double-send —
+  // `claimDue` sees to that — but they would race on the daily counts the pacing is read from.
+  const [held] = (await db.execute(sql`select pg_try_advisory_lock(${TICK_LOCK}) as got`)).rows as { got: boolean }[];
+  if (!held?.got) return result;
+  try {
+    return await tick(db, result);
+  } finally {
+    await db.execute(sql`select pg_advisory_unlock(${TICK_LOCK})`);
+  }
+}
+
+/**
+ * A tick ridden in on ordinary traffic.
+ *
+ * The external schedule is the clock, but it is one thing that can quietly stop — a disabled
+ * workflow, a lapsed free tier, a deleted job. This is the belt to that braces: **any** signed-in
+ * screen poll also advances **every** workspace that is due, at most once a minute per instance.
+ * It costs nothing, because it rides on a request that was happening anyway, and when nothing is
+ * live it is a single indexed query that returns no rows.
+ */
+export async function runTrafficTick(): Promise<void> {
+  const now = Date.now();
+  if (now - lastTrafficTick < TRAFFIC_TICK_MS) return;
+  lastTrafficTick = now;
+  try {
+    await runScheduledTick();
+  } catch (caught) {
+    // Never let the housekeeping break the request that carried it.
+    console.error("[scheduler] traffic tick", caught);
+  }
+}
+
+async function tick(db: ReturnType<typeof getDb>, result: TickResult): Promise<TickResult> {
 
   // Only tenants with something live, each with an owner to attribute the run to.
   const rows = await db

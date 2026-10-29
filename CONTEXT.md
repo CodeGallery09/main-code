@@ -173,6 +173,16 @@ The stores apply the result: `launchStrategy`, `runDueSteps`, `runSummary` and `
   backstop. The endpoint is idempotent, so the two overlapping costs nothing. Two GitHub habits to
   know: a scheduled workflow only runs from the **default branch**, and GitHub **disables the
   schedule after 60 days** with no commits. Secrets: `FLIGHTPATH_URL`, `FLIGHTPATH_CRON_SECRET`.
+- **Nothing here is billable.** Actions minutes are unlimited on a public repository, which this one
+  is; a free account's spending limit is $0, so Actions stops rather than charges if it is ever made
+  private (2,000 free minutes a month against roughly 4,300 needed — go hourly, or point
+  cron-job.org / UptimeRobot at the same URL with `?token=`). Vercel's daily cron is inside Hobby.
+- **Traffic is the second beat.** `POST /api/engine/run` — polled by every open screen for its own
+  workspace — also calls `runTrafficTick()`, which runs the **global** tick at most once a minute
+  per instance under `pg_try_advisory_lock`, so ordinary use advances every workspace even if the
+  external schedule has quietly stopped. It is free because the request was happening anyway, and
+  with nothing live the extra work is one indexed query returning no rows. A failure there is
+  logged and swallowed: housekeeping must never break the request that carried it.
   `POST /api/engine/run` still exists and is called by the builder (every 8 s) and the Strategies,
   Home and Analytics screens (every 10 s) while open — the same work, done sooner.
 - **A touch is deferred, never dropped.** `whenCanSend` decides in order: outside the account's

@@ -4,6 +4,12 @@ name: Advance live plans
 # ten-minute beat comes from here instead and `vercel.json` keeps a daily run as a backstop. Both
 # call the same endpoint; it is idempotent, so an overlap costs nothing.
 #
+# **This costs nothing.** Actions minutes are unlimited on a public repository, which this one is.
+# If it is ever made private, a free account gets 2,000 minutes a month and this job would spend
+# roughly 4,300 of them — so make the schedule hourly, or move the beat to a free external pinger
+# (cron-job.org, UptimeRobot) pointed at the same URL with `?token=<secret>`. Either way nothing is
+# billed: a free GitHub account has a $0 spending limit, so Actions stops rather than charging.
+#
 # Needs two repository secrets (Settings → Secrets and variables → Actions):
 #   FLIGHTPATH_URL     https://your-domain           — no trailing slash
 #   FLIGHTPATH_CRON_SECRET                           — the same value as CRON_SECRET in Vercel
