@@ -69,6 +69,24 @@ function nameFromLinkedin(url: string): string {
 const clip = (text: string) => (text.length > NAME_MAX ? text.slice(0, NAME_MAX - 1) + "…" : text);
 
 /**
+ * Which of this file's columns will be read for the lead's name, company and job title.
+ *
+ * These are never *mapped* by the user — the mapping step only asks about the four contact
+ * attributes, because those decide reachability — so a file with a "Company Name" column looks on
+ * that screen as though it is being thrown away. It is not: it is matched by header here. This
+ * reports the match so the screen can show it by name, with the file's own spelling.
+ */
+export function displayColumns(headers: string[]): { name: string | null; company: string | null; title: string | null } {
+  const found = (wanted: string[]) =>
+    headers.find((header) => wanted.includes(key(header))) ?? null;
+  return {
+    name: found(NAME) ?? found(FIRST) ?? found(LAST),
+    company: found(COMPANY),
+    title: found(TITLE),
+  };
+}
+
+/**
  * Which display details the file itself does not give for a row. A name can still be shown (made
  * from the email or LinkedIn by `audienceIdentity`), but the preview says it was not in the file.
  */

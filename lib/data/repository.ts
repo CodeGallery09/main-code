@@ -210,6 +210,13 @@ export interface Repository {
 
   /** Stores a profile read: the briefing, the provider id, and company/title where they were blank. */
   saveAudienceLinkedIn(ctx: Ctx, id: string, profile: ProviderProfile): Promise<LinkedInExtra | null>;
+
+  /**
+   * Leads with a LinkedIn URL whose profile has never been read, oldest first, and how many are
+   * waiting in all. An upload can bring in hundreds at once, so the briefings are filled in
+   * afterwards, a few at a time, rather than holding up the save or waiting for a person to click.
+   */
+  pendingBriefings(ctx: Ctx, limit: number): Promise<{ ids: string[]; pending: number }>;
   /**
    * Every launched strategy's journey (per-step reach, who is where) and the touchpoints made in
    * the range. Read from the run records and their log, so it moves as the plan runs.
@@ -327,6 +334,15 @@ export type WriteError = { error: { field: string; message: string } };
 export const isWriteError = (value: unknown): value is WriteError =>
   typeof value === "object" && value !== null && "error" in value;
 
+/**
+ * Workspace-wide sums over **every** strategy, the sample one included.
+ *
+ * No screen reads this. The Strategies tiles used to, and a workspace with one real strategy that
+ * had sent nothing therefore displayed the demo's invented delivery and reply figures directly
+ * above a row of "—". The tiles now sum the rows they are showing, so a filter narrows them and an
+ * unproduced figure reads "—". Kept because it is part of the `/api/strategies` response shape; if
+ * a screen ever wants it, exclude `isSample` rows first and keep zero distinguishable from unknown.
+ */
 export type StrategyTotals = {
   audiences: number;
   delivered: number;

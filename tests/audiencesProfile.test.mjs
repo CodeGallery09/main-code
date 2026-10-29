@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { identityFill, audienceIdentity } from "../lib/audiences/profile.ts";
+import { displayColumns, identityFill, audienceIdentity } from "../lib/audiences/profile.ts";
 
 const base = { email: null, mobile: null, whatsapp: null, linkedin: null, extra: {} };
 
@@ -58,4 +58,25 @@ test("an import fills a matched audience's blank company and title, and never ov
   assert.deepEqual(identityFill({ company: "Kitebox", title: "" }, row), { title: "VP Ops" });
   assert.deepEqual(identityFill({ company: "Kitebox", title: "CTO" }, row), {});
   assert.deepEqual(identityFill({ company: "", title: "" }, { ...row, extra: {} }), {}, "no column, nothing invented");
+});
+
+/* ---------- which columns feed the display fields ------------------------- */
+
+test("the file's own columns for name, company and title are reported by name", () => {
+  // The mapping step only asks about contact attributes, so a "Company Name" column has no control
+  // of its own and looks ignored. It is not, and the screen says which column it reads.
+  assert.deepEqual(displayColumns(["Name", "Linkedin", "Company Name"]), {
+    name: "Name",
+    company: "Company Name",
+    title: null,
+  });
+
+  // Spacing, case and punctuation in the header do not matter.
+  assert.deepEqual(displayColumns(["first_name", "JOB TITLE", "organisation"]), {
+    name: "first_name",
+    company: "organisation",
+    title: "JOB TITLE",
+  });
+
+  assert.deepEqual(displayColumns(["Email", "Phone"]), { name: null, company: null, title: null });
 });

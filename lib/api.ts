@@ -137,6 +137,12 @@ export const api = {
   strategyRuns: (id: string) =>
     request<{ summary: RunSummary }>(`/api/strategies/${encodeURIComponent(id)}/runs`),
 
+  /** Reads a few unread LinkedIn profiles. The Audiences screen calls it while it is open. */
+  fillBriefings: () =>
+    request<{ read: number; failed: number; pending: number; configured: boolean }>("/api/audiences/briefings", {
+      method: "POST",
+    }),
+
   /** Asks LinkedIn for new replies. The Inbox calls it while it is open. */
   syncInbox: () =>
     request<{ checked: number; stored: number; accounts: number; configured: boolean }>("/api/inbox/sync", {

@@ -656,12 +656,15 @@ export function BuilderView({
                   ))}
                 </dl>
 
+                {/* Every unfinished line here is a reason a launch will be refused, so each one
+                    takes you to the step that fixes it rather than describing it from a distance. */}
                 <div className="flex flex-col gap-[7px] border-t border-divider pt-3">
                   <h3 className="label-mono">Before it can go</h3>
                   {[
                     {
                       done: Boolean(chosen?.n),
                       text: chosen?.n ? `Audience chosen — ${chosen.name}` : "Choose an audience with leads in it",
+                      go: audienceNode?.id,
                     },
                     {
                       done: steps > 0 && problemCount === 0,
@@ -671,23 +674,38 @@ export function BuilderView({
                           : problemCount === 0
                             ? "Every step is filled in"
                             : `${problemCount} ${problemCount === 1 ? "step needs" : "steps need"} attention`,
+                      go: Object.keys(problems)[0],
                     },
                     {
                       done: !Object.values(problems).some((p) => /isn't connected/.test(p)),
                       text: Object.values(problems).some((p) => /isn't connected/.test(p))
                         ? "Connect the account a step sends from"
                         : "Accounts for these steps are connected",
+                      go: Object.entries(problems).find(([, p]) => /isn't connected/.test(p))?.[0],
                     },
-                  ].map((row) => (
-                    <p key={row.text} className="flex items-start gap-2 text-[12px] leading-[1.45]">
-                      {row.done ? (
-                        <Check aria-hidden className="mt-[2px] size-[13px] shrink-0 text-success" strokeWidth={2.4} />
-                      ) : (
-                        <CircleDashed aria-hidden className="mt-[2px] size-[13px] shrink-0 text-warning" strokeWidth={2.2} />
-                      )}
-                      <span className={row.done ? "text-body" : "font-medium"}>{row.text}</span>
-                    </p>
-                  ))}
+                  ].map((row) => {
+                    const mark = row.done ? (
+                      <Check aria-hidden className="mt-[2px] size-[13px] shrink-0 text-success" strokeWidth={2.4} />
+                    ) : (
+                      <CircleDashed aria-hidden className="mt-[2px] size-[13px] shrink-0 text-warning" strokeWidth={2.2} />
+                    );
+                    return row.done || !row.go ? (
+                      <p key={row.text} className="flex items-start gap-2 text-[12px] leading-[1.45]">
+                        {mark}
+                        <span className={row.done ? "text-body" : "font-medium"}>{row.text}</span>
+                      </p>
+                    ) : (
+                      <button
+                        key={row.text}
+                        type="button"
+                        onClick={() => setSelection({ type: "node", id: row.go! })}
+                        className="flex items-start gap-2 text-left text-[12px] leading-[1.45] hover:underline"
+                      >
+                        {mark}
+                        <span className="font-medium">{row.text}</span>
+                      </button>
+                    );
+                  })}
                 </div>
 
                 <div className="flex items-start justify-between gap-3 border-t border-divider pt-3">

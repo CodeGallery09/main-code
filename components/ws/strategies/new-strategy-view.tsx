@@ -1,16 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus } from "lucide-react";
 import { api, fieldErrorsOf } from "@/lib/api";
-import { graphForChannel, graphFromTemplate, TEMPLATES, type StepChannel, type WorkflowGraph } from "@/lib/app/workflow";
+import {
+  AUDIENCE_WORKSPACE,
+  graphForChannel,
+  graphFromTemplate,
+  TEMPLATES,
+  type StepChannel,
+  type WorkflowGraph,
+} from "@/lib/app/workflow";
+import { SENDING_CHANNELS } from "@/lib/capabilities";
 import { SETUP_HREF } from "@/lib/nav";
 import type { Channel } from "@/lib/data/types";
 import { CHANNEL_NAME } from "@/lib/ws/channels";
 import { cn } from "@/lib/ws/utils";
 import { ChannelTile } from "@/components/ws/ui/channel-tile";
+import { NativeSelect } from "@/components/ws/ui/misc";
 
 type Kind = "multi" | "single";
 
@@ -44,6 +53,16 @@ const SHORT_OF: Record<string, StepChannel> = { linkedin: "li", email: "mail", c
 const SINGLE: Channel[] = ["linkedin", "email", "call"];
 
 /**
+ * Does a channel put something in front of the lead today?
+ *
+ * LinkedIn sends for real and a call step becomes a to-do a person can act on. Email cannot be
+ * connected at all yet, so a play that contains it is partly decorative — and a user who finds
+ * that out from the activity log after launching has already spent their first impression on it.
+ * The play cards say so before the plan is created.
+ */
+const canAct = (channel: Channel) => channel === "call" || (SENDING_CHANNELS as readonly string[]).includes(channel);
+
+/**
  * New strategy — selection only. Pick how it runs, and the builder opens on a
  * draft. Nothing is written on a GET: a link prefetch would create a strategy.
  */
@@ -52,7 +71,38 @@ export function NewStrategyView() {
   const [kind, setKind] = useState<Kind>("multi");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The audiences this workspace actually has, with their live counts. */
+  const [options, setOptions] = useState<{ value: string; label: string; size: number }[] | null>(null);
+  const [audience, setAudience] = useState("");
 
+  /**
+   * **The audience is chosen here, not in the builder.**
+   *
+   * A plan's first step used to default to "Leads in this strategy", which for a strategy created
+   * one second ago is always nobody — so every first launch was refused with "there is nobody in
+   * this plan's audience yet" and the user had to work out, unaided, that the fix was a select
+   * inside the first card of the canvas. Asking here costs one field and removes the dead end.
+   */
+  useEffect(() => {
+    let alive = true;
+    void Promise.all([api.segments(), api.audiences({ pageSize: 1 })])
+      .then(([{ segments }, leads]) => {
+        if (!alive) return;
+        const rows = [
+          { value: AUDIENCE_WORKSPACE, label: "All leads", size: leads.total },
+          ...segments.map((seg) => ({ value: seg.id, label: seg.name, size: seg.audienceCount })),
+        ];
+        setOptions(rows);
+        // Default to the newest audience that has someone in it, else everyone.
+        setAudience((rows.find((r) => r.value !== AUDIENCE_WORKSPACE && r.size > 0) ?? rows[0]).value);
+      })
+      .catch(() => alive && setOptions([]));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const chosen = useMemo(() => options?.find((o) => o.value === audience) ?? null, [options, audience]);
   const plays = TEMPLATES.filter((t) => t.k !== "blank");
 
   async function start(key: string, name: string, channels: Channel[], graph?: WorkflowGraph) {
@@ -66,7 +116,10 @@ export function NewStrategyView() {
         status: "draft",
         channels: channels.length ? channels : ["linkedin", "email"],
       });
-      await api.saveWorkflow(strategy.id, { name, graph: graph ?? graphFromTemplate(key === "blank" ? "blank" : key) });
+      await api.saveWorkflow(strategy.id, {
+        name,
+        graph: graph ?? graphFromTemplate(key === "blank" ? "blank" : key, audience || undefined),
+      });
       router.push(`/dashboard/workflows/${strategy.id}`);
     } catch (caught) {
       const fields = fieldErrorsOf(caught);
@@ -108,7 +161,7 @@ export function NewStrategyView() {
               What are you reaching out for?
             </h1>
             <p className="text-[12.5px] text-muted-foreground">
-              Pick how this one runs. You choose the audience in the next screen, and nothing goes out until you launch it.
+              Pick how it runs and who it reaches. Nothing goes out until you launch it from Strategies.
             </p>
           </div>
 
@@ -153,6 +206,47 @@ export function NewStrategyView() {
             })}
           </div>
 
+          <section className="flex flex-col gap-[7px] rounded-xl border border-border bg-card px-4 py-[13px]">
+            <div className="flex flex-wrap items-baseline justify-between gap-[10px]">
+              <h2 className="font-mono text-[14px] font-bold tracking-[-0.01em]">Who is this for?</h2>
+              <span className="text-[11.5px] text-muted-foreground">
+                You can change it on the first step of the plan.
+              </span>
+            </div>
+            {options === null ? (
+              <p className="text-[12px] text-muted-foreground">Reading your audiences…</p>
+            ) : options.length === 0 || options.every((o) => o.size === 0) ? (
+              <p className="text-[12px] leading-[1.55] text-body">
+                There are no leads in this workspace yet, so there is nobody for a plan to reach.{" "}
+                <Link href="/dashboard/audiences" className="font-medium text-foreground hover:underline">
+                  Add or upload some first
+                </Link>
+                .
+              </p>
+            ) : (
+              <>
+                <NativeSelect
+                  id="new-strategy-audience"
+                  label="Audience"
+                  hideLabel
+                  value={audience}
+                  onChange={setAudience}
+                  options={options.map((o) => ({
+                    value: o.value,
+                    label: `${o.label} · ${o.size} ${o.size === 1 ? "lead" : "leads"}`,
+                  }))}
+                  className="w-full sm:w-[340px]"
+                  selectClassName="w-full"
+                />
+                <p className="text-[11.5px] leading-[1.55] text-muted-foreground">
+                  {chosen && chosen.size === 0
+                    ? "That audience is empty, so there would be nobody to enrol. Pick another one."
+                    : "Only leads with consent recorded, and who are not already in another strategy, are enrolled."}
+                </p>
+              </>
+            )}
+          </section>
+
           <section className="flex flex-col gap-3">
             <div className="flex flex-wrap items-baseline justify-between gap-[10px]">
               <h2 className="font-mono text-[14px] font-bold tracking-[-0.01em]">
@@ -181,8 +275,23 @@ export function NewStrategyView() {
                           {busy === play.k ? "Opening…" : `${play.steps} steps`}
                         </span>
                       </span>
-                      <span className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-muted-foreground">
-                        {play.ch.map((c) => CHANNEL_NAME[CHANNEL_OF[c]]).join(" · ")}
+                      <span className="flex flex-wrap items-center gap-x-[6px] font-mono text-[10.5px] uppercase tracking-[0.04em] text-muted-foreground">
+                        {play.ch.map((c, i) => {
+                          const channel = CHANNEL_OF[c];
+                          return (
+                            <span key={c} className="contents">
+                              {i > 0 ? <span aria-hidden>·</span> : null}
+                              {/* Struck through when the channel cannot put anything in front of a
+                                  lead today, so the separators must sit outside the struck span. */}
+                              <span
+                                className={cn(!canAct(channel) && "line-through decoration-from-font")}
+                                title={canAct(channel) ? undefined : `${CHANNEL_NAME[channel]} can't send yet`}
+                              >
+                                {CHANNEL_NAME[channel]}
+                              </span>
+                            </span>
+                          );
+                        })}
                       </span>
                     </button>
                   ))
@@ -192,7 +301,12 @@ export function NewStrategyView() {
                       type="button"
                       disabled={busy !== null}
                       onClick={() =>
-                        void start(channel, `${CHANNEL_NAME[channel]} sequence`, [channel], graphForChannel(SHORT_OF[channel]))
+                        void start(
+                          channel,
+                          `${CHANNEL_NAME[channel]} sequence`,
+                          [channel],
+                          graphForChannel(SHORT_OF[channel], audience || undefined),
+                        )
                       }
                       className="flex items-center gap-[10px] rounded-[11px] border border-border bg-card px-[15px] py-[10px] text-left transition-colors hover:border-input disabled:opacity-60"
                     >
@@ -200,7 +314,11 @@ export function NewStrategyView() {
                       <span className="flex min-w-0 flex-col gap-[2px]">
                         <span className="text-[12.5px] font-semibold">{CHANNEL_NAME[channel]}</span>
                         <span className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-muted-foreground">
-                          {busy === channel ? "Opening…" : "Touch · pause · follow-up"}
+                          {busy === channel
+                            ? "Opening…"
+                            : canAct(channel)
+                              ? "Touch · pause · follow-up"
+                              : "Can't send yet"}
                         </span>
                       </span>
                     </button>
@@ -226,12 +344,14 @@ export function NewStrategyView() {
           </section>
 
           <p className="border-t border-border pt-[14px] text-[11.5px] leading-[1.55] text-muted-foreground">
-            Every strategy follows the same rules: daily limits per account, quiet hours, the workspace contact limit,
-            and stop-on-reply. Those live in{" "}
+            <strong className="font-semibold text-body">LinkedIn is the only channel that sends today.</strong> A call
+            step becomes a to-do for a person; an email step is written down with the reason it could not go out,
+            because no mailbox can be connected yet. Working hours and daily limits come from the account the plan
+            sends from, in{" "}
             <Link href={SETUP_HREF} className="font-medium text-foreground hover:underline">
               Setup
             </Link>
-            , not here.
+            . Nothing goes out until you launch it from Strategies.
           </p>
         </div>
       </div>

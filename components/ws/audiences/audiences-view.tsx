@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronLeft,
@@ -69,6 +69,41 @@ export function AudiencesView() {
   );
 
   const list = useMemo(() => segments.data?.segments ?? [], [segments.data]);
+
+  /**
+   * Fills in the LinkedIn briefings while this screen is open.
+   *
+   * An upload can bring in hundreds of profiles, and reading them is a provider call each, so it
+   * cannot happen inside the save. It runs a few at a time here and on the scheduled tick, which is
+   * why a freshly uploaded file's profiles appear over the following minutes rather than at once.
+   */
+  const [briefing, setBriefing] = useState<{ pending: number; configured: boolean } | null>(null);
+  const reloadLeads = leads.reload;
+  const running = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    const pass = async () => {
+      if (running.current) return;
+      running.current = true;
+      try {
+        const done = await api.fillBriefings();
+        if (!alive) return;
+        setBriefing({ pending: done.pending, configured: done.configured });
+        // A read fills in company and job title where the file left them blank.
+        if (done.read > 0) reloadLeads();
+      } catch {
+        // Nothing here is load-bearing; the tick does the same work.
+      } finally {
+        running.current = false;
+      }
+    };
+    void pass();
+    const timer = window.setInterval(() => void pass(), 20_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [reloadLeads]);
   const open = list.find((s) => s.id === segmentId) ?? null;
   const total = leads.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -108,9 +143,11 @@ export function AudiencesView() {
           <PageHeader
             title="Audiences"
             subtitle={
-              leads.state === "ready"
-                ? `${fmt(total)} ${total === 1 ? "lead" : "leads"} in ${open ? open.name : "this workspace"}. You review every row before it's saved.`
-                : "Every row is reviewed before it's saved."
+              briefing?.configured && briefing.pending > 0
+                ? `${fmt(total)} ${total === 1 ? "lead" : "leads"} in ${open ? open.name : "this workspace"}. Reading ${fmt(briefing.pending)} LinkedIn ${briefing.pending === 1 ? "profile" : "profiles"} in the background — their briefings appear as they land.`
+                : leads.state === "ready"
+                  ? `${fmt(total)} ${total === 1 ? "lead" : "leads"} in ${open ? open.name : "this workspace"}. You review every row before it's saved.`
+                  : "Every row is reviewed before it's saved."
             }
             actions={
               <>
@@ -161,8 +198,7 @@ export function AudiencesView() {
               <AudienceCard
                 name="All leads"
                 source="Everyone in this workspace"
-                rows={segments.state === "ready" ? null : null}
-                usedBy=""
+                rows={null}
                 selected={segmentId === "all"}
                 onSelect={() => select("all")}
               />
@@ -174,7 +210,6 @@ export function AudiencesView() {
                       name={s.name}
                       source={`${s.fileName} · ${shortDate(s.createdAt)}`}
                       rows={s.audienceCount}
-                      usedBy={`${fmt(s.reachableRows)} reachable`}
                       selected={segmentId === s.id}
                       onSelect={() => select(s.id)}
                       segment={s}
@@ -405,11 +440,19 @@ export function AudiencesView() {
   );
 }
 
+/**
+ * One audience, as a card.
+ *
+ * **Only live numbers.** The card used to carry "N reachable" and "N skipped" straight off the
+ * `segments` row, which are counts of the *file* as it was the day it was imported. Delete every
+ * lead in the audience and they sat there unchanged, so an empty audience still claimed someone
+ * was reachable in it. The member count is counted from the link table on every read, so it is the
+ * one number here that is true now.
+ */
 function AudienceCard({
   name,
   source,
   rows,
-  usedBy,
   selected,
   onSelect,
   segment,
@@ -417,7 +460,6 @@ function AudienceCard({
   name: string;
   source: string;
   rows: number | null;
-  usedBy: string;
   selected: boolean;
   onSelect: () => void;
   segment?: Segment;
@@ -449,18 +491,10 @@ function AudienceCard({
       </div>
       {segment ? (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-divider pt-[10px]">
-          <span className="flex items-center gap-3 font-mono text-[11px] text-body">
-            <span className="inline-flex items-center gap-[5px]">
-              <Users aria-hidden className="size-[13px] text-muted-foreground" strokeWidth={1.8} />
-              {fmt(rows ?? 0)}
-            </span>
-            <span>{usedBy}</span>
+          <span className="inline-flex items-center gap-[5px] font-mono text-[11px] text-body">
+            <Users aria-hidden className="size-[13px] text-muted-foreground" strokeWidth={1.8} />
+            {rows === 0 ? "Empty" : `${fmt(rows ?? 0)} ${rows === 1 ? "lead" : "leads"}`}
           </span>
-          {segment.excludedInJourney > 0 ? (
-            <span className="font-mono text-[10.5px] text-muted-foreground">
-              {fmt(segment.excludedInJourney)} skipped
-            </span>
-          ) : null}
         </div>
       ) : null}
     </div>

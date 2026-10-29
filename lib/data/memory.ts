@@ -564,6 +564,11 @@ export class MemoryRepository implements Repository {
     return row ? { handle: row.linkedin ?? "", name: row.name, stored: readLinkedInExtra({ linkedin: briefings.get(id) }) } : null;
   }
 
+  async pendingBriefings(_ctx: Ctx, limit: number): Promise<{ ids: string[]; pending: number }> {
+    const waiting = audienceRows.filter((a) => (a.linkedin ?? "").trim() && !briefings.has(a.id));
+    return { ids: waiting.slice(0, Math.max(1, Math.min(limit, 50))).map((a) => a.id), pending: waiting.length };
+  }
+
   async saveAudienceLinkedIn(_ctx: Ctx, id: string, profile: ProviderProfile): Promise<LinkedInExtra | null> {
     const row = audienceRows.find((a) => a.id === id);
     if (!row) return null;

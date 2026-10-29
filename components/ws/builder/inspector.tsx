@@ -147,7 +147,9 @@ export function Inspector({
             value={d.list}
             disabled={readOnly}
             onChange={(v) => patch({ list: v })}
-            options={lists.map((l) => ({ value: l.k, label: l.name }))}
+            // The count is the whole point of the choice: an audience with nobody in it is why a
+            // launch is refused, and a bare name gives no clue which one that is.
+            options={lists.map((l) => ({ value: l.k, label: `${l.name} · ${l.n} ${l.n === 1 ? "lead" : "leads"}` }))}
             className="w-full"
             selectClassName="w-full"
           />

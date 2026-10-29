@@ -1056,6 +1056,25 @@ export class PgRepository implements Repository {
     return { handle: row.linkedin ?? "", name: row.name, stored: readLinkedInExtra(row.extra) };
   }
 
+  async pendingBriefings(ctx: Ctx, limit: number): Promise<{ ids: string[]; pending: number }> {
+    // `extra->'linkedin'` is written by `storeProfile`, so its absence is "never read".
+    const waiting = and(
+      this.ws(audiencesTable.workspaceId, ctx),
+      sql`coalesce(${audiencesTable.linkedin}, '') <> ''`,
+      sql`${audiencesTable.extra} -> 'linkedin' is null`,
+    );
+    const [rows, [{ value: pending = 0 } = { value: 0 }]] = await Promise.all([
+      this.db
+        .select({ id: audiencesTable.id })
+        .from(audiencesTable)
+        .where(waiting)
+        .orderBy(asc(audiencesTable.updatedAt), asc(audiencesTable.id))
+        .limit(Math.max(1, Math.min(limit, 50))),
+      this.db.select({ value: count() }).from(audiencesTable).where(waiting),
+    ]);
+    return { ids: rows.map((r) => r.id), pending: Number(pending) };
+  }
+
   async saveAudienceLinkedIn(ctx: Ctx, id: string, profile: ProviderProfile): Promise<LinkedInExtra | null> {
     const found = await this.audienceLinkedIn(ctx, id);
     if (!found) return null;

@@ -18,6 +18,7 @@ import { Confirm } from "@/components/ws/ui/confirm";
 import { Segmented } from "@/components/ws/ui/segmented";
 import { StrategyStatusPill } from "@/components/ws/ui/status-pill";
 import { Appear } from "@/components/ws/ui/motion";
+import { DemoNote } from "@/components/ws/shell/demo-note";
 import { EmptyState, LoadError, MetricTile, NativeSelect, SearchInput, Skeleton } from "@/components/ws/ui/misc";
 
 type Filter = "all" | StrategyStatus;
@@ -96,7 +97,38 @@ export function StrategiesView() {
   }, [all, filter, channel, q]);
 
   const count = (f: Filter) => (f === "all" ? all.length : all.filter((s) => s.status === f).length);
-  const totals = list.data?.totals;
+
+  /**
+   * The tiles describe **the strategies on screen**, not the workspace.
+   *
+   * They used to read the server's workspace-wide `totals`, which sums every strategy including
+   * the sample one — so a workspace with a single real strategy that had sent nothing showed "401
+   * delivered · 7.1% reply rate", entirely the demo's invented figures, right above a row reading
+   * "—". Summing the filtered rows means the Live tab describes what is live, and a strategy that
+   * has produced nothing reads "—" rather than a borrowed number.
+   */
+  const shown = useMemo(() => {
+    const audiences = rows.reduce((sum, s) => sum + s.audiences, 0);
+    const withSent = rows.filter((s) => s.sent !== null || s.delivered !== null);
+    const delivered = withSent.length
+      ? withSent.reduce((sum, s) => sum + (s.delivered ?? s.sent ?? 0), 0)
+      : null;
+    const replied = rows.filter((s) => s.replyRate !== null);
+    const replyRate = replied.length
+      ? Number((replied.reduce((sum, s) => sum + (s.replyRate ?? 0), 0) / replied.length).toFixed(1))
+      : null;
+    return { audiences, delivered, replyRate, sample: rows.some((s) => s.isSample) };
+  }, [rows]);
+
+  /** What the tiles are counting, in words, so a filtered number is never mistaken for the whole. */
+  const scope =
+    rows.length === 0
+      ? "Nothing shown"
+      : rows.length === all.length
+        ? `Across all ${all.length} ${all.length === 1 ? "strategy" : "strategies"}`
+        : rows.length === 1
+          ? `In ${rows[0].name}`
+          : `Across the ${rows.length} shown`;
   const live = all.filter((s) => s.status === "live").length;
   const scheduled = all.filter((s) => s.status === "scheduled").length;
 
@@ -241,18 +273,24 @@ export function StrategiesView() {
           </p>
         ) : null}
 
+        {shown.sample ? (
+          <Appear index={1}>
+            <DemoNote />
+          </Appear>
+        ) : null}
+
         <Appear index={1}>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
-            {list.state === "ready" && totals ? (
+            {list.state === "ready" ? (
               <>
                 <MetricTile
                   label="Running now"
                   value={fmt(live)}
                   footer={scheduled ? `${scheduled} scheduled to start` : "Nothing scheduled"}
                 />
-                <MetricTile label="Audiences" value={fmt(totals.audiences)} footer="Across every strategy" />
-                <MetricTile label="Delivered · 7 days" value={fmt(totals.delivered)} footer="Messages that landed" />
-                <MetricTile label="Reply rate" value={rate(totals.replyRate)} footer="Across every strategy" />
+                <MetricTile label="Audiences" value={fmt(shown.audiences)} footer={scope} />
+                <MetricTile label="Delivered" value={num(shown.delivered)} footer={scope} />
+                <MetricTile label="Reply rate" value={rate(shown.replyRate)} footer={scope} />
               </>
             ) : (
               [0, 1, 2, 3].map((i) => (

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Check, FileUp, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { MAX_DESCRIPTION } from "@/lib/audiences/upload";
 import { ACCEPTED_EXTENSIONS, MAX_UPLOAD_MB } from "@/lib/audiences/limits";
 import { ATTRIBUTES, type Mapping } from "@/lib/audiences/validation";
+import { displayColumns } from "@/lib/audiences/profile";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/audiences/segments";
 import { EASE_OUT } from "@/components/ws/ui/motion";
 import { Button } from "@/components/ws/ui/button";
@@ -43,6 +44,8 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
   const [busy, setBusy] = useState<"" | "parsing" | "checking" | "saving">("");
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
+  /** Which of this file's columns become the lead's name, company and job title. */
+  const found = useMemo(() => displayColumns(preview?.headers ?? []), [preview]);
   const fileInput = useRef<HTMLInputElement>(null);
   const still = useReducedMotion();
 
@@ -266,6 +269,19 @@ export function UploadAudiences({ onClose, onSaved }: { onClose: () => void; onS
                 <p className="text-[11.5px] leading-[1.55] text-muted-foreground">
                   Column names don&apos;t have to match. Every entry is checked on its own content — an “@” for email, a
                   country code with that country&apos;s exact digit count for numbers, and a web address for LinkedIn.
+                </p>
+                {/* Only reachability is mapped here, so a "Company Name" column has no control of
+                    its own and looks ignored. It is not — it is matched by header. Say which. */}
+                <p className="rounded-lg bg-accent px-[11px] py-[8px] text-[11.5px] leading-[1.55] text-body">
+                  <span className="font-medium">Read for you, no mapping needed:</span>{" "}
+                  {(["name", "company", "title"] as const)
+                    .map((field) => {
+                      const column = found[field];
+                      const label = field === "title" ? "Job title" : field === "name" ? "Name" : "Company";
+                      return column ? `${label} from “${column}”` : `no ${label.toLowerCase()} column`;
+                    })
+                    .join(" · ")}
+                  . Every other column is kept on the lead and shown on their profile.
                 </p>
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
                   {ATTRIBUTES.map(({ key, label, hint }) => (
