@@ -124,6 +124,8 @@ export const LEADS: Audience[] = SAMPLE_LEADS.map((lead, i) => ({
   ownerId: DEMO_USER.id,
   ownerName: DEMO_USER.name,
   strategyId: DEMO_STRATEGY_ID,
+  // The demo world has no uploaded files, so nobody in it is in a segment.
+  segmentIds: [],
   starred: lead.starred,
   updatedAt: iso(now - (i + 1) * 3 * HOUR),
   // The database returns these for every audience; null here, not absent, so both stores agree.

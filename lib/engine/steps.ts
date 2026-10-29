@@ -45,7 +45,10 @@ export type StepEffect =
       body: string;
       /** Email only. */
       subject: string;
-      /** What the log says when nothing can actually be sent. */
+      /**
+       * What the log says when nothing can actually be sent. Both stores append the reason
+       * (" — not sent: …"), so it never ends in punctuation of its own.
+       */
       dryRunText: string;
     };
 
@@ -142,7 +145,7 @@ export function runStep(input: {
           step: node.id,
           body: note,
           subject: "",
-          dryRunText: `Would send ${label} a LinkedIn invite${note ? `: “${clip(note)}”` : "."}`,
+          dryRunText: `Would send ${label} a LinkedIn invite${note ? `: “${clip(note)}”` : ""}`,
         },
       ]);
     }
@@ -173,7 +176,7 @@ export function runStep(input: {
           step: node.id,
           body: fillMergeFields(str(node.data.body), audience),
           subject,
-          dryRunText: `Would email ${label}${subject ? ` — “${clip(subject, 80)}”` : "."}`,
+          dryRunText: `Would email ${label}${subject ? ` — “${clip(subject, 80)}”` : ""}`,
         },
       ]);
     }

@@ -9,8 +9,11 @@ import {
   STEPS,
   TEMPLATES,
   WORKFLOWS,
+  blankCopySteps,
   blankWorkflow,
+  copyField,
   edgePath,
+  graphForChannel,
   getWorkflow,
   graphFromTemplate,
   issues,
@@ -184,4 +187,52 @@ test("no template builds a step that cannot run", () => {
 test("a condition only offers checks something can observe", () => {
   assert.equal(OFFERED_CHECKS.includes("read"), false, "nothing can observe a WhatsApp read");
   for (const key of OFFERED_CHECKS) assert.ok(CHECKS[key], `${key} is offered but has no label`);
+});
+
+/* ---------- is a plan ready to send? -------------------------------------- */
+
+test("a starting plan arrives with its copy already written", () => {
+  // Worth pinning: a plan whose steps were empty would launch and send a bare connection request.
+  assert.deepEqual(blankCopySteps(graphForChannel("li")), []);
+});
+
+test("copy cleared in the builder is reported, written copy is not", () => {
+  const graph = graphForChannel("li");
+  const invite = graph.nodes.find((n) => n.kind === "li_invite");
+  invite.data.note = "";
+  assert.deepEqual(
+    blankCopySteps(graph).map((b) => b.kind),
+    ["li_invite"],
+  );
+  assert.match(blankCopySteps(graph)[0].label, /connection request/);
+
+  // Whitespace is not copy.
+  invite.data.note = "   \n ";
+  assert.equal(blankCopySteps(graph)[0].kind, "li_invite");
+});
+
+test("a step nothing leads to is never reported, because it never runs", () => {
+  const graph = graphForChannel("li");
+  const invite = graph.nodes.find((n) => n.kind === "li_invite");
+  invite.data.note = "";
+  graph.edges = graph.edges.filter((e) => e.target !== invite.id);
+  assert.equal(
+    blankCopySteps(graph).some((b) => b.id === invite.id),
+    false,
+  );
+});
+
+test("steps that carry no words are never reported", () => {
+  const graph = graphFromTemplate("blank");
+  for (const node of graph.nodes) {
+    if (node.kind === "audience") continue;
+    assert.deepEqual(blankCopySteps({ ...graph, nodes: [node], edges: [] }), []);
+  }
+});
+
+test("the copy field matches where each step really stores its words", () => {
+  assert.equal(copyField("li_invite"), "note");
+  assert.equal(copyField("call"), "notes");
+  assert.equal(copyField("email"), "body");
+  assert.equal(copyField("li_msg"), "body");
 });

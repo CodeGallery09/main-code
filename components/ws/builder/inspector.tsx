@@ -25,6 +25,17 @@ import { Button } from "@/components/ws/ui/button";
 import { NativeSelect, Switch } from "@/components/ws/ui/misc";
 import { StepTile } from "./canvas";
 
+/**
+ * How long an invitation note may be.
+ *
+ * `NOTE_LIMIT` mirrors `INVITE_NOTE_LIMIT` in `lib/channels/unipileRequests.ts`, which is
+ * server-only and has to stay import-free for `node --test`, so the number lives in both places.
+ * `FREE_NOTE_LIMIT` is LinkedIn's own limit for a free account — it takes a note of up to 200
+ * characters, on only a handful of invites a month, and silently sends a bare request otherwise.
+ */
+const NOTE_LIMIT = 300;
+const FREE_NOTE_LIMIT = 200;
+
 const INPUT =
   "w-full rounded-lg border border-input bg-card px-[10px] py-[7px] text-[12px] leading-[1.5] placeholder:text-faint";
 
@@ -156,8 +167,23 @@ export function Inspector({
           />
           <div className="flex items-center justify-between gap-2">
             <Variables onInsert={(v) => patch({ note: `${d.note ?? ""} ${v}`.trimStart() })} />
-            <span className="font-mono text-[10.5px] text-muted-foreground">{(d.note ?? "").length}/300</span>
+            <span
+              className={cn(
+                "font-mono text-[10.5px] text-muted-foreground",
+                (d.note ?? "").length > FREE_NOTE_LIMIT && "text-warning",
+              )}
+            >
+              {(d.note ?? "").length}/{NOTE_LIMIT}
+            </span>
           </div>
+          {/* The note is ours to write but LinkedIn's to deliver, and on a free account it usually
+              is not. Saying so here is the only honest place: by the time the invite has gone out
+              there is no way to tell from the API whether the note went with it. */}
+          <p className="text-[11px] leading-[1.55] text-muted-foreground">
+            {(d.note ?? "").length > FREE_NOTE_LIMIT
+              ? `Over ${FREE_NOTE_LIMIT} characters. A free LinkedIn account will not take a note this long — it sends the invite without one. Premium accounts take up to ${NOTE_LIMIT}.`
+              : `LinkedIn, not Flightpath, decides whether a note is delivered: a free account takes only a handful of personalised invites a month and caps the note at ${FREE_NOTE_LIMIT} characters. Past that it sends the request bare, and tells nobody.`}
+          </p>
         </Field>
       )}
 

@@ -147,6 +147,10 @@ The stores apply the result: `launchStrategy`, `runDueSteps`, `runSummary` and `
   inside the same short transaction; the send happens afterwards, outside any transaction. An invite
   that goes out twice is worse than a step that is missed, because the person on the other end sees it.
   While sending, a tick takes at most 12 jobs in batches of 4, so one screen poll cannot burst.
+- **Those refusals are readable by the operator**: `runSummary` is shown both in the builder's
+  strategy panel and, since the Launch button lives there, behind the disclosure on each Strategies
+  row. A plan that is quiet because it is waiting for Monday morning is otherwise indistinguishable
+  from a plan that is broken.
 - **Every refusal is written down** (`events` kind `dry_run_step` for "not sent: …", `sent` for a
   real one, `send_failed` for a provider refusal). A step that silently did nothing is the worst
   state an outreach tool can be in.
@@ -383,17 +387,25 @@ UI: `upload-audiences.tsx` (349L) is the three-step modal (File → Match column
 `import-review.tsx` (272L) is its last step (totals, filterable row review, invalid-vs-blank
 validation log, consent attestation) · `lead-drawer.tsx` (216L) is the profile drawer opened from
 an Audiences row (the repository/route names stay `Prospect*` — see CLAUDE.md on the holdover) ·
-`lead-form.tsx` (237L) adds or edits one lead by hand, opened from the Audiences header and from
+`lead-form.tsx` (297L) adds or edits one lead by hand, opened from the Audiences header and from
 the drawer's Edit button · `lead-briefing.tsx` (155L) is the **From LinkedIn** panel at the top of
 the drawer.
 
-**The lead form asks name, company, job title, email, phone, LinkedIn, the strategy they sit in,
-and the consent attestation** — and sends only those, so an edit never touches imported extra
-columns and the server defaults the rest (stage `new`, source `form`, owner = creator). Stage,
-source, score, tags and next step are not shown anywhere in this UI — they still exist in the
-schema. **The strategy field is how a lead is moved**: `audiences.strategy_id` holds one strategy
-per lead, so picking another moves them and "No strategy" makes them standalone; sample strategies
-are not offered, because nothing may be enrolled into the demo. Saving a *new* LinkedIn URL also
+**The lead form asks name, company, job title, email, phone, LinkedIn, the audiences they are
+listed in, the strategy they sit in, and the consent attestation** — and sends only those, so an
+edit never touches imported extra columns and the server defaults the rest (stage `new`, source
+`form`, owner = creator). Stage, source, score, tags and next step are not shown anywhere in this
+UI — they still exist in the schema.
+
+**The two group fields are different shapes, because the two records are.** *Audiences* are the
+uploaded lists, and a lead can be in several at once, so they are checkboxes writing
+`Audience.segmentIds` — sending that list **replaces** the whole membership (`[]` means "in none"),
+and a patch that leaves the key out leaves membership alone. Both stores enforce that the ids
+belong to this workspace (`checkRefs` / the memory equivalent), so a stale id is a 422 rather than
+a cross-tenant write. *Strategy* is singular: `audiences.strategy_id` holds one strategy per lead,
+so picking another moves them and "No strategy" makes them standalone; sample strategies are not
+offered, because nothing may be enrolled into the demo. Saving reloads the segment cards too,
+since their counts have just changed. Saving a *new* LinkedIn URL also
 fires `POST /api/audiences/[id]/enrich` in the background, so the briefing is usually there by the
 time the drawer is opened.
 
@@ -443,13 +455,13 @@ reads what only the server can read, and renders one `"use client"` view. Keep i
 | `shell/use-sign-out.ts` | 34 | `/api/logout` | navigates only after the server confirms, with a **full page load** — see §5 |
 | `home/home-view.tsx` | 388 | `/api/overview`, `/api/strategies`, `/api/tasks`, `/api/accounts` | four metric tiles (fixed 7-day window; ranges belong to Analytics, which it links to), To do with a Segmented filter and optimistic completion, Sending today from the accounts' quotas, Strategies, Setup health computed from `setupChecks`. The greeting is computed after mount (no date-dependent server markup) |
 | `inbox/inbox-view.tsx` + `composer.tsx` + `messages.tsx` | 438 + 120 + 43 | `/api/threads`, `/api/threads/[id]`, `/api/inbox/sync` | four channel blocks that double as the filter, each stating its **capability before its action**. A **LinkedIn reply really goes out** through the connected account, and so does an email one once a mailbox can be connected; WhatsApp hands off and calls log an outcome. The reply bar's line is channel-aware and tells the truth about whether a send is possible (`linkedInReady`, from the sync poll). The composer is closed by default and closes on any switch |
-| `audiences/audiences-view.tsx` | 456 | `/api/audiences`, `/api/audiences/segments` | drop zone, filters, segment cards that narrow the table, paged leads table, copy-email, Add a lead, delete with `Confirm`; a row opens `lead-drawer.tsx`, whose Edit opens `lead-form.tsx`. **No row checkboxes** — nothing consumed the selection and there is no bulk action |
-| `strategies/strategies-view.tsx` | 302 | `/api/strategies`, `/api/strategies/[id]` | **the only strategy list** (§2d). Status Segmented + search + channel select; Pause/Resume, Duplicate (creates the strategy *and* copies its graph), Delete. A row opens the builder |
+| `audiences/audiences-view.tsx` | 468 | `/api/audiences`, `/api/audiences/segments` | drop zone, filters, segment cards that narrow the table, paged leads table, copy-email, Add a lead, delete with `Confirm`; a row opens `lead-drawer.tsx`, whose Edit opens `lead-form.tsx`. **No row checkboxes** — nothing consumed the selection and there is no bulk action |
+| `strategies/strategies-view.tsx` | 564 | `/api/strategies`, `/api/strategies/[id]`, `/api/strategies/[id]/workflow`, `/api/strategies/[id]/runs`, `/api/journeys` | **the only strategy list** (§2d), and **the only place a plan is launched**. Status Segmented + search + channel select; Launch/Resume/Pause behind a `Confirm`, Duplicate (creates the strategy *and* copies its graph), Delete. **The actions column is second, not last** — see §5. Opening the confirmation reads the plan first and names any step with no copy written. Each row has a disclosure that opens `Activity`: counts, when the next step is due, and the run log's own lines, including every refusal and its reason |
 | `strategies/new-strategy-view.tsx` | 245 | `/api/strategies`, `/api/strategies/[id]/workflow` | focus route. Shape (multichannel / single channel), then a play or a blank sequence (a single channel starts on `graphForChannel()`: touch, pause, follow-up, exit; the strategy is still `type: multichannel` = "has a workflow" with one channel, and the builder scopes its palette to it); creates the strategy + its workflow and opens the builder — **never on a GET** |
-| `builder/builder-view.tsx` + `canvas.tsx` + `inspector.tsx` | 585 + 382 + 387 | `/api/accounts`, `/api/strategies/[id]/workflow` | the drag-and-drop builder, see below |
+| `builder/builder-view.tsx` + `canvas.tsx` + `inspector.tsx` | 585 + 382 + 413 | `/api/accounts`, `/api/strategies/[id]/workflow` | the drag-and-drop builder, see below |
 | `setup/setup-overview-view.tsx` + `account-settings.tsx` | 401 + 132 | `/api/accounts` | connected accounts, each account's dials behind its Settings, hosted-sign-in result banner, disconnect. No Pause: nothing is sending to pause |
 | `setup/setup-integrations-view.tsx` | 250 | `/api/accounts` | the provider catalogue (`providerView()`) and the **one place an account is connected** (a labelled Connect button starts the hosted LinkedIn sign-in). The sending-rules cards and Workspace card that sat beside it as "Config" were removed at the user's request; `/api/settings`, `workspace_settings` and `lib/app/configuration.ts` are still there but no screen edits them |
-| `setup/setup-messages-view.tsx` | 283 | `/api/workflows` | **all message copy in the workspace, in one place**, read out of every stored graph by `lib/ws/messages.ts`. The builder never edits copy (§5) |
+| `setup/setup-messages-view.tsx` | 283 | `/api/workflows` | **all message copy in the workspace, in one place**, read out of every stored graph by `lib/ws/messages.ts` — the same fields the builder's inspector writes. What is missing is a shared template library, not editing |
 | `analytics/analytics-view.tsx` + `charts.tsx` + `journeys-panel.tsx` | 198 + 89 + 153 | `/api/analytics`, `/api/journeys` | two tabs: Results (the recorded funnel, now fed by real sends and replies) and Journeys (launched strategies' per-step reach and touchpoints), which opens by default once something is launched. Hairline grid, single near-black accent |
 | `ui/` | ~700 | — | `button` (cva: default/outline/ghost/dashed/danger/warning/inverse; sizes sm 30 · md 34 · lg 38 · icon 30 · icon-sm 28) · `card` · `status-pill` · `segmented` (shared-layout thumb) · `channel-tile` · `confirm` · `motion` (`Appear`, `Swap`, `Row`, `Expand`, and the one easing pair) · `misc` (`Initials, Meter, Switch, NativeSelect, SearchInput, Sparkline, MetricTile, EmptyState, Tag, ChannelChip, Skeleton, LoadError`) |
 | `lib/ws/` | 462 | — | `utils.ts` (`cn`, `fmt`, `pct`, `initialsOf`) · `channels.ts` (the domain `Channel` union → display name, monogram, colour, order) · `format.ts` (metric values and footers; says "Nothing yet"/"No comparison" rather than inventing a 0%) · `use-async.ts` (the loading/ready/failed/retry contract every card shares) · `graphEdit.ts` (pure canvas edits, tested) · `messages.ts` (real copy out of stored graphs) |
@@ -489,10 +501,15 @@ mouse) · `lib/ws/graphEdit.ts` (import-free and tested by `tests/graphEdit.test
   each scroll on their own.
 - `lib/ws/plan.ts` (the old list seam) is deleted.
 
-**Model.** `lib/app/workflow.ts` (946L) still owns `WorkflowGraph`, the templates,
+**Model.** `lib/app/workflow.ts` (1024L) still owns `WorkflowGraph`, the templates,
 `graphFromTemplate()`, `toGraph`/`fromGraph` and `validateWorkflowGraph()` /
 `validateWorkflowName()` — a whitelist rebuild that rejects unknown step-data keys (incl.
-`__proto__`), bad sockets, a second Audience, **cycles** and oversize graphs. Pinned by
+`__proto__`), bad sockets, a second Audience, **cycles** and oversize graphs. It also answers
+*is this plan ready to send*: `copyField(kind)` names the field a step keeps its words in
+(`note` / `notes` / `body`, the one definition — `lib/ws/messages.ts` re-exports it) and
+`blankCopySteps(graph)` lists the **reachable** sending steps with nothing written in them, which
+is what the launch confirmation warns about. An empty note is reported, never refused: a bare
+invite is a legitimate choice, deliberately made. Pinned by
 `tests/workflow.test.mjs` + `tests/workflowPersist.test.mjs`. **@xyflow/react was never a
 dependency** and the `.react-flow__*` class names are gone with `app.css`.
 
@@ -501,8 +518,18 @@ dependency** and the `.react-flow__*` class names are gone with `app.css`.
 `idle` when a stored graph loaded — it used to start at "Unsaved changes" on a page that had
 changed nothing. Status (live/paused) belongs to the *strategy*, not the graph.
 
-**The builder never edits message copy.** Each touch selects a template; the copy lives on
-Setup → Messages. That is a product decision, not a missing feature.
+**Where copy is written.** The inspector *does* edit the words a step sends (the invite note,
+the message body, the caller's notes); Setup → Messages reads the same fields back out of every
+stored graph so all the copy in a workspace can be seen in one place. What is not built there is a
+shared template library — a message lives on the step that sends it.
+
+**What LinkedIn does with an invitation note is not ours to promise.** The inspector counts against
+300 characters (the API's limit, mirrored from `INVITE_NOTE_LIMIT` in
+`lib/channels/unipileRequests.ts`, which stays import-free for `node --test`) and says plainly that
+a **free** LinkedIn account takes only a handful of personalised invites a month and caps the note
+at 200 characters, sending the request bare past that and telling nobody. Nothing in the API
+reports it, so the note going missing on a real send is usually this, not a bug: the code attaches
+it as `message` on `POST /users/invite` and `tests/unipile.test.mjs` pins that.
 
 **Audience lists** come from the page as `AudienceOption[]`: "Audiences in this strategy", "All
 audiences" (both counted live) and the workspace's saved segments. The Audience step stores only
@@ -641,6 +668,8 @@ namespaces, no parameter properties).
 | Swap the LinkedIn vendor | implement `LinkedInChannelAdapter` (`lib/channels/adapter.ts`) and return it from `getLinkedInAdapter()`. Nothing else — that is what the interface is for. |
 | Handle another provider webhook | a reader in `lib/channels/events.ts` (+ a case in `tests/unipileEvents.test.mjs`), a writer in `inbound.ts`, a route under `app/api/webhooks/unipile/`, and the `source` in `webhookConfig.ts` so the registration script picks it up |
 | Add a per-account figure | `AccountActivity` in `lib/data/types.ts` → `accountActivity()` in **both** repository impls → `SeatActivity` in `ChannelTabs.tsx`. Count real `events` rows; never estimate |
+| Move a lead into or out of an uploaded audience | `segmentIds` on `AudienceInput` (`lib/data/validate.ts`) → `setSegments`/`segmentsOf` in `pg.ts` and their equivalents in `memory.ts` → the checkbox list in `components/ws/audiences/lead-form.tsx`. Sending the list replaces the whole membership; leaving the key out leaves it alone |
+| Warn about something before a plan is launched | `blankCopySteps` (or a sibling) in `lib/app/workflow.ts` + a test, then the `Confirm` body in `components/ws/strategies/strategies-view.tsx`, which reads the plan when the dialog opens |
 | Change how uploaded people are matched | `lib/audiences/merge.ts` (`mergeAudiences` + `findInJourney`; `planImport` follows `mergeAudiences` automatically) and `tests/audiencesMerge`/`audiencesJourney`/`audiencesImportPlan` |
 | Change what the import review shows | `ImportPreview`/`ReviewRow` in `lib/audiences/segments.ts` → `analyseUpload` in `lib/audiences/analyse.ts` → `components/ws/audiences/import-review.tsx` |
 | Add something to the prospect profile | `ProspectProfile` in `lib/data/types.ts` → `ProspectFacts` + `buildProspect` in `lib/audiences/prospect.ts` (+ `tests/prospect.test.mjs`) → `getProspect` in **both** `pg.ts` and `memory.ts` (scope every query by `workspace_id`) → `components/ws/audiences/lead-drawer.tsx` |
@@ -737,6 +766,13 @@ namespaces, no parameter properties).
   page is one long scroll, grids are `repeat(auto-fit,minmax(Npx,1fr))` and a wide table sits in
   `overflow-x-auto` with a `min-w`. Check a new screen at 1440x900, 1280x720 and 1024x700 that
   `document.documentElement.scrollHeight` equals the window height.
+- **In a table that scrolls sideways, the row's actions go on the left, not the right.** A wide
+  table in `overflow-x-auto` is fine for figures — you scroll to read them — but not for the
+  control that does the thing. On Strategies the Launch and Pause buttons were the last column, so
+  at every supported width they started off the right edge and the screen read as "there is no
+  Launch button". **A sticky column cannot fix this**: a grid item's containing block is its own
+  grid area, so `position: sticky; right: 0` on the last cell is clamped to that one track and
+  never moves. The actions column is therefore the second one, where the scroll never reaches.
 - **Compact density.** Body 12px, micro-labels 11px, page title 20px, controls 26–34px, sidebar 216px.
 - **Spacing is fixed, not improvised.** Page body `px-6 pt-4 pb-6`, `gap-4` between sections, card
   header `px-4 py-[10px]`, rows `py-[9px]`. Matching these is what makes the margins line up across

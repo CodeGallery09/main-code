@@ -20,7 +20,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, lte, not, or, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb } from "@/lib/db/client";
 import {
@@ -1937,15 +1937,63 @@ export class PgRepository implements Repository {
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
+    const inSegments = await this.segmentsOf(ctx, rows.map((r) => r.audience.id));
     return {
-      items: rows.map((r) => this.toAudience(r.audience, r.ownerName)),
+      items: rows.map((r) => this.toAudience(r.audience, r.ownerName, inSegments.get(r.audience.id) ?? [])),
       total: Number(total),
       page,
       pageSize,
     };
   }
 
-  private toAudience(row: typeof audiencesTable.$inferSelect, ownerName: string | null): Audience {
+  /**
+   * Which uploaded audiences each of these leads is in.
+   *
+   * One grouped query for the whole page rather than one per row. The link table carries its own
+   * `workspace_id`, so another workspace's membership can never come back.
+   */
+  private async segmentsOf(ctx: Ctx, audienceIds: string[]): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    if (!audienceIds.length) return out;
+    const rows = await this.db
+      .select({ audienceId: segmentAudiences.audienceId, segmentId: segmentAudiences.segmentId })
+      .from(segmentAudiences)
+      .where(and(this.ws(segmentAudiences.workspaceId, ctx), inArray(segmentAudiences.audienceId, audienceIds)));
+    for (const row of rows) out.set(row.audienceId, [...(out.get(row.audienceId) ?? []), row.segmentId]);
+    return out;
+  }
+
+  /**
+   * Replaces a lead's audience membership with exactly `segmentIds`.
+   *
+   * The ids have already been checked against this workspace by `checkRefs`, and both the delete
+   * and the insert are scoped to the workspace as well, so a stale id cannot reach another tenant's
+   * link rows.
+   */
+  private async setSegments(ctx: Ctx, audienceId: string, segmentIds: string[]): Promise<void> {
+    const keep = Array.from(new Set(segmentIds));
+    await this.db
+      .delete(segmentAudiences)
+      .where(
+        and(
+          this.ws(segmentAudiences.workspaceId, ctx),
+          eq(segmentAudiences.audienceId, audienceId),
+          ...(keep.length ? [not(inArray(segmentAudiences.segmentId, keep))] : []),
+        ),
+      );
+    if (keep.length) {
+      await this.db
+        .insert(segmentAudiences)
+        .values(keep.map((segmentId) => ({ workspaceId: ctx.workspaceId, segmentId, audienceId })))
+        .onConflictDoNothing();
+    }
+  }
+
+  private toAudience(
+    row: typeof audiencesTable.$inferSelect,
+    ownerName: string | null,
+    segmentIds: string[] = [],
+  ): Audience {
     return {
       id: row.id,
       name: row.name,
@@ -1968,6 +2016,7 @@ export class PgRepository implements Repository {
       ownerId: row.ownerId ?? "",
       ownerName: ownerName ?? "Unassigned",
       strategyId: row.strategyId,
+      segmentIds,
       starred: row.starred,
       updatedAt: iso(row.updatedAt),
       isSample: row.isSample,
@@ -1981,7 +2030,8 @@ export class PgRepository implements Repository {
       .leftJoin(users, eq(users.id, audiencesTable.ownerId))
       .where(and(eq(audiencesTable.id, id), this.ws(audiencesTable.workspaceId, ctx)))
       .limit(1);
-    return row ? this.toAudience(row.audience, row.ownerName) : null;
+    if (!row) return null;
+    return this.toAudience(row.audience, row.ownerName, (await this.segmentsOf(ctx, [id])).get(id) ?? []);
   }
 
   /**
@@ -2171,6 +2221,15 @@ export class PgRepository implements Repository {
         return { error: { field: "ownerId", message: "That owner is not in this workspace." } };
       }
     }
+    if (patch.segmentIds?.length) {
+      const found = await this.db
+        .select({ id: segmentsTable.id })
+        .from(segmentsTable)
+        .where(and(inArray(segmentsTable.id, patch.segmentIds), this.ws(segmentsTable.workspaceId, ctx)));
+      if (found.length !== new Set(patch.segmentIds).size) {
+        return { error: { field: "segmentIds", message: "One of those audiences no longer exists." } };
+      }
+    }
     return null;
   }
 
@@ -2202,8 +2261,9 @@ export class PgRepository implements Repository {
       })
       .returning();
 
+    if (input.segmentIds?.length) await this.setSegments(ctx, row.id, input.segmentIds);
     const owner = await this.ownerName(row.ownerId);
-    return this.toAudience(row, owner);
+    return this.toAudience(row, owner, input.segmentIds ?? []);
   }
 
   private async ownerName(id: string | null): Promise<string | null> {
@@ -2240,8 +2300,11 @@ export class PgRepository implements Repository {
       .returning();
     if (!row) return null;
 
+    // Membership is only touched when it was sent, so a patch that says nothing about audiences
+    // leaves the lead in the ones they are already in.
+    if (patch.segmentIds !== undefined) await this.setSegments(ctx, id, patch.segmentIds);
     const owner = await this.ownerName(row.ownerId);
-    return this.toAudience(row, owner);
+    return this.toAudience(row, owner, (await this.segmentsOf(ctx, [id])).get(id) ?? []);
   }
 
   async deleteAudience(ctx: Ctx, id: string): Promise<boolean> {

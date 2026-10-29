@@ -386,6 +386,8 @@ export function AudiencesView() {
         onClose={() => setEditing(null)}
         onSaved={(saved) => {
           leads.reload();
+          // Membership can have changed, so the audience cards' counts are stale too.
+          segments.reload();
           setOpenLead((current) => (current && current.id === saved.id ? saved : current));
         }}
       />

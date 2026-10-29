@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { api } from "@/lib/api";
 import type { Audience, Strategy } from "@/lib/data/types";
+import type { Segment } from "@/lib/audiences/segments";
 import type { AudiencePatch } from "@/lib/data/validate";
 import { EASE_OUT } from "@/components/ws/ui/motion";
 import { Button } from "@/components/ws/ui/button";
@@ -12,13 +13,17 @@ import { Button } from "@/components/ws/ui/button";
  * Add or edit one lead by hand.
  *
  * It asks only for what a person can actually supply — who they are, where to
- * reach them, and which strategy they belong to — plus the consent attestation.
- * Stage, source, score, tags and owner are set by the server or by an import, so
- * showing them here would be asking the operator to invent them.
+ * reach them, which audiences they are listed in and which strategy they belong
+ * to — plus the consent attestation. Stage, source, score, tags and owner are set
+ * by the server or by an import, so showing them here would be asking the
+ * operator to invent them.
  *
- * **A lead is only ever in one strategy**, so the strategy select moves them
- * rather than adding: picking a new one releases them from the old one. A lead
- * with no strategy is on their own until one is chosen, here or at launch.
+ * **The two group fields are different shapes on purpose.** An *audience* is an
+ * uploaded list, and a lead can be in several at once, so it is a set of
+ * checkboxes that adds and removes. A *strategy* is the plan reaching them, and
+ * **a lead is only ever in one**, so that select moves them rather than adding:
+ * picking a new one releases them from the old one. A lead with no strategy is on
+ * their own until one is chosen, here or at launch.
  */
 export function LeadForm({
   open,
@@ -41,11 +46,13 @@ export function LeadForm({
   const [title, setTitle] = useState(lead?.title ?? "");
   const [strategyId, setStrategyId] = useState(lead?.strategyId ?? "");
   const [strategies, setStrategies] = useState<Strategy[] | null>(null);
+  const [segmentIds, setSegmentIds] = useState<string[]>(lead?.segmentIds ?? []);
+  const [segments, setSegments] = useState<Segment[] | null>(null);
   const [consent, setConsent] = useState(lead ? lead.consent : false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  // The strategy list is only needed while the dialog is open, and it is small.
+  // Both lists are only needed while the dialog is open, and both are small.
   useEffect(() => {
     if (!open || strategies) return;
     let alive = true;
@@ -58,6 +65,18 @@ export function LeadForm({
     };
   }, [open, strategies]);
 
+  useEffect(() => {
+    if (!open || segments) return;
+    let alive = true;
+    api
+      .segments()
+      .then((data) => alive && setSegments(data.segments))
+      .catch(() => alive && setSegments([]));
+    return () => {
+      alive = false;
+    };
+  }, [open, segments]);
+
   async function save() {
     setBusy(true);
     setError("");
@@ -69,6 +88,7 @@ export function LeadForm({
       phone: phone.trim() || null,
       linkedin: linkedin.trim() || null,
       strategyId: strategyId || null,
+      segmentIds,
       consent,
     };
     try {
@@ -104,7 +124,7 @@ export function LeadForm({
             role="dialog"
             aria-modal="true"
             aria-label={lead ? `Edit ${lead.name}` : "Add a lead"}
-            className="w-full max-w-[440px] rounded-xl border border-border bg-card"
+            className="flex max-h-[calc(100dvh-32px)] w-full max-w-[440px] flex-col overflow-hidden rounded-xl border border-border bg-card"
             initial={{ opacity: 0, y: still ? 0 : 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: still ? 0 : 6 }}
@@ -119,7 +139,7 @@ export function LeadForm({
 
             <form
               method="post"
-              className="flex flex-col gap-[13px] px-4 py-[12px]"
+              className="flex min-h-0 flex-1 flex-col gap-[13px] overflow-y-auto px-4 py-[12px]"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (ready && !busy) void save();
@@ -141,6 +161,46 @@ export function LeadForm({
                 onChange={setLinkedin}
                 inputMode="url"
               />
+
+              <fieldset className="flex flex-col gap-[5px]">
+                <legend className="label-mono mb-[5px]">Audiences</legend>
+                {segments === null ? (
+                  <span className="text-[11.5px] text-muted-foreground">Loading your audiences…</span>
+                ) : segments.length === 0 ? (
+                  <span className="text-[11.5px] leading-[1.55] text-muted-foreground">
+                    You have no uploaded audiences yet. Upload a .csv or .xlsx and this lead can be added to it.
+                  </span>
+                ) : (
+                  <span className="flex max-h-[132px] flex-col overflow-y-auto rounded-lg border border-input">
+                    {segments.map((segment) => (
+                      <label
+                        key={segment.id}
+                        className="flex items-center gap-[9px] border-b border-divider px-[11px] py-[7px] text-[12px] last:border-b-0"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={segmentIds.includes(segment.id)}
+                          onChange={(e) =>
+                            setSegmentIds((current) =>
+                              e.target.checked
+                                ? [...current, segment.id]
+                                : current.filter((id) => id !== segment.id),
+                            )
+                          }
+                          className="size-[14px] shrink-0"
+                        />
+                        <span className="min-w-0 flex-1 truncate">{segment.name}</span>
+                        <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">
+                          {segment.audienceCount}
+                        </span>
+                      </label>
+                    ))}
+                  </span>
+                )}
+                <span className="text-[11.5px] text-muted-foreground">
+                  A lead can be in any number of audiences at once.
+                </span>
+              </fieldset>
 
               <span className="flex flex-col gap-[5px]">
                 <label htmlFor="lead-strategy" className="label-mono">

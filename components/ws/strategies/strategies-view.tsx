@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Copy, Pause, Pencil, Plus, Rocket, Trash2 } from "lucide-react";
+import { ChevronDown, Copy, Pause, Pencil, Plus, Rocket, Trash2 } from "lucide-react";
 import { api, fieldErrorsOf } from "@/lib/api";
 import { LIVE_SEND_NOTE } from "@/lib/capabilities";
-import type { Strategy, StrategyStatus } from "@/lib/data/types";
+import type { RunSummary, Strategy, StrategyStatus } from "@/lib/data/types";
+import { blankCopySteps } from "@/lib/app/workflow";
 import { CHANNEL_NAME, CHANNEL_ORDER, channelNames } from "@/lib/ws/channels";
 import { whenLabel } from "@/lib/ws/format";
 import { useAsync } from "@/lib/ws/use-async";
@@ -34,9 +35,27 @@ const FILTERS: { value: Filter; label: string }[] = [
  * Columns. Fixed widths for the numbers and the actions so every row lines up
  * no matter how long a strategy's name is; the table scrolls sideways rather
  * than squeezing them.
+ *
+ * **The actions come second, not last.** The table is wider than the frame at every width the
+ * workspace supports, so it scrolls sideways — and with the actions on the right, Launch and Pause
+ * were the first things to go off the edge, which reads as "there is no Launch button". A sticky
+ * column cannot fix that: a grid item is confined to its own grid area, so `sticky right-0` on the
+ * last cell does not move. Putting the actions where the scroll never reaches does fix it, and the
+ * metrics — which are the part you scroll to read — go to the right of them.
  */
-const COLS = "grid-cols-[minmax(230px,2.2fr)_100px_84px_104px_80px_90px_84px_84px_176px]";
-const HEADS = ["Strategy", "Status", "Audiences", "Touchpoints", "Sent", "Delivered", "Open rate", "Reply rate", "Actions"];
+const COLS = "grid-cols-[minmax(230px,2.2fr)_224px_100px_84px_104px_80px_90px_84px_84px]";
+/** Column headings, in the order `COLS` lays them out. Only the figures are right-aligned. */
+const HEADS: { label: string; right?: boolean }[] = [
+  { label: "Strategy" },
+  { label: "Actions" },
+  { label: "Status" },
+  { label: "Audiences", right: true },
+  { label: "Touchpoints", right: true },
+  { label: "Sent", right: true },
+  { label: "Delivered", right: true },
+  { label: "Open rate", right: true },
+  { label: "Reply rate", right: true },
+];
 
 /** Numbers a strategy has not produced yet read "—", never a fabricated 0. */
 const num = (v: number | null) => (v === null ? "—" : fmt(v));
@@ -51,6 +70,11 @@ export function StrategiesView() {
   const [problem, setProblem] = useState<string | null>(null);
   const [launched, setLaunched] = useState<string | null>(null);
   const [launching, setLaunching] = useState<Strategy | null>(null);
+  /** What the plan about to be launched has left blank, read from the plan itself. */
+  const [blank, setBlank] = useState<string[] | null>(null);
+  /** Which row has its activity open, and what the server last said about it. */
+  const [openRun, setOpenRun] = useState<string | null>(null);
+  const [runs, setRuns] = useState<Record<string, RunSummary | "failed">>({});
 
   const list = useAsync(() => api.strategies(), []);
   // Where each launched strategy's audiences are, and how many touchpoints have gone out.
@@ -86,11 +110,44 @@ export function StrategiesView() {
         void api.runEngine().then(() => {
           reload();
           reloadJourneys();
+          if (openRun) void loadRun(openRun);
         }, () => undefined),
       10_000,
     );
     return () => window.clearInterval(timer);
-  }, [live, reload, reloadJourneys]);
+  }, [live, reload, reloadJourneys, openRun]);
+
+  /** What the plan has actually done, as the server records it. */
+  async function loadRun(id: string) {
+    try {
+      const { summary } = await api.strategyRuns(id);
+      setRuns((current) => ({ ...current, [id]: summary }));
+    } catch {
+      setRuns((current) => ({ ...current, [id]: "failed" }));
+    }
+  }
+
+  function toggleRun(id: string) {
+    const next = openRun === id ? null : id;
+    setOpenRun(next);
+    if (next) void loadRun(next);
+  }
+
+  /**
+   * Opens the launch confirmation, having first read the plan it is about to run.
+   *
+   * A step with nothing written in it still sends — an invite with an empty note goes out as a bare
+   * connection request — so the question is asked while it can still be answered, not logged after
+   * the fact.
+   */
+  function askToLaunch(s: Strategy) {
+    setLaunching(s);
+    setBlank(null);
+    void api
+      .workflow(s.id)
+      .then(({ workflow }) => setBlank(blankCopySteps(workflow.graph).map((step) => step.label)))
+      .catch(() => setBlank([]));
+  }
 
   /** Pausing is a status change; starting or resuming is a launch, which enrols the audience and queues the steps. */
   async function toggle(s: Strategy) {
@@ -243,9 +300,12 @@ export function StrategiesView() {
             <div className="overflow-x-auto lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
               <div className="min-w-[1120px]">
                 <div className={cn("sticky top-0 z-[1] grid gap-3 border-b border-border bg-chrome px-4 py-[7px]", COLS)}>
-                  {HEADS.map((h, i) => (
-                    <span key={h} className={cn("label-mono text-[10.5px] tracking-[0.07em]", i >= 2 && "text-right")}>
-                      {h}
+                  {HEADS.map((h) => (
+                    <span
+                      key={h.label}
+                      className={cn("label-mono text-[10.5px] tracking-[0.07em]", h.right && "text-right")}
+                    >
+                      {h.label}
                     </span>
                   ))}
                 </div>
@@ -255,7 +315,7 @@ export function StrategiesView() {
                     <div key={i} className={cn("grid items-center gap-3 border-b border-divider px-4 py-[10px]", COLS)}>
                       <Skeleton className="h-[12px] w-[70%]" />
                       {HEADS.slice(1).map((h) => (
-                        <Skeleton key={h} className="h-[12px]" />
+                        <Skeleton key={h.label} className="h-[12px]" />
                       ))}
                     </div>
                   ))
@@ -269,7 +329,8 @@ export function StrategiesView() {
                   </EmptyState>
                 ) : (
                   rows.map((s) => (
-                    <div key={s.id} className={cn("grid items-center gap-3 border-b border-divider px-4 py-[9px]", COLS)}>
+                    <div key={s.id} className="border-b border-divider">
+                    <div className={cn("grid items-center gap-3 px-4 py-[9px]", COLS)}>
                       <span className="flex min-w-0 flex-col gap-[3px]">
                         <span className={cn("truncate text-[12.5px] font-medium", s.isSample && "text-body")}>
                           {s.name}
@@ -285,18 +346,7 @@ export function StrategiesView() {
                           </span>
                         ) : null}
                       </span>
-                      <span>
-                        <StrategyStatusPill status={s.status} />
-                      </span>
-                      <span className="text-right font-mono text-[11.5px]">{fmt(s.audiences)}</span>
-                      <span className="text-right font-mono text-[11.5px]">
-                        {journeyOf.has(s.id) ? fmt(journeyOf.get(s.id)!.touchpoints) : "—"}
-                      </span>
-                      <span className="text-right font-mono text-[11.5px]">{num(s.sent)}</span>
-                      <span className="text-right font-mono text-[11.5px]">{num(s.delivered)}</span>
-                      <span className="text-right font-mono text-[11.5px]">{rate(s.openRate)}</span>
-                      <span className="text-right font-mono text-[11.5px] font-medium">{rate(s.replyRate)}</span>
-                      <span className="flex items-center justify-end gap-1">
+                      <span className="flex items-center gap-1">
                         {s.type === "multichannel" ? (
                           <Link
                             href={`/dashboard/workflows/${s.id}`}
@@ -324,13 +374,30 @@ export function StrategiesView() {
                               disabled={busy === s.id}
                               title={LIVE_SEND_NOTE}
                               aria-label={`${s.status === "paused" ? "Resume" : "Launch"} ${s.name}`}
-                              onClick={() => setLaunching(s)}
+                              onClick={() => askToLaunch(s)}
                             >
                               <Rocket aria-hidden strokeWidth={1.9} />
                               {busy === s.id ? "Starting…" : s.status === "paused" ? "Resume" : "Launch"}
                             </Button>
                           )
                         ) : null}
+                        {s.type !== "multichannel" ? (
+                          <span className="font-mono text-[10.5px] text-muted-foreground">No plan</span>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="icon-sm"
+                            aria-expanded={openRun === s.id}
+                            aria-label={`What ${s.name} is doing`}
+                            onClick={() => toggleRun(s.id)}
+                          >
+                            <ChevronDown
+                              aria-hidden
+                              strokeWidth={1.9}
+                              className={cn("transition-transform", openRun === s.id && "rotate-180")}
+                            />
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="icon-sm"
@@ -344,6 +411,19 @@ export function StrategiesView() {
                           <Trash2 aria-hidden strokeWidth={1.8} />
                         </Button>
                       </span>
+                      <span>
+                        <StrategyStatusPill status={s.status} />
+                      </span>
+                      <span className="text-right font-mono text-[11.5px]">{fmt(s.audiences)}</span>
+                      <span className="text-right font-mono text-[11.5px]">
+                        {journeyOf.has(s.id) ? fmt(journeyOf.get(s.id)!.touchpoints) : "—"}
+                      </span>
+                      <span className="text-right font-mono text-[11.5px]">{num(s.sent)}</span>
+                      <span className="text-right font-mono text-[11.5px]">{num(s.delivered)}</span>
+                      <span className="text-right font-mono text-[11.5px]">{rate(s.openRate)}</span>
+                      <span className="text-right font-mono text-[11.5px] font-medium">{rate(s.replyRate)}</span>
+                    </div>
+                    {openRun === s.id ? <Activity summary={runs[s.id]} /> : null}
                     </div>
                   ))
                 )}
@@ -370,11 +450,24 @@ export function StrategiesView() {
             This starts the plan for real. {LIVE_SEND_NOTE} Only leads with consent recorded, and who
             are not already in another strategy, are enrolled; your account&rsquo;s daily limits and the
             plan&rsquo;s sending window still apply, and you can pause it at any time.
+            {blank && blank.length > 0 ? (
+              <>
+                {" "}
+                <strong className="font-semibold">
+                  This plan has nothing written in {blank.join(", ")}.
+                </strong>{" "}
+                A connection request with no note goes out bare, and a sent invitation cannot be taken
+                back — write the copy in the builder first if that is not what you meant.
+              </>
+            ) : null}
           </>
         }
         confirmLabel={launching?.status === "paused" ? "Resume it" : "Launch it"}
         busy={busy === launching?.id}
-        onCancel={() => setLaunching(null)}
+        onCancel={() => {
+          setLaunching(null);
+          setBlank(null);
+        }}
         onConfirm={() => launching && void toggle(launching)}
       />
 
@@ -393,5 +486,79 @@ export function StrategiesView() {
         onConfirm={() => confirming && void remove(confirming)}
       />
     </>
+  );
+}
+
+/** A moment a person reads, in their own zone: "Mon 09:30" for soon, with the date when it is not. */
+function clock(iso: string): string {
+  const at = new Date(iso);
+  const sameDay = at.toDateString() === new Date().toDateString();
+  return at.toLocaleString(undefined, {
+    ...(sameDay ? {} : { weekday: "short", day: "numeric", month: "short" }),
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * What a launched plan has actually done — the panel that answers "it says live, so why has
+ * nothing gone out?".
+ *
+ * Every refusal the runner makes is written down with its reason (no consent recorded, outside the
+ * account's hours, today's cap spent, no healthy account), and until now those lines were only
+ * visible inside the builder. They belong here, next to the Launch button that started it: a plan
+ * that is quiet because it is waiting for Monday morning looks exactly like a plan that is broken,
+ * and the difference is one sentence the server already knows.
+ */
+function Activity({ summary }: { summary: RunSummary | "failed" | undefined }) {
+  if (summary === undefined) {
+    return (
+      <div className="flex flex-col gap-2 bg-chrome px-4 py-3">
+        <Skeleton className="h-[12px] w-[40%]" />
+        <Skeleton className="h-[12px] w-[70%]" />
+      </div>
+    );
+  }
+  if (summary === "failed") {
+    return (
+      <p className="bg-chrome px-4 py-3 text-[11.5px] text-muted-foreground">
+        We couldn&rsquo;t read what this plan is doing. Close this and open it again.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-[9px] bg-chrome px-4 py-3">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <h3 className="label-mono">What this plan is doing</h3>
+        <span className="font-mono text-[11px] text-muted-foreground">
+          {fmt(summary.active)} in the plan · {fmt(summary.waiting)} waiting ·{" "}
+          {fmt(summary.completed + summary.stopped)} finished
+        </span>
+        {summary.nextDueAt ? (
+          <span className="font-mono text-[11px] text-muted-foreground">
+            next step {clock(summary.nextDueAt)}
+          </span>
+        ) : null}
+      </div>
+
+      {summary.recent.length ? (
+        <ul className="flex flex-col gap-[5px]">
+          {summary.recent.map((line, i) => (
+            <li key={`${line.at}-${i}`} className="flex gap-[9px] text-[11.5px] leading-[1.5] text-body">
+              <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">{clock(line.at)}</span>
+              <span className="min-w-0">{line.text}</span>
+            </li>
+          ))}
+        </ul>
+      ) : summary.enrolled === 0 ? (
+        <p className="text-[11.5px] leading-[1.55] text-muted-foreground">
+          Nobody is in this plan. Launch enrols the leads its first step points at — the ones with consent
+          recorded who are not already in another strategy.
+        </p>
+      ) : (
+        <p className="text-[11.5px] text-muted-foreground">Nothing has run yet.</p>
+      )}
+    </div>
   );
 }

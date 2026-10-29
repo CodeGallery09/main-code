@@ -7,7 +7,7 @@
  * place. Editing one changes that step, and says so.
  */
 
-import { STEPS, type StepKind, type StepNode } from "@/lib/app/workflow";
+import { copyField, STEPS, type StepKind, type StepNode } from "@/lib/app/workflow";
 import type { Channel, WorkflowRecord } from "@/lib/data/types";
 
 export type MessageRow = {
@@ -45,16 +45,9 @@ const WHAT: Partial<Record<StepKind, string>> = {
 };
 
 /** The field on a step that actually carries its words. */
-export function bodyField(kind: StepKind): "note" | "body" | "notes" {
-  if (kind === "li_invite") return "note";
-  if (kind === "call") return "notes";
-  return "body";
-}
+export const bodyField = copyField;
 
-const copyOf = (node: StepNode): string => {
-  const field = bodyField(node.kind);
-  return (node.data[field] as string | undefined) ?? "";
-};
+const copyOf = (node: StepNode): string => (node.data[copyField(node.kind)] as string | undefined) ?? "";
 
 export function readMessages(records: WorkflowRecord[]): MessageRow[] {
   const rows: MessageRow[] = [];

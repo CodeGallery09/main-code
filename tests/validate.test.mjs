@@ -37,7 +37,23 @@ test("a create fills defaults for everything optional", () => {
     nextStep: "",
     ownerId: null,
     strategyId: null,
+    segmentIds: [],
   });
+});
+
+test("a lead's audiences are a list, de-duplicated, and replace what was there", () => {
+  const made = validateAudience({ name: "Omar Haddad", segmentIds: ["seg_1", "seg_1", " seg_2 ", ""] });
+  assert.deepEqual(made.data.segmentIds, ["seg_1", "seg_2"]);
+
+  // A patch that says nothing about audiences must leave membership alone, so the key is absent.
+  const quiet = validateAudience({ name: "Omar Haddad" }, true);
+  assert.equal("segmentIds" in quiet.data, false);
+
+  // An explicit empty list is "in none of them", which is different from saying nothing.
+  assert.deepEqual(validateAudience({ segmentIds: [] }, true).data.segmentIds, []);
+
+  assert.equal(validateAudience({ name: "Omar", segmentIds: "seg_1" }).ok, false);
+  assert.equal(validateAudience({ name: "Omar", segmentIds: Array.from({ length: 51 }, (_, i) => `s${i}`) }).ok, false);
 });
 
 test("names are trimmed and length-capped", () => {

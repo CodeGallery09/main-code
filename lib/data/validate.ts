@@ -98,6 +98,33 @@ function cleanTags(value: unknown, errors: ValidationErrors): string[] {
   return Array.from(seen);
 }
 
+/** How many uploaded audiences one lead may be listed in. Well above any real use. */
+export const SEGMENTS_MAX = 50;
+
+/** A list of ids, de-duplicated and bounded. Whether each one exists is the store's to check. */
+function cleanIds(value: unknown, errors: ValidationErrors): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    errors.segmentIds = "Audiences must be a list.";
+    return [];
+  }
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const id = text(entry);
+    if (!id) continue;
+    if (id.length > NAME_MAX) {
+      errors.segmentIds = "That audience id is not valid.";
+      return [];
+    }
+    seen.add(id);
+  }
+  if (seen.size > SEGMENTS_MAX) {
+    errors.segmentIds = `Pick ${SEGMENTS_MAX} audiences or fewer.`;
+    return [];
+  }
+  return Array.from(seen);
+}
+
 /* ------------------------------------------------------------------ audience -- */
 
 export type AudienceInput = {
@@ -115,6 +142,8 @@ export type AudienceInput = {
   nextStep: string;
   ownerId: string | null;
   strategyId: string | null;
+  /** The uploaded audiences the lead belongs to. Sending it replaces the whole membership. */
+  segmentIds: string[];
   starred: boolean;
 };
 
@@ -234,6 +263,15 @@ export function validateAudience(input: unknown, partial = false): Validation<Au
 
   if (has("strategyId")) out.strategyId = text(input.strategyId) || null;
   else if (!partial) out.strategyId = null;
+
+  // A list, not a single value: a lead can sit in several uploaded audiences at once. Sending it
+  // replaces the whole membership, so an empty list means "in none of them".
+  if (has("segmentIds")) {
+    const ids = cleanIds(input.segmentIds, errors);
+    if (!errors.segmentIds) out.segmentIds = ids;
+  } else if (!partial) {
+    out.segmentIds = [];
+  }
 
   if (Object.keys(errors).length) return { ok: false, errors };
   if (partial && Object.keys(out).length === 0) {

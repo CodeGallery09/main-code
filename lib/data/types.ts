@@ -109,6 +109,12 @@ export type Audience = {
   ownerId: string;
   ownerName: string;
   strategyId: string | null;
+  /**
+   * The uploaded audiences (segments) this lead belongs to. A lead can be in several at once, so
+   * this is a list, unlike `strategyId` — and it is editable, because a lead added by hand has to
+   * be able to join an audience that arrived as a file.
+   */
+  segmentIds: string[];
   starred: boolean;
   updatedAt: string;
   /** Other ways to reach the audience, filled by uploads. */

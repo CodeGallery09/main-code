@@ -787,6 +787,65 @@ export function graphForChannel(channel: StepChannel, audience: string = AUDIENC
   return { nodes, edges, settings: { ...DEFAULT_SETTINGS, days: [...DEFAULT_SETTINGS.days] } };
 }
 
+/* ---------- is this plan actually ready to send? --------------------------- */
+
+/** The field on a step that carries the words it sends. */
+export function copyField(kind: StepKind): "note" | "body" | "notes" {
+  if (kind === "li_invite") return "note";
+  if (kind === "call") return "notes";
+  return "body";
+}
+
+/** What each sending step's words are called, for a sentence a person reads. */
+const COPY_LABEL: Partial<Record<StepKind, string>> = {
+  li_invite: "the note on the LinkedIn connection request",
+  li_msg: "the LinkedIn message",
+  email: "the email",
+  wa: "the WhatsApp message",
+  sms: "the SMS",
+  call: "the notes for the caller",
+};
+
+/**
+ * The steps in a plan that will run but have nothing written in them.
+ *
+ * A plan created from a template or from `/strategies/new` arrives with its message steps **empty**,
+ * because inventing someone's outreach copy for them is not this product's job. That is fine until
+ * it is launched: an invite step with no note sends a bare connection request, which is a real send
+ * that cannot be taken back and is not what the operator thought they were doing. So the launch
+ * asks first, and this is what it asks about.
+ *
+ * Only steps reachable from the Audience are counted — an orphan card on the canvas never runs.
+ * An empty note is reported but never refused: a bare invite is a legitimate choice, deliberately
+ * made.
+ */
+export function blankCopySteps(graph: WorkflowGraph): { id: string; kind: StepKind; label: string }[] {
+  const root = graph.nodes.find((n) => n.kind === "audience");
+  if (!root) return [];
+  const onward = new Map<string, string[]>();
+  for (const edge of graph.edges) onward.set(edge.source, [...(onward.get(edge.source) ?? []), edge.target]);
+
+  const seen = new Set<string>([root.id]);
+  const queue = [root.id];
+  while (queue.length) {
+    for (const next of onward.get(queue.shift()!) ?? []) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      queue.push(next);
+    }
+  }
+
+  const blank: { id: string; kind: StepKind; label: string }[] = [];
+  for (const node of graph.nodes) {
+    const label = COPY_LABEL[node.kind];
+    if (!label || !seen.has(node.id)) continue;
+    const written = node.data[copyField(node.kind)];
+    if (typeof written === "string" && written.trim()) continue;
+    blank.push({ id: node.id, kind: node.kind, label });
+  }
+  return blank;
+}
+
 export const toGraph = (
   w: Pick<Workflow, "nodes" | "edges" | "days" | "from" | "to" | "daily" | "skipOther">,
 ): WorkflowGraph => ({

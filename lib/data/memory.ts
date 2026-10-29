@@ -121,6 +121,24 @@ const audienceExtra = shared("audienceExtra", () => new Map<string, Record<strin
 const audienceCreatedAt = shared("audienceCreatedAt", () => new Map<string, string>());
 const seq = shared("seq", () => ({ segment: 1, upload: 1 }));
 
+/**
+ * `segmentMembers` is the authority on who is in which uploaded audience, so a row's `segmentIds`
+ * is filled from it on the way out rather than stored twice and left to drift.
+ */
+function withSegments(row: Audience): Audience {
+  const inSegments: string[] = [];
+  for (const [segmentId, members] of segmentMembers) if (members.has(row.id)) inSegments.push(segmentId);
+  return { ...row, segmentIds: inSegments };
+}
+
+/** Replaces a lead's audience membership with exactly `segmentIds`. */
+function setSegments(audienceId: string, segmentIds: string[]): void {
+  for (const [segmentId, members] of segmentMembers) {
+    if (segmentIds.includes(segmentId)) members.add(audienceId);
+    else members.delete(audienceId);
+  }
+}
+
 /** Parsed files are scratch space; drop anything older than an hour. */
 function sweepUploads() {
   const cutoff = Date.now() - 60 * 60 * 1000;
@@ -721,12 +739,12 @@ export class MemoryRepository implements Repository {
       dir,
     );
     const page = paginate(sorted, query.page, query.pageSize);
-    return { ...page, items: page.items.map((audience) => ({ ...audience })) };
+    return { ...page, items: page.items.map((audience) => withSegments(audience)) };
   }
 
   async getAudience(_ctx: Ctx, id: string): Promise<Audience | null> {
     const found = audienceRows.find((audience) => audience.id === id);
-    return found ? { ...found } : null;
+    return found ? withSegments(found) : null;
   }
 
   async getProspect(_ctx: Ctx, id: string): Promise<ProspectProfile | null> {
@@ -779,6 +797,9 @@ export class MemoryRepository implements Repository {
     if (input.strategyId && !strategies.some((c) => c.id === input.strategyId)) {
       return { error: { field: "strategyId", message: "That strategy does not exist." } };
     }
+    if (input.segmentIds?.some((id) => !segments.some((s) => s.id === id))) {
+      return { error: { field: "segmentIds", message: "One of those audiences no longer exists." } };
+    }
     const name = input.name ?? "Unnamed audience";
     const owner = TEAM.find((m) => m.id === input.ownerId) ?? TEAM[0];
     const row: Audience = {
@@ -802,12 +823,14 @@ export class MemoryRepository implements Repository {
       ownerId: owner.id,
       ownerName: owner.name,
       strategyId: input.strategyId ?? null,
+      segmentIds: [],
       starred: input.starred ?? false,
       updatedAt: new Date().toISOString(),
     };
     audienceRows.unshift(row);
     audienceCreatedAt.set(row.id, row.updatedAt);
-    return { ...row };
+    if (input.segmentIds?.length) setSegments(row.id, input.segmentIds);
+    return withSegments(row);
   }
 
   async updateAudience(_ctx: Ctx, id: string, patch: AudiencePatch): Promise<Audience | WriteError | null> {
@@ -815,6 +838,9 @@ export class MemoryRepository implements Repository {
     if (!found) return null;
     if (patch.strategyId && !strategies.some((c) => c.id === patch.strategyId)) {
       return { error: { field: "strategyId", message: "That strategy does not exist." } };
+    }
+    if (patch.segmentIds?.some((id) => !segments.some((s) => s.id === id))) {
+      return { error: { field: "segmentIds", message: "One of those audiences no longer exists." } };
     }
     if (patch.name !== undefined) {
       found.name = patch.name;
@@ -833,6 +859,8 @@ export class MemoryRepository implements Repository {
     if (patch.nextStep !== undefined) found.nextStep = patch.nextStep;
     if (patch.starred !== undefined) found.starred = patch.starred;
     if (patch.strategyId !== undefined) found.strategyId = patch.strategyId;
+    // Only touched when it was sent, so a patch silent about audiences leaves membership alone.
+    if (patch.segmentIds !== undefined) setSegments(id, patch.segmentIds);
     if (patch.ownerId !== undefined) {
       const owner = TEAM.find((m) => m.id === patch.ownerId);
       if (owner) {
@@ -841,7 +869,7 @@ export class MemoryRepository implements Repository {
       }
     }
     found.updatedAt = new Date().toISOString();
-    return { ...found };
+    return withSegments(found);
   }
 
   async deleteAudience(_ctx: Ctx, id: string): Promise<boolean> {
@@ -1092,6 +1120,8 @@ export class MemoryRepository implements Repository {
           ownerId: ctx.userId,
           ownerName: "",
           strategyId: null,
+          // Filled from `segmentMembers` on read; `members` below records this import's own link.
+          segmentIds: [],
           starred: false,
           updatedAt: now,
         });
