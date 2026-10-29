@@ -3,22 +3,36 @@
 import { useState } from "react";
 import { Reply, Save, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { SENDING_ENABLED } from "@/lib/capabilities";
-import type { Thread } from "@/lib/data/types";
+import type { Channel, Thread } from "@/lib/data/types";
 import { Button } from "@/components/ws/ui/button";
 
 /**
  * Collapsed reply bar. The full composer only opens on Reply — an always-open
  * textarea invites typing before reading.
+ *
+ * The line above it says what pressing Reply will actually do on this channel, which differs:
+ * a LinkedIn reply goes out through the connected account, and everything else is written onto
+ * the thread because no mailbox or number can be connected yet.
  */
-export function ReplyBar({ onReply }: { onReply: () => void }) {
+export function ReplyBar({
+  onReply,
+  channel,
+  linkedInReady,
+}: {
+  onReply: () => void;
+  channel: Channel;
+  /** A healthy LinkedIn account exists, so a LinkedIn reply can genuinely be delivered. */
+  linkedInReady: boolean;
+}) {
+  const note =
+    channel === "linkedin"
+      ? linkedInReady
+        ? "Goes out as a LinkedIn message from your connected account · counts toward today's message limit."
+        : "Saved to the thread. Connect a LinkedIn account under Setup and replies go out from here."
+      : "Replies are saved to the thread. Nothing leaves Flightpath until a mailbox is connected.";
   return (
     <div className="flex flex-wrap items-center justify-between gap-[10px] border-t border-divider bg-quiet px-4 py-3">
-      <span className="text-[11.5px] text-muted-foreground">
-        {SENDING_ENABLED
-          ? "Sends from your connected mailbox · counts toward today's email limit."
-          : "Replies are saved to the thread. Nothing leaves Flightpath until a mailbox is connected."}
-      </span>
+      <span className="min-w-0 flex-1 basis-[260px] text-[11.5px] leading-[1.5] text-muted-foreground">{note}</span>
       <Button onClick={onReply}>
         <Reply aria-hidden strokeWidth={1.9} />
         Reply
@@ -30,9 +44,10 @@ export function ReplyBar({ onReply }: { onReply: () => void }) {
 /**
  * The reply composer.
  *
- * It writes the reply onto the thread, which is all the product can honestly
- * do today: `SENDING_ENABLED` is false, there is no mailbox connection and no
- * scheduler, so the button says what actually happens rather than "Send".
+ * A LinkedIn reply is delivered by the repository through the workspace's connected account; on
+ * every other channel the reply is written onto the thread, because no mailbox or number can be
+ * connected yet. Either way the thread is the record, and a provider refusal comes back as the
+ * reason rather than a silent save.
  */
 export function Composer({ thread, onSaved, onClose }: { thread: Thread; onSaved: () => void; onClose: () => void }) {
   const first = thread.audienceName.split(" ")[0];

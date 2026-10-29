@@ -114,8 +114,8 @@ listed somewhere else under another name.
 | `types.ts` | 418 | Domain types, incl. `ProspectProfile`. Import-free + erasable (loadable by `node --test`). |
 | `repository.ts` | 269 | **The interface every page and route talks to.** `Ctx` is the first arg of every method — tenancy cannot be forgotten. `WriteError` ≠ `null` ≠ throw → 422/404/500. |
 | `index.ts` | 22 | `getRepository()` factory. Returns Postgres when `DATABASE_URL` is set, memory otherwise. |
-| `memory.ts` | 971 | In-memory impl over the seed. No-config fallback; writes last until restart. **All its mutable state lives on `globalThis` via `shared()`** (see §5). Workflows: a `Map` by strategy id, falling back to the demo `WORKFLOWS` matched on strategy name, so the seed's four multichannel strategies open a real graph. |
-| `pg.ts` | 1759 | Postgres impl via Drizzle. Filters `workspace_id` on every read *and* write (the `ws()` helper). Audiences page in SQL; strategies aggregate in JS. Uploads, segments, accounts, workflows and the sample world are all real tables now. |
+| `memory.ts` | 1136 | In-memory impl over the seed. No-config fallback; writes last until restart. **All its mutable state lives on `globalThis` via `shared()`** (see §5). Workflows: a `Map` by strategy id, falling back to the demo `WORKFLOWS` matched on strategy name, so the seed's four multichannel strategies open a real graph. |
+| `pg.ts` | 2654 | Postgres impl via Drizzle. Filters `workspace_id` on every read *and* write (the `ws()` helper). Audiences page in SQL; strategies aggregate in JS. Uploads, segments, accounts, workflows and the sample world are all real tables. **It is also the sender**: `sendingContext`, `claimDue`, `performSend`, `providerIdFor`, `storeProfile`, `recordOutbound`, `countReached` — see "Execution engine". |
 | `seed.ts` | 213 | The `dev` (no-database) workspace, **derived from `sample.ts`**: one demo strategy, its audiences, threads, messages, tasks and per-channel rollup rows (`ROLLUPS`), and no accounts or domains. Exports the same shapes the repository returns, so `memory.ts` reads it like rows. |
 | `sample.ts` | 195 | The demo strategy every workspace has: one paused multichannel strategy + 8 audiences, their conversations, to-dos and funnel. No accounts. Import-free; `tests/sample.test.mjs` pins that every email is on the reserved `.example` domain and every phone in the fictional 555-01xx range, so a sample audience can never be a real person. |
 | `sampleSeed.ts` | 174 | Server-only. Inserts the demo strategy, from the `signUp` transaction **and** from `PgRepository.ensureDemo`: strategy + workflow, 8 audiences, 4 conversations and 3 to-dos, the funnel by day. All `is_sample`. No accounts, mailboxes or domains. |
@@ -123,31 +123,49 @@ listed somewhere else under another name.
 | `query.ts` | 68 | Pure filter/sort/paginate helpers shared by both impls. Import-free, tested. |
 | `validate.ts` | 651 | Write-path validation, `{ok,data}|{ok,errors}`. Import-free, erasable, tested. An audience's `linkedin` goes through `normaliseUrl` (same rule as the upload's `checkUrl`: any web URL, `https://` added); a create with no stage starts at `new`. |
 
-### Execution engine — `lib/engine/` (a dry run today)
+### Execution engine — `lib/engine/` (LinkedIn really sends)
 | File | L | Purpose |
 |---|---|---|
-| `steps.ts` | 211 | `runStep(node, edges, audience, now)` → `{ effects, next, finish }`: what happens when one lead reaches one step, **as data with no side effects**. Effects are a `log` line or a `task` (only a call step makes one). `DRY_RUN_DAY_MS` (60 s) compresses a plan's days. Import-free + erasable; `tests/engineSteps.test.mjs`. |
+| `steps.ts` | 262 | `runStep(node, edges, audience, now, dayMs?)` → `{ effects, next, finish }`: what happens when one lead reaches one step, **as data with no side effects**. Effects are a `send` (a channel step: the body, the subject, and the line to log if it cannot go out), a `log` line, or a `task` (only a call step makes one). `REAL_DAY_MS` is a day; `DRY_RUN_DAY_MS` (60 s) compresses one for a workspace that cannot send. Import-free + erasable; `tests/engineSteps.test.mjs`. |
+| `window.ts` | 91 | `insideWindow(at, zone, window)` / `nextOpening(at, zone, window)`: whether a touch may go out now, in the **workspace owner's IANA timezone**, and when the window next opens. An unusable window reads as always open and a bad zone falls back to UTC — a mistyped setting must not stop a plan. Import-free; `tests/sendWindow.test.mjs`. |
 
 | `journey.ts` | 103 | `journeyOrder()` walks a plan from its Audience step (yes before no) and `journeyRows()` turns it into one row per reachable step with its reach and who is waiting there. Shared by both stores' `getJourneys`; import-free, `tests/journey.test.mjs`. |
 
 The stores apply the result: `launchStrategy`, `runDueSteps`, `runSummary` and `getJourneys` on the `Repository`
-(both impls). **A dry run: nothing is sent.** A LinkedIn/email step is logged as what it *would*
-send (merge fields filled), a call step becomes a real to-do, a condition cannot see a reply so it
-takes its No branch after waiting out its window. Real sending replaces the log line, not the shape.
+(both impls).
+- **A LinkedIn step really sends.** `PgRepository.performSend` takes a `send` effect and calls
+  `adapter.sendInvite` / `adapter.sendMessage`. Email, WhatsApp and SMS steps are written down with
+  the reason they could not go out; a call step becomes a real to-do; a condition cannot see a reply
+  yet, so it takes its No branch after waiting out its window.
+- **Three real brakes**, checked in this order and each logged when it stops a touch: the lead's
+  recorded `consent`; the account's daily cap (`channel_accounts.settings.connections` / `.messages`,
+  counted against today's `events` of kind `sent`); and the plan's **sending window**, with a touch
+  outside it re-queued at `nextOpening` rather than sent late or dropped.
+- **At most once, on purpose.** `claimDue` selects `FOR UPDATE SKIP LOCKED` and marks the job `done`
+  inside the same short transaction; the send happens afterwards, outside any transaction. An invite
+  that goes out twice is worse than a step that is missed, because the person on the other end sees it.
+  While sending, a tick takes at most 12 jobs in batches of 4, so one screen poll cannot burst.
+- **Every refusal is written down** (`events` kind `dry_run_step` for "not sent: …", `sent` for a
+  real one, `send_failed` for a provider refusal). A step that silently did nothing is the worst
+  state an outreach tool can be in.
+- `providerIdFor` resolves the provider id an invite is addressed to, caching it — with the briefing
+  built from the same read — on `audiences.extra.linkedin`. LinkedIn throttles profile reads, so it
+  is never repeated for a person already resolved.
 - **Launch lives in the Strategies table only** (a labelled Launch / Resume / Pause button on each row; the builder has just "Launch on Strategies", a link, and saves as it goes without touching status). A successful launch switches the table to the Live tab. **Launch** (`POST /api/strategies/[id]/launch`) enrols the audiences the first step points at,
   skipping anyone already in another strategy (`audiences.strategy_id`) or without `consent`, queues
   their first step (`workflow_runs` unique per workflow+audience, `step_jobs` pending/done with
   `run_at`) and sets the strategy live. Refused with a reason for the demo strategy, an empty plan,
   or nobody to enrol. `PATCH /api/strategies/[id]` with `status: live|scheduled` and a POST with
   those statuses are **422** — only Launch goes live; Pause is a plain `PATCH status: paused`.
-- **Nothing runs by itself.** There is no cron: `POST /api/engine/run` is called by the builder
-  (every 8 s) and the Strategies screen (every 10 s) while open. The pg store claims due rows with
-  `FOR UPDATE SKIP LOCKED`, so two open tabs cannot run a job twice. A background scheduler belongs
-  with real sending.
-- **Journeys and touchpoints are read, not stored.** `getJourneys` counts `workflow_runs` and `events` of kind `dry_run_step` (a touchpoint is one with a channel). They appear on Analytics → **Journeys** tab (opens by default once something is launched), on Home's strategy rows, and as the Touchpoints column and journey line in the Strategies table. They are deliberately **not** written into `daily_rollups`: a dry run would otherwise inflate the real reach/reply/meeting figures, and Analytics → Results stays real. Fold them into the rollups in the commit that lands a real sender.
+- **Nothing runs by itself — and now that matters.** There is no cron: `POST /api/engine/run` is
+  called by the builder (every 8 s) and the Strategies, Home and Analytics screens (every 10 s)
+  while open. With real day lengths a plan only advances while someone has Flightpath open, so a
+  `/api/jobs/tick` poked by a schedule (a GitHub Actions cron is a free MVP) is the **next thing
+  this needs**.
+- **Journeys and touchpoints are read, not stored.** `getJourneys` counts `workflow_runs` and the run log in `events` (a touchpoint is a logged step with a channel). They appear on Analytics → **Journeys** tab (opens by default once something is launched), on Home's strategy rows, and as the Touchpoints column and journey line in the Strategies table. **The rollups are written by real outcomes only**: a successful send upserts `daily_rollups.reached` and an inbound reply upserts `engaged`/`replied`, so Analytics → Results is the real funnel while the Journeys tab is the plan's shape.
 - A strategy's `audiences` figure is counted live from `audiences.strategy_id` (`audienceCounts` / `withMembers`), except for the sample, which keeps its stored number; the stored column was never maintained.
-- `GET /api/strategies/[id]/runs` is the builder's "Dry run" card: in plan / waiting / finished
-  counts and the activity log (read from `events`).
+- `GET /api/strategies/[id]/runs` is the builder's run card: in plan / waiting / finished counts and
+  the activity log (read from `events`) — which is where a "not sent: …" reason shows up.
 
 ### Database — `lib/db/`
 | File | L | Purpose |
@@ -164,7 +182,7 @@ Tables, grouped:
 - **uploads** `uploads` (parked parsed files, swept after 1 h) `segments` `segment_audiences`
 - **domain** `audiences` `strategies` `workflows` `threads` `messages` `tasks`
 - **quota/metrics** `channel_quotas` `daily_rollups` `events`
-- **engine (written by the dry run)** `workflow_runs` `step_jobs`
+- **engine** `workflow_runs` `step_jobs`
 - **cross-channel settings** `workspace_settings` (one row per workspace, three jsonb blobs: Variables/Sending rules/Compliance — see Configuration below)
 
 `workspace_id` is on every tenant-scoped table. `step_jobs.run_at` + `FOR UPDATE SKIP LOCKED`
@@ -178,12 +196,14 @@ interface so the vendor can be replaced without touching a route, a screen or a 
 
 | File | Purpose |
 |---|---|
-| `adapter.ts` | `LinkedInChannelAdapter`: `createHostedAuth`, `getAccount`, `deleteAccount`, `listWebhooks`, `createWebhook`. Plus `ProviderAccount` and `ProviderError`. The seam. |
-| `unipile.ts` | The one implementation. `https://{DSN}/api/v1`, `X-API-KEY`, 15 s timeout. Server-only: the key can read every connected account. |
-| `unipileRequests.ts` | The **pure** half — `unipileBaseUrl`, `hostedAuthBody`, `readHostedAuthUrl`, `readAccount`, `readWebhooks`. Import-free, so `tests/unipile.test.mjs` pins the request contract with no network and no key. |
+| `adapter.ts` | `LinkedInChannelAdapter`: `createHostedAuth`, `getAccount`, `deleteAccount`, `listWebhooks`, `createWebhook`, and the acting half — `getProfile`, `sendInvite`, `sendMessage`, `listChats`, `listMessages`. Plus `ProviderAccount`, `ProviderProfile`, `ProviderChat`, `ProviderMessage` and `ProviderError`. The seam, and nothing more: no caps, consent or window logic lives here. |
+| `unipile.ts` | The one implementation. `https://{DSN}/api/v1`, `X-API-KEY`, 15 s timeout (30 s for a profile read). `postForm()` sends multipart **without** a content-type header, so fetch picks the boundary — `/chats` refuses JSON. Server-only: the key can read every connected account. |
+| `unipileRequests.ts` | The **pure** half — `unipileBaseUrl`, `hostedAuthBody`, `readHostedAuthUrl`, `readAccount`, `readWebhooks`, plus `linkedInIdentifier` (full URL, bare slug or `ACo…` id), `inviteBody` (note clipped to `INVITE_NOTE_LIMIT` = 300), `readProfile`, `readChats`, `readMessages`. Import-free, so `tests/unipile.test.mjs` and `tests/leadBriefing.test.mjs` pin the request contract with no network and no key. |
 | `events.ts` | Normalises the webhook payloads. Import-free, tested. |
 | `webhookConfig.ts` | The webhook contract: `WEBHOOK_HEADER`, `WEBHOOK_QUERY_PARAM`, `WEBHOOK_SOURCES`, and the pure, tested `authorizeFromCarriers()` match. No value imports but `node:crypto`, so the registration **script** and `tests/webhookConfig.test.mjs` can both load it directly. |
 | `webhookAuth.ts` | Untested glue: pulls the header and query-param candidates out of a `Request` and `UNIPILE_WEBHOOK_SECRET` out of the environment, then calls `authorizeFromCarriers()`. |
+| `inbound.ts` | The one place that writes workspace rows **without a `Ctx`** — a webhook has no session. The workspace is derived from `channel_accounts.provider_account_id`. Also the only writer of an inbound message, so the webhook and the pull share it. Read its header before changing it. |
+| `pull.ts` | `pullRecentMessages(adapter, workspaceId)`: 25 chats per healthy account, 10 messages each, anything outbound or empty skipped, each handed to `applyInboundMessage`. Read-only at the provider; it exists because a webhook needs `UNIPILE_WEBHOOK_SECRET` set and registered. |
 | `connect.ts` | Opens a connect session, asks for a hosted link, returns the URL. Shared by connect and reconnect. |
 | `index.ts` | `getLinkedInAdapter()` → `null` until `UNIPILE_DSN` + `UNIPILE_API_KEY` are set, and `appOrigin()`. |
 | `components/ws/setup/setup-config-view.tsx` + `setup-overview-view.tsx` | starting a hosted sign-in (`api.connectLinkedIn()`, a full-page redirect) and `ConnectResult`, which reads the `?connected=`/`?failed=` reference the provider sends back and polls the session for the real outcome. |
@@ -224,15 +244,27 @@ Five things about this that are not obvious:
   not read as a status.
 
 Inbound messages land in the Inbox **only** when the sender is already an audience in that workspace,
-matched on their LinkedIn handle. A message from a stranger is kept as an `events` row and nothing
-else: inventing a person out of a webhook payload would put them in someone's audience list.
+matched on the provider id cached at `audiences.extra.linkedin.providerId` or, failing that, on their
+handle. (A webhook carries `ACoAAA…`, which never matches a stored profile URL — that is why the id
+is cached at the first profile read.) A message from a stranger is kept as an `events` row and nothing
+else: inventing a person out of a webhook payload would put them in someone's audience list. A matched
+reply also upserts `daily_rollups` `engaged`/`replied`.
 
-Nothing sends. `SENDING_ENABLED` is still false — connecting an account is not sending, and the
-drawer says as much.
+**Replies arrive two ways.** The webhook is the right one, but a delivery needs
+`UNIPILE_WEBHOOK_SECRET` set *and* registered, and a workspace missing either would never see a
+reply. So `pull.ts` (69L) reads the recent chats on each healthy account — 25 chats, 10 messages
+each, read-only at the provider — and hands anything new to `applyInboundMessage`, the same
+idempotent writer the webhook uses. The Inbox calls it (`POST /api/inbox/sync`) on open and every
+30 s. One code path for what a reply does.
+
+**Sending is live.** `adapter` gained `getProfile`, `sendInvite`, `sendMessage`, `listChats` and
+`listMessages`; `unipile.ts` implements them (`/users/invite` as JSON with a ≤300-char note,
+`/chats` as **multipart/form-data**, `/users/{identifier}?linkedin_sections=*`). A launched plan
+sends through them, and so does an Inbox reply on a LinkedIn thread.
 
 ### HTTP — `app/api/` + `lib/http.ts` + `lib/api.ts`
 `lib/http.ts` (56L) holds `withUser`, `json`, `fail`, param parsers — so auth, caching and error
-shapes are identical everywhere. `lib/api.ts` (113L) is the typed browser client; client
+shapes are identical everywhere. `lib/api.ts` (304L) is the typed browser client; client
 components call it, never `fetch("/api/...")` by hand. Server components read the repository
 directly.
 
@@ -244,10 +276,12 @@ directly.
 | `/api/audiences/[id]/profile` | GET | the prospect profile (`getProspect`): company, journey, audiences, engagement, timeline, to-dos. Read-only; 404 across workspaces |
 | `/api/strategies`, `/api/strategies/[id]` | GET POST PATCH DELETE | full CRUD. A multichannel strategy ( = "has a workflow") may have one channel. `status: live|scheduled` is refused here — use Launch. |
 | `/api/strategies/[id]/workflow` | GET, PUT | the strategy's workflow. PUT takes `{ name, graph }` and **rebuilds the graph from a whitelist** (`validateWorkflowGraph`); 422 names the reason. 404 for another workspace's strategy. |
-| `/api/strategies/[id]/launch` | POST | start or resume a strategy as a **dry run** (see "Execution engine"). 404 foreign, 422 with the reason when it cannot start |
-| `/api/strategies/[id]/runs` | GET | run counts + activity log for the builder's Dry run card |
-| `/api/journeys` | GET | `?range=` — every launched strategy's journey (per-step reach, who is waiting where) plus touchpoints by channel and day. Read live from `workflow_runs` and the `dry_run_step` events; `dryRun` is true while nothing sends |
-| `/api/engine/run` | POST | runs every due step in the caller's workspace; polled by open screens. Returns `{ processed }` |
+| `/api/strategies/[id]/launch` | POST | start or resume a strategy for real (see "Execution engine"). 404 foreign, 422 with the reason when it cannot start |
+| `/api/strategies/[id]/runs` | GET | run counts + activity log for the builder's run card |
+| `/api/journeys` | GET | `?range=` — every launched strategy's journey (per-step reach, who is waiting where) plus touchpoints by channel and day. Read live from `workflow_runs` and the run log; `dryRun` is true only when the deployment cannot send |
+| `/api/engine/run` | POST | runs every due step in the caller's workspace, **sending for real**; polled by open screens. Returns `{ processed }` |
+| `/api/inbox/sync` | POST | pulls recent LinkedIn chats into the Inbox through the idempotent webhook writer. Returns `{ checked, stored, accounts, configured }`; the Inbox polls it every 30 s |
+| `/api/audiences/[id]/enrich` | GET, POST | GET the briefing stored on a lead (free; no provider call). POST reads their LinkedIn profile now through a healthy account and stores it; 503 when no provider is configured, 422 with the reason when there is no URL, no account or no profile |
 | `/api/workflows` | GET | every workflow in the workspace, newest edit first |
 | `/api/accounts` | GET | the workspace's LinkedIn accounts, mailboxes and sending domains, each with the strategies that use it |
 | `/api/accounts/[id]` | PATCH DELETE | PATCH is the dials only (LinkedIn daily caps; mailbox cap + rotate) — identity/state/health are never accepted. DELETE disconnects at the provider first, then removes the row |
@@ -259,7 +293,7 @@ directly.
 | `/api/webhooks/unipile/accounts` | POST | account status changed. Shared-secret header; writes `channel_accounts.state` |
 | `/api/webhooks/unipile/messages` | POST | inbound message. Shared-secret header; idempotent on the provider's message id |
 | `/api/badges` | GET | `{ tasks, inbox, config }`: the rail counts, fetched on every navigation |
-| `/api/settings` | GET, PATCH | the (removed) rules screen: Variables/Sending rules/Compliance (`workspace_settings`); no screen calls it now. PATCH body carries only the section(s) changed (`{ variableFallbacks? \| sendingRules? \| compliance? }`); shape/range checked in `validate.ts`, merged into the stored row by the repository. Always real for the signed-in workspace, but `SENDING_ENABLED` stays false so nothing acts on it — see Configuration below |
+| `/api/settings` | GET, PATCH | the (removed) rules screen: Variables/Sending rules/Compliance (`workspace_settings`); no screen calls it now. PATCH body carries only the section(s) changed (`{ variableFallbacks? \| sendingRules? \| compliance? }`); shape/range checked in `validate.ts`, merged into the stored row by the repository. Always real for the signed-in workspace, but nothing acts on it — the sender holds to the plan's window and the account's caps instead. See Configuration below |
 | `/api/audiences/uploads`, `…/[id]/validate`, `/api/audiences/segments` | POST, GET | parked file → review (per-channel reach, **in-journey warning**, import plan) → saved segment. Segments carry a live `audienceCount`. Max 4 MB (Vercel's body cap) |
 | `/api/threads`, `/api/threads/[id]`, `/api/threads/[id]/messages` | GET, POST | |
 | `/api/analytics` | GET | `?range=`, `?channels=` |
@@ -306,16 +340,36 @@ from its columns or, failing that, its email/LinkedIn; `identityGaps` for "missi
 existing audience the file's company/title only where it has none — never its name, never an overwrite) · `prospect.ts` (`buildProspect`:
 both stores hand it their raw rows and it assembles the `ProspectProfile` — engagement counts,
 timeline; import-free, tested) · `analyse.ts` (server-only: the one pass the review step and the save
-step share; it adds `report.plan`, an `ImportPreview`) · `phone.ts` `segments.ts` `table.ts` `limits.ts` `ctx.ts`.
+step share; it adds `report.plan`, an `ImportPreview`) · `summary.ts` (290L, import-free: `readSeat`
+reads a seniority + function out of a title or headline, `buildBriefing(profile)` turns a real
+LinkedIn profile into the `LeadBriefing` the drawer shows, and `readLinkedInExtra` reads what is
+stored on `audiences.extra.linkedin`; `tests/leadBriefing.test.mjs`) · `phone.ts` `segments.ts`
+`table.ts` `limits.ts` `ctx.ts`.
 UI: `upload-audiences.tsx` (349L) is the three-step modal (File → Match columns → Review & save) ·
 `import-review.tsx` (272L) is its last step (totals, filterable row review, invalid-vs-blank
 validation log, consent attestation) · `lead-drawer.tsx` (216L) is the profile drawer opened from
 an Audiences row (the repository/route names stay `Prospect*` — see CLAUDE.md on the holdover) ·
-`lead-form.tsx` (170L) adds or edits one lead by hand, opened from the Audiences header and from
-the drawer's Edit button. **It asks only name, email, phone, LinkedIn (+ the consent attestation)**
-and sends only those, so an edit never touches imported company/title/extra columns and the server
-defaults the rest (stage `new`, source `form`, owner = creator). Stage, source, score, tags and
-next step are not shown anywhere in this UI — they still exist in the schema.
+`lead-form.tsx` (237L) adds or edits one lead by hand, opened from the Audiences header and from
+the drawer's Edit button · `lead-briefing.tsx` (155L) is the **From LinkedIn** panel at the top of
+the drawer.
+
+**The lead form asks name, company, job title, email, phone, LinkedIn, the strategy they sit in,
+and the consent attestation** — and sends only those, so an edit never touches imported extra
+columns and the server defaults the rest (stage `new`, source `form`, owner = creator). Stage,
+source, score, tags and next step are not shown anywhere in this UI — they still exist in the
+schema. **The strategy field is how a lead is moved**: `audiences.strategy_id` holds one strategy
+per lead, so picking another moves them and "No strategy" makes them standalone; sample strategies
+are not offered, because nothing may be enrolled into the demo. Saving a *new* LinkedIn URL also
+fires `POST /api/audiences/[id]/enrich` in the background, so the briefing is usually there by the
+time the drawer is opened.
+
+**The briefing is quoted, not inferred.** `buildBriefing` builds it from the profile's own
+headline, roles, dates, skills and flags: background, signal chips (open to work, hiring, premium,
+follower count), employment with periods, the topics on their profile, and openers lifted from it.
+The one derived line is "How to pitch", labelled *a read of their seat, not a fact about them*. An
+empty profile yields an empty briefing rather than invented content (`tests/leadBriefing.test.mjs`
+pins that). It is stored in the existing `audiences.extra` jsonb — **no migration** — so a
+deployment needs nothing applied to read profiles.
 
 **The review is the save, dry-run.** `planImport` runs the same `mergeAudiences` `createSegment` runs, on
 the same rows (in-journey people removed), so "N new · M existing updated" is what the save writes;
@@ -354,7 +408,7 @@ reads what only the server can read, and renders one `"use client"` view. Keep i
 | `shell/workspace-context.tsx` | 63 | `/api/badges` | user + workspace from the layout, badges refetched on every navigation, `refreshBadges()` for a screen that just changed one |
 | `shell/use-sign-out.ts` | 34 | `/api/logout` | navigates only after the server confirms, with a **full page load** — see §5 |
 | `home/home-view.tsx` | 388 | `/api/overview`, `/api/strategies`, `/api/tasks`, `/api/accounts` | four metric tiles (fixed 7-day window; ranges belong to Analytics, which it links to), To do with a Segmented filter and optimistic completion, Sending today from the accounts' quotas, Strategies, Setup health computed from `setupChecks`. The greeting is computed after mount (no date-dependent server markup) |
-| `inbox/inbox-view.tsx` + `composer.tsx` + `messages.tsx` | 425 + 105 + 43 | `/api/threads`, `/api/threads/[id]` | four channel blocks that double as the filter, each stating its **capability before its action** (email replies here; LinkedIn and WhatsApp hand off; calls log an outcome). The composer is closed by default and closes on any switch. With `!SENDING_ENABLED` a reply is saved as a note, never sent |
+| `inbox/inbox-view.tsx` + `composer.tsx` + `messages.tsx` | 438 + 120 + 43 | `/api/threads`, `/api/threads/[id]`, `/api/inbox/sync` | four channel blocks that double as the filter, each stating its **capability before its action**. A **LinkedIn reply really goes out** through the connected account, and so does an email one once a mailbox can be connected; WhatsApp hands off and calls log an outcome. The reply bar's line is channel-aware and tells the truth about whether a send is possible (`linkedInReady`, from the sync poll). The composer is closed by default and closes on any switch |
 | `audiences/audiences-view.tsx` | 456 | `/api/audiences`, `/api/audiences/segments` | drop zone, filters, segment cards that narrow the table, paged leads table, copy-email, Add a lead, delete with `Confirm`; a row opens `lead-drawer.tsx`, whose Edit opens `lead-form.tsx`. **No row checkboxes** — nothing consumed the selection and there is no bulk action |
 | `strategies/strategies-view.tsx` | 302 | `/api/strategies`, `/api/strategies/[id]` | **the only strategy list** (§2d). Status Segmented + search + channel select; Pause/Resume, Duplicate (creates the strategy *and* copies its graph), Delete. A row opens the builder |
 | `strategies/new-strategy-view.tsx` | 245 | `/api/strategies`, `/api/strategies/[id]/workflow` | focus route. Shape (multichannel / single channel), then a play or a blank sequence (a single channel starts on `graphForChannel()`: touch, pause, follow-up, exit; the strategy is still `type: multichannel` = "has a workflow" with one channel, and the builder scopes its palette to it); creates the strategy + its workflow and opens the builder — **never on a GET** |
@@ -362,7 +416,7 @@ reads what only the server can read, and renders one `"use client"` view. Keep i
 | `setup/setup-overview-view.tsx` + `account-settings.tsx` | 401 + 132 | `/api/accounts` | connected accounts, each account's dials behind its Settings, hosted-sign-in result banner, disconnect. No Pause: nothing is sending to pause |
 | `setup/setup-integrations-view.tsx` | 250 | `/api/accounts` | the provider catalogue (`providerView()`) and the **one place an account is connected** (a labelled Connect button starts the hosted LinkedIn sign-in). The sending-rules cards and Workspace card that sat beside it as "Config" were removed at the user's request; `/api/settings`, `workspace_settings` and `lib/app/configuration.ts` are still there but no screen edits them |
 | `setup/setup-messages-view.tsx` | 283 | `/api/workflows` | **all message copy in the workspace, in one place**, read out of every stored graph by `lib/ws/messages.ts`. The builder never edits copy (§5) |
-| `analytics/analytics-view.tsx` + `charts.tsx` + `journeys-panel.tsx` | 190 + 89 + 160 | `/api/analytics`, `/api/journeys` | two tabs: Results (recorded figures) and Journeys (launched strategies' per-step reach and touchpoints, dry-run labelled). Hairline grid, single near-black accent |
+| `analytics/analytics-view.tsx` + `charts.tsx` + `journeys-panel.tsx` | 198 + 89 + 153 | `/api/analytics`, `/api/journeys` | two tabs: Results (the recorded funnel, now fed by real sends and replies) and Journeys (launched strategies' per-step reach and touchpoints), which opens by default once something is launched. Hairline grid, single near-black accent |
 | `ui/` | ~700 | — | `button` (cva: default/outline/ghost/dashed/danger/warning/inverse; sizes sm 30 · md 34 · lg 38 · icon 30 · icon-sm 28) · `card` · `status-pill` · `segmented` (shared-layout thumb) · `channel-tile` · `confirm` · `motion` (`Appear`, `Swap`, `Row`, `Expand`, and the one easing pair) · `misc` (`Initials, Meter, Switch, NativeSelect, SearchInput, Sparkline, MetricTile, EmptyState, Tag, ChannelChip, Skeleton, LoadError`) |
 | `lib/ws/` | 462 | — | `utils.ts` (`cn`, `fmt`, `pct`, `initialsOf`) · `channels.ts` (the domain `Channel` union → display name, monogram, colour, order) · `format.ts` (metric values and footers; says "Nothing yet"/"No comparison" rather than inventing a 0%) · `use-async.ts` (the loading/ready/failed/retry contract every card shares) · `graphEdit.ts` (pure canvas edits, tested) · `messages.ts` (real copy out of stored graphs) |
 | `components/glass.ts` | ~230 | — | refraction + specular runtime, **marketing-only** (`SiteGlass.tsx` imports it). Was `components/app/glass.ts` |
@@ -395,8 +449,8 @@ mouse) · `lib/ws/graphEdit.ts` (import-free and tested by `tests/graphEdit.test
 - **A step on a channel with no connected account is flagged** on its card and in the strategy
   panel (`issues()` with `channelOff`, wording rewritten to "isn't connected"). Only LinkedIn and
   Email need an account; a call step is a to-do for a person.
-- **Figures on the cards are estimates** (`stepStats()`), and the canvas footer says so. Nothing
-  sends (`SENDING_ENABLED`).
+- **Figures on the cards are estimates** (`stepStats()`), and the canvas footer says so. They are a
+  projection from the audience size, never a count of what was sent.
 - **The page is fixed-height** like every other screen: the palette, canvas and settings panel
   each scroll on their own.
 - `lib/ws/plan.ts` (the old list seam) is deleted.
@@ -437,14 +491,14 @@ fixed rates in `PASS`/`RATE`. Rates render with a `~` and the screen carries a p
 "estimates, not your results" line. Replace them with real counts in the commit that lands a
 sender, not before.
 
-**Launch is a dry run, and the UI says so (`lib/capabilities.ts`).** `SENDING_ENABLED = false`
-still means nobody is ever contacted. The builder's header has **Launch** (Pause / Resume once
-live), a "Live · dry run" state, and a side-panel "Dry run" card (counts + log); a refused launch
-shows the reason inline (e.g. the first step's audience is empty — "Leads in this strategy" has 0
-until something enrols them, so pick "Every lead in the workspace" or a segment). `DRY_RUN_NOTE`
-is the one-line wording. The Strategies table offers Pause and Launch from the same endpoint. Flip
-`SENDING_ENABLED` only in the commit that lands a sender, and replace the `log` effect for LinkedIn
-and email steps there.
+**Launch sends, and the UI says so (`lib/capabilities.ts`).** `SENDING_ENABLED = true`, and
+`LIVE_SEND_NOTE` is the one line every screen about to start outreach carries. **Launch lives in the
+Strategies table only** — a labelled Launch / Resume / Pause on each row, behind a `Confirm` that
+states what is about to happen; the builder just saves and links there. A refused launch shows the
+reason inline (e.g. the first step's audience is empty — "Leads in this strategy" has 0 until
+something enrols them, so pick "Every lead in the workspace" or a segment). `SENDING_OFF_NOTE` is
+what a workspace with no healthy account sees instead, and `SENDING_CHANNELS` is the one channel
+that can genuinely go out.
 
 **Sample data** carries a "Sample" tag on the row where it appears. It cannot be removed: there is
 no "Remove sample data" control, route or repository method (it used to live on the Workspace card
@@ -763,31 +817,33 @@ Roughly in the order they should be closed.
    audiences the first step points at (consenting, not in another strategy). Nothing releases them
    when a strategy is paused or deleted, and a draft's segment still does not warn about overlaps
    with another draft until one launches.
-2. **The engine is a dry run with no scheduler.** `lib/engine/` + `launchStrategy`/`runDueSteps`
-   exist (see §3), but steps only advance while a builder or Strategies screen is open, days are
-   compressed to minutes, and nothing is sent. Real sending needs: a send call on
-   `LinkedInChannelAdapter`, the per-account daily caps enforced in the runner, quiet hours, a
-   `/api/jobs/tick` poked by cron (a GitHub Actions schedule is a free MVP scheduler) and real
-   day lengths. `SENDING_ENABLED` flips in that commit. The pg path was typechecked but not run
-   against a live database before the first production launch.
-3. **LinkedIn connects; email does not.** LinkedIn accounts connect through Unipile's hosted
-   sign-in (see "Connecting LinkedIn" in §3) wherever `UNIPILE_DSN` + `UNIPILE_API_KEY` are set;
-   without them the screens say so rather than offering a button that 503s. Still open on this
-   path: **no throttle service** (the per-account caps are stored and shown but nothing enforces
-   them — that is the execution engine, §2), **no profile enrichment** (`GET /users/{id}` is not
-   called, so a connected seat adds no audience context), and **nothing sends**. Mailbox connection is
-   not built at all: `sending_domains` is read-only and "Connect mailbox" is still disabled.
-4. **Configuration rules are stored but not enforced.** Variables, sending rules and compliance now
-   persist in `workspace_settings` (`/api/settings`), but nothing reads that table yet — enforcing
-   it needs the execution engine (§2) and `SENDING_ENABLED` to flip. The channel tabs' "All
-   accounts" / Tracking switches are a separate, still-unstored thing (`ChannelTabs.tsx`).
+2. **The engine sends, but has no scheduler.** LinkedIn invites and messages go out for real,
+   held to consent, the account's daily caps and the plan's sending window (see §3). What is still
+   missing is the clock: steps only advance while a builder, Strategies, Home or Analytics screen
+   is open, and days are now real, so a plan left alone stalls. Next: `/api/jobs/tick` poked by a
+   schedule (a GitHub Actions cron is a free MVP). Also open — a retry for a provider refusal
+   (today it is logged as `send_failed` and the lead moves on), and a condition that can see a
+   reply. The pg send path was typechecked and walked in the memory store, but **not run against a
+   live LinkedIn account from here**.
+3. **LinkedIn connects and sends; email does not.** LinkedIn accounts connect through Unipile's
+   hosted sign-in (see "Connecting LinkedIn" in §3) wherever `UNIPILE_DSN` + `UNIPILE_API_KEY` are
+   set; without them the screens say so rather than offering a button that 503s. Caps are now
+   enforced in the runner and profiles are read (`getProfile` → the briefing on
+   `audiences.extra.linkedin`). Still open: **`UNIPILE_WEBHOOK_SECRET` is not set in production**,
+   so every webhook delivery is refused and replies arrive only through the Inbox's 30 s pull —
+   setting it and running `npm run unipile:webhooks` makes them instant. Mailbox connection is not
+   built at all: `sending_domains` is read-only and "Connect mailbox" is still disabled.
+4. **Configuration rules are stored but not enforced, and no screen edits them.** Variables,
+   sending rules and compliance persist in `workspace_settings` (`/api/settings`), but the sender
+   reads the plan's own sending window and the account's caps instead, so that table is dead
+   weight until a screen comes back. The channel tabs' "All accounts" / Tracking switches are a
+   separate, still-unstored thing (`ChannelTabs.tsx`).
 5. **`strategies.channels` is not derived from the workflow's steps.** Both are stored; editing the
    workflow does not update the strategy's channel list.
-6. **`events` is written only by the LinkedIn webhooks, and no job builds `daily_rollups`.**
-   Account connects, status changes and inbound messages land in `events` (and `/api/accounts/activity`
-   counts them); nothing else does. Only the sample's rollups exist,
-   so Analytics is real SQL over invented numbers until the engine lands. Rollups have no strategy
-   or person dimension, so Analytics cannot filter by either. The prospect profile already reads
+6. **`daily_rollups` is written incrementally, with gaps.** A real send upserts `reached`, a
+   matched inbound reply upserts `engaged`/`replied`; `positive` and `meetings` are still only the
+   sample's. Rollups have no strategy or person dimension, so Analytics cannot filter by either.
+   The prospect profile already reads
    `events` and `workflow_runs` per person, so its engagement section fills in once the engine writes them.
    - **A segment can't be renamed or exported yet**, and there is no bulk action on a selection of
      leads — the table has no row checkboxes, so bringing bulk actions back means bringing the

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { api } from "@/lib/api";
-import type { Audience } from "@/lib/data/types";
+import type { Audience, Strategy } from "@/lib/data/types";
 import type { AudiencePatch } from "@/lib/data/validate";
 import { EASE_OUT } from "@/components/ws/ui/motion";
 import { Button } from "@/components/ws/ui/button";
@@ -11,11 +11,14 @@ import { Button } from "@/components/ws/ui/button";
 /**
  * Add or edit one lead by hand.
  *
- * It asks for the four things a person can actually supply — name, email,
- * phone, LinkedIn — plus the consent attestation, and nothing else: stage,
- * source, score, tags and owner are set by the server (or by an import), so
- * showing them here would be asking the operator to invent them. An edit sends
- * only these fields, so imported company/title/extra columns are never touched.
+ * It asks only for what a person can actually supply — who they are, where to
+ * reach them, and which strategy they belong to — plus the consent attestation.
+ * Stage, source, score, tags and owner are set by the server or by an import, so
+ * showing them here would be asking the operator to invent them.
+ *
+ * **A lead is only ever in one strategy**, so the strategy select moves them
+ * rather than adding: picking a new one releases them from the old one. A lead
+ * with no strategy is on their own until one is chosen, here or at launch.
  */
 export function LeadForm({
   open,
@@ -34,22 +37,47 @@ export function LeadForm({
   const [email, setEmail] = useState(lead?.email ?? "");
   const [phone, setPhone] = useState(lead?.phone ?? "");
   const [linkedin, setLinkedin] = useState(lead?.linkedin ?? "");
+  const [company, setCompany] = useState(lead?.company ?? "");
+  const [title, setTitle] = useState(lead?.title ?? "");
+  const [strategyId, setStrategyId] = useState(lead?.strategyId ?? "");
+  const [strategies, setStrategies] = useState<Strategy[] | null>(null);
   const [consent, setConsent] = useState(lead ? lead.consent : false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // The strategy list is only needed while the dialog is open, and it is small.
+  useEffect(() => {
+    if (!open || strategies) return;
+    let alive = true;
+    api
+      .strategies()
+      .then(({ items }) => alive && setStrategies(items.filter((row) => !row.isSample)))
+      .catch(() => alive && setStrategies([]));
+    return () => {
+      alive = false;
+    };
+  }, [open, strategies]);
 
   async function save() {
     setBusy(true);
     setError("");
     const patch: AudiencePatch = {
       name: name.trim(),
+      company: company.trim(),
+      title: title.trim(),
       email: email.trim() || null,
       phone: phone.trim() || null,
       linkedin: linkedin.trim() || null,
+      strategyId: strategyId || null,
       consent,
     };
     try {
       const { audience } = lead ? await api.updateAudience(lead.id, patch) : await api.createAudience(patch);
+      // A LinkedIn URL is worth a profile read, but it goes out to LinkedIn and takes seconds, so
+      // the dialog never waits on it: the drawer shows the briefing once it lands.
+      if (patch.linkedin && patch.linkedin !== lead?.linkedin) {
+        void api.readLinkedInProfile(audience.id).catch(() => undefined);
+      }
       onSaved(audience);
       onClose();
     } catch (e) {
@@ -98,6 +126,10 @@ export function LeadForm({
               }}
             >
               <TextField id="lead-name" label="Name" value={name} onChange={setName} required />
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-[13px]">
+                <TextField id="lead-company" label="Company" value={company} onChange={setCompany} />
+                <TextField id="lead-title" label="Job title" value={title} onChange={setTitle} />
+              </div>
               <TextField id="lead-email" label="Email" value={email} onChange={setEmail} type="email" />
               <TextField id="lead-phone" label="Phone" value={phone} onChange={setPhone} inputMode="tel" />
               {/* Not type="url": the server normalises "linkedin.com/in/x", which the browser's
@@ -109,6 +141,31 @@ export function LeadForm({
                 onChange={setLinkedin}
                 inputMode="url"
               />
+
+              <span className="flex flex-col gap-[5px]">
+                <label htmlFor="lead-strategy" className="label-mono">
+                  Strategy
+                </label>
+                <select
+                  id="lead-strategy"
+                  value={strategyId}
+                  disabled={strategies === null}
+                  onChange={(e) => setStrategyId(e.target.value)}
+                  className="h-[34px] rounded-lg border border-input bg-card px-[9px] text-[12px]"
+                >
+                  <option value="">No strategy</option>
+                  {(strategies ?? []).map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.name}
+                    </option>
+                  ))}
+                </select>
+                {lead?.strategyId && strategyId !== lead.strategyId ? (
+                  <span className="text-[11px] text-muted-foreground">
+                    {strategyId ? "Moves them out of their current strategy." : "Releases them from their strategy."}
+                  </span>
+                ) : null}
+              </span>
 
               {!lead && (
                 <label className="flex items-start gap-[9px] rounded-[10px] bg-accent px-[13px] py-[8px] text-[11.5px] leading-[1.55] text-body">

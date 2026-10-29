@@ -450,7 +450,8 @@ export type Badges = {
  * The three cross-channel Configuration tabs that persist: Variables, Sending rules and
  * Compliance. `lib/data/validate.ts` owns the shape/range rules enforced on write;
  * `lib/app/configuration.ts#defaultWorkspaceSettings()` owns what a new workspace starts with.
- * Nothing here is enforced by a sender yet — see `SENDING_ENABLED` in `lib/capabilities.ts`.
+ * Nothing here is enforced by the sender: it reads the plan's own sending window and the
+ * account's daily caps instead (`lib/engine/window.ts`, `channel_accounts.settings`).
  */
 export type WorkspaceSettings = {
   /** `{token}` → fallback text, or null for "blank if missing". */
@@ -550,9 +551,10 @@ export type JourneyStrategy = {
 };
 
 /**
- * What launched strategies have done, read from the run records and their log. While
- * `SENDING_ENABLED` is false every touchpoint is a dry-run one: it records what *would* have gone
- * out, not something a person received.
+ * What launched strategies have done, read from the run records and their log. A touchpoint on a
+ * channel that really sends (LinkedIn, with a healthy account connected) is something a person
+ * received; on every other channel it is a record of what *would* have gone out, and `dryRun`
+ * says which of the two the figures are.
  */
 export type Journeys = {
   strategies: JourneyStrategy[];

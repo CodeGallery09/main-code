@@ -367,6 +367,16 @@ export async function applyInboundMessage(provider: string, event: MessageEvent)
       occurredAt: at,
     });
 
+    // A reply is the only engagement signal we genuinely have, so it is the one the figures count.
+    if (audience) {
+      const day = at.toISOString().slice(0, 10);
+      await tx.execute(sql`
+        insert into daily_rollups (workspace_id, day, channel, reached, engaged, replied, positive, meetings, is_sample)
+        values (${found.workspaceId}, ${day}, 'linkedin'::channel, 0, 1, 1, 0, 0, false)
+        on conflict (workspace_id, day, channel, is_sample)
+        do update set engaged = daily_rollups.engaged + 1, replied = daily_rollups.replied + 1`);
+    }
+
     await tx
       .update(channelAccounts)
       .set({ lastEventAt: new Date() })
@@ -384,8 +394,11 @@ function parseSentAt(raw: string): Date {
 }
 
 /**
- * The audience this sender already is, matched on their LinkedIn handle. Nothing else: a name match
- * would attach a stranger's message to the wrong person's conversation.
+ * The audience this sender already is.
+ *
+ * Matched on their provider id first — that is exact, and it is stored on the lead the first time
+ * their profile is read — then on the public identifier appearing in the stored URL. Never on a
+ * name: a name match would attach a stranger's message to the wrong person's conversation.
  */
 async function matchAudience(
   workspaceId: string,
@@ -401,7 +414,11 @@ async function matchAudience(
     .where(
       and(
         eq(audiencesTable.workspaceId, workspaceId),
-        sql`${audiencesTable.linkedin} IS NOT NULL AND position(lower(${event.senderId}) in lower(${audiencesTable.linkedin})) > 0`,
+        sql`(
+          ${audiencesTable.extra} -> 'linkedin' ->> 'providerId' = ${event.senderId}
+          or (${audiencesTable.linkedin} is not null
+              and position(lower(${event.senderId}) in lower(${audiencesTable.linkedin})) > 0)
+        )`,
       ),
     )
     .limit(1);

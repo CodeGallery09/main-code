@@ -2,6 +2,7 @@ import { getRepository } from "@/lib/data";
 import { fail, failFields, json, principal, readJson } from "@/lib/http";
 import { validateMessageBody, CHANNELS } from "@/lib/data/validate";
 import type { Channel } from "@/lib/data/types";
+import { ProviderError } from "@/lib/channels";
 
 /**
  * POST /api/threads/:id/messages — body { channel, body } sends a reply.
@@ -30,6 +31,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!message) return fail("not_found", "That thread does not exist.", 404);
     return json({ message }, 201);
   } catch (error) {
+    // A LinkedIn reply that the provider refused: the operator must hear the reason, not a 500.
+    if (error instanceof ProviderError) return failFields({ body: error.message });
     console.error("[api]", error);
     return fail("server_error", "Something went wrong handling that request.", 500);
   }

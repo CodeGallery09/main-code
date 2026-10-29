@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Copy, Pause, Pencil, Plus, Rocket, Trash2 } from "lucide-react";
 import { api, fieldErrorsOf } from "@/lib/api";
-import { DRY_RUN_NOTE, SENDING_ENABLED } from "@/lib/capabilities";
+import { LIVE_SEND_NOTE } from "@/lib/capabilities";
 import type { Strategy, StrategyStatus } from "@/lib/data/types";
 import { CHANNEL_NAME, CHANNEL_ORDER, channelNames } from "@/lib/ws/channels";
 import { whenLabel } from "@/lib/ws/format";
@@ -50,9 +50,10 @@ export function StrategiesView() {
   const [confirming, setConfirming] = useState<Strategy | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [launched, setLaunched] = useState<string | null>(null);
+  const [launching, setLaunching] = useState<Strategy | null>(null);
 
   const list = useAsync(() => api.strategies(), []);
-  // Where each launched strategy's audiences are, and the touchpoints so far (dry run until sending lands).
+  // Where each launched strategy's audiences are, and how many touchpoints have gone out.
   const journeys = useAsync(() => api.journeys({ range: "90d" }), []);
   const journeyOf = useMemo(
     () => new Map((journeys.data?.journeys.strategies ?? []).map((j) => [j.id, j])),
@@ -100,10 +101,11 @@ export function StrategiesView() {
       if (s.status === "live") {
         await api.setStrategyStatus(s.id, "paused");
       } else {
+        setLaunching(null);
         const { launch } = await api.launchStrategy(s.id);
         const skipped = launch.inOtherStrategy + launch.withoutConsent;
         setLaunched(
-          `${launch.strategy.name} is live${SENDING_ENABLED ? "" : " as a dry run"}: ${launch.enrolled} ${launch.enrolled === 1 ? "lead" : "leads"} in the plan${skipped ? `, ${skipped} skipped (in another strategy or no consent)` : ""}.`,
+          `${launch.strategy.name} is live: ${launch.enrolled} ${launch.enrolled === 1 ? "lead" : "leads"} in the plan${skipped ? `, ${skipped} skipped (already in another strategy, or no consent recorded)` : ""}. The first step goes out within a minute.`,
         );
         // It is running now, so show it where running strategies are.
         setFilter("live");
@@ -157,9 +159,9 @@ export function StrategiesView() {
           <PageHeader
             title="Strategies"
             subtitle={
-              list.state === "ready"
-                ? `A strategy is an audience plus the sequence that reaches it. ${live === 0 ? "None are running right now." : `${live} ${live === 1 ? "is" : "are"} running right now.${SENDING_ENABLED ? "" : ` ${DRY_RUN_NOTE}`}`}`
-                : "A strategy is an audience plus the sequence that reaches it."
+              list.state === "ready" && live > 0
+                ? `${live} running right now.`
+                : "An audience plus the sequence that reaches it."
             }
             actions={
               <Link href="/dashboard/strategies/new" className={buttonVariants()}>
@@ -279,7 +281,7 @@ export function StrategiesView() {
                         {journeyOf.has(s.id) ? (
                           <span className="truncate font-mono text-[10.5px] text-muted-foreground">
                             {journeyOf.get(s.id)!.active} in journey · {journeyOf.get(s.id)!.completed + journeyOf.get(s.id)!.stopped} finished
-                            {s.status === "live" && !SENDING_ENABLED ? " · dry run" : ""}
+  
                           </span>
                         ) : null}
                       </span>
@@ -320,8 +322,9 @@ export function StrategiesView() {
                             <Button
                               size="sm"
                               disabled={busy === s.id}
+                              title={LIVE_SEND_NOTE}
                               aria-label={`${s.status === "paused" ? "Resume" : "Launch"} ${s.name}`}
-                              onClick={() => void toggle(s)}
+                              onClick={() => setLaunching(s)}
                             >
                               <Rocket aria-hidden strokeWidth={1.9} />
                               {busy === s.id ? "Starting…" : s.status === "paused" ? "Resume" : "Launch"}
@@ -352,7 +355,7 @@ export function StrategiesView() {
                 {rows.length} of {all.length} strategies
               </span>
               <span className="text-[11.5px] text-muted-foreground">
-                A lead is only ever in one strategy, so a new one skips anyone already in another.
+                A lead is only ever in one strategy.
               </span>
             </div>
           </Card>
@@ -360,13 +363,28 @@ export function StrategiesView() {
       </PageBody>
 
       <Confirm
+        open={launching !== null}
+        title={`${launching?.status === "paused" ? "Resume" : "Launch"} ${launching?.name ?? ""}?`}
+        body={
+          <>
+            This starts the plan for real. {LIVE_SEND_NOTE} Only leads with consent recorded, and who
+            are not already in another strategy, are enrolled; your account&rsquo;s daily limits and the
+            plan&rsquo;s sending window still apply, and you can pause it at any time.
+          </>
+        }
+        confirmLabel={launching?.status === "paused" ? "Resume it" : "Launch it"}
+        busy={busy === launching?.id}
+        onCancel={() => setLaunching(null)}
+        onConfirm={() => launching && void toggle(launching)}
+      />
+
+      <Confirm
         open={confirming !== null}
         title={`Delete ${confirming?.name ?? ""}?`}
         body={
           <>
             The strategy and its plan are removed. The {fmt(confirming?.audiences ?? 0)} leads in it stay in your
-            audiences — they are released from this strategy and can be added to another. Nothing further would have
-            been sent to them anyway, because nothing sends yet.
+            audiences, released from this strategy and free to join another. Anything already sent stays sent.
           </>
         }
         confirmLabel="Delete it"

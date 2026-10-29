@@ -61,9 +61,22 @@ import type {
   WriteError,
 } from "@/lib/data/repository";
 import { AUDIENCE_CAMPAIGN, AUDIENCE_WORKSPACE, type WorkflowGraph } from "@/lib/app/workflow";
-import { RUN_EVENT_KIND, runStep } from "@/lib/engine/steps";
-import { journeyRows } from "@/lib/engine/journey";
+import {
+  DRY_RUN_DAY_MS,
+  REAL_DAY_MS,
+  RUN_EVENT_KIND,
+  SEND_FAILED_EVENT_KIND,
+  SENT_EVENT_KIND,
+  runStep,
+  type StepEffect,
+} from "@/lib/engine/steps";
+import { nextOpening } from "@/lib/engine/window";
+import { getLinkedInAdapter, ProviderError, type LinkedInChannelAdapter } from "@/lib/channels";
+import type { ProviderProfile } from "@/lib/channels/adapter";
+import { linkedInIdentifier } from "@/lib/channels/unipileRequests";
+import { buildBriefing, readLinkedInExtra, type LinkedInExtra } from "@/lib/audiences/summary";
 import { SENDING_ENABLED } from "@/lib/capabilities";
+import { journeyRows } from "@/lib/engine/journey";
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
 import { setupChecks, blockingCount } from "@/lib/data/setup";
 import { ACCOUNT_EVENT } from "@/lib/data/accountEvents";
@@ -130,6 +143,33 @@ function initialsOf(name: string): string {
 }
 
 /** Prefixed, sortable, collision-resistant enough for a single-writer insert. */
+/** A due job as the claim query returns it. */
+type DueJob = {
+  job_id: string;
+  run_id: string;
+  step_id: string;
+  audience_id: string;
+  strategy_id: string;
+  graph: WorkflowGraph;
+};
+
+/** What a tick needs to really send, resolved once per tick. */
+type SendingContext = {
+  adapter: LinkedInChannelAdapter;
+  /** Our own `channel_accounts.id`, for the event payload. */
+  accountId: string;
+  /** The provider's id for the same account, which every call is made with. */
+  providerAccountId: string;
+  accountName: string;
+  /** IANA zone the sending window is read in. */
+  zone: string;
+  /** What is left of today's allowance, counted down as this tick sends. */
+  left: { li_invite: number; li_msg: number };
+};
+
+/** Step kinds that reach a person, and so must respect the sending window. */
+const TOUCH_STEPS = new Set(["li_invite", "li_msg", "email", "wa", "sms"]);
+
 const newId = (prefix: string) =>
   `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
@@ -787,99 +827,423 @@ export class PgRepository implements Repository {
     });
   }
 
-  async runDueSteps(ctx: Ctx, limit = 300): Promise<{ processed: number }> {
-    let processed = 0;
-    // A step that follows another straight away is due in the same pass, so go round until quiet.
-    for (let round = 0; round < 12 && processed < limit; round++) {
-      const ran = await this.db.transaction(async (tx) => {
-        const due = (
-          await tx.execute(sql`
-            select j.id as job_id, j.run_id, j.step_id, r.audience_id, w.strategy_id, w.graph
-            from step_jobs j
-            join workflow_runs r on r.id = j.run_id
-            join workflows w on w.id = r.workflow_id
-            join strategies s on s.id = w.strategy_id
-            where j.workspace_id = ${ctx.workspaceId} and j.state = 'pending' and j.run_at <= now()
-              and r.state = 'active' and s.status = 'live'
-            order by j.run_at
-            limit ${Math.min(100, limit - processed)}
-            for update of j skip locked`)
-        ).rows as {
-          job_id: string;
-          run_id: string;
-          step_id: string;
-          audience_id: string;
-          strategy_id: string;
-          graph: WorkflowGraph;
-        }[];
-        if (due.length === 0) return 0;
+  /**
+   * Everything one tick needs to really send: the provider, the account it sends from, the member's
+   * clock, and how much of today's allowance is left. `null` when this workspace cannot send at
+   * all — no provider configured, or no healthy LinkedIn account — and the run then logs what it
+   * would have sent instead.
+   */
+  private async sendingContext(ctx: Ctx): Promise<SendingContext | null> {
+    if (!SENDING_ENABLED) return null;
+    const adapter = getLinkedInAdapter();
+    if (!adapter) return null;
 
-        const people = await tx
-          .select({ id: audiencesTable.id, name: audiencesTable.name, company: audiencesTable.company, score: audiencesTable.score })
-          .from(audiencesTable)
-          .where(and(this.ws(audiencesTable.workspaceId, ctx), inArray(audiencesTable.id, [...new Set(due.map((d) => d.audience_id))])));
-        const byId = new Map(people.map((p) => [p.id, p]));
+    const [account] = await this.db
+      .select({
+        id: channelAccounts.id,
+        providerAccountId: channelAccounts.providerAccountId,
+        name: channelAccounts.name,
+        settings: channelAccounts.settings,
+      })
+      .from(channelAccounts)
+      .where(
+        and(
+          this.ws(channelAccounts.workspaceId, ctx),
+          eq(channelAccounts.channel, "linkedin"),
+          eq(channelAccounts.state, "healthy"),
+          eq(channelAccounts.provider, adapter.provider),
+        ),
+      )
+      .limit(1);
+    if (!account?.providerAccountId) return null;
 
-        for (const job of due) {
-          const person = byId.get(job.audience_id);
-          const at = Date.now();
-          const result = person
-            ? runStep({
-                nodes: job.graph.nodes,
-                edges: job.graph.edges,
-                stepId: job.step_id,
-                audience: { id: person.id, name: person.name, company: person.company, score: person.score },
-                now: at,
-              })
-            : { effects: [], next: null, finish: "stopped" as const };
+    // The window is the member's own working day, so it is read in their zone.
+    const [owner] = await this.db
+      .select({ zone: users.timeZone })
+      .from(users)
+      .innerJoin(memberships, eq(memberships.userId, users.id))
+      .where(and(eq(memberships.workspaceId, ctx.workspaceId), eq(memberships.role, "owner")))
+      .limit(1);
 
-          for (const effect of result.effects) {
-            if (effect.type === "log") {
-              await tx.insert(eventsTable).values({
-                id: newId("ev"),
-                workspaceId: ctx.workspaceId,
-                kind: RUN_EVENT_KIND,
-                channel: effect.channel,
-                audienceId: job.audience_id,
-                strategyId: job.strategy_id,
-                payload: { text: effect.text, step: effect.step },
-              });
-            } else if (person) {
-              await tx.insert(tasksTable).values({
-                id: newId("t"),
-                workspaceId: ctx.workspaceId,
-                kind: "call",
-                audienceId: person.id,
-                summary: effect.summary,
-                channel: "call",
-                whenLabel: "Today",
-              });
-            }
-          }
+    const caps = (account.settings ?? {}) as { connections?: number; messages?: number };
+    const sentToday = (
+      await this.db.execute(sql`
+        select payload ->> 'kind' as kind, count(*)::int as n
+        from events
+        where workspace_id = ${ctx.workspaceId} and kind = ${SENT_EVENT_KIND}
+          and occurred_at >= date_trunc('day', now())
+        group by 1`)
+    ).rows as { kind: string | null; n: number }[];
+    const used = (kind: string) => sentToday.find((row) => row.kind === kind)?.n ?? 0;
 
-          await tx.update(stepJobs).set({ state: "done" }).where(eq(stepJobs.id, job.job_id));
-          if (result.next) {
-            await tx.insert(stepJobs).values({
-              id: newId("job"),
-              workspaceId: ctx.workspaceId,
-              runId: job.run_id,
-              stepId: result.next.stepId,
-              runAt: new Date(result.next.runAt),
-            });
-          }
-          await tx
-            .update(workflowRuns)
-            .set(
-              result.finish
-                ? { state: result.finish, currentStepId: job.step_id, finishedAt: new Date() }
-                : { currentStepId: result.next?.stepId ?? job.step_id },
-            )
-            .where(eq(workflowRuns.id, job.run_id));
-        }
-        return due.length;
+    return {
+      adapter,
+      accountId: account.id,
+      providerAccountId: account.providerAccountId,
+      accountName: account.name,
+      zone: owner?.zone || "UTC",
+      left: {
+        li_invite: Math.max(0, (caps.connections ?? 20) - used("li_invite")),
+        li_msg: Math.max(0, (caps.messages ?? 40) - used("li_msg")),
+      },
+    };
+  }
+
+  /**
+   * Takes up to `size` due jobs and marks them done in the same breath.
+   *
+   * **At most once, on purpose.** A send that goes out twice is a worse outcome than a step that is
+   * missed, because the person on the other end sees it. So the claim and the "done" are one short
+   * transaction, and the sending — which is slow, and goes over the network — happens afterwards
+   * outside any transaction, where it cannot hold a row lock open.
+   */
+  private async claimDue(ctx: Ctx, size: number): Promise<DueJob[]> {
+    return this.db.transaction(async (tx) => {
+      const due = (
+        await tx.execute(sql`
+          select j.id as job_id, j.run_id, j.step_id, r.audience_id, w.strategy_id, w.graph
+          from step_jobs j
+          join workflow_runs r on r.id = j.run_id
+          join workflows w on w.id = r.workflow_id
+          join strategies s on s.id = w.strategy_id
+          where j.workspace_id = ${ctx.workspaceId} and j.state = 'pending' and j.run_at <= now()
+            and r.state = 'active' and s.status = 'live'
+          order by j.run_at
+          limit ${size}
+          for update of j skip locked`)
+      ).rows as DueJob[];
+      if (due.length === 0) return [];
+      await tx
+        .update(stepJobs)
+        .set({ state: "done", claimedAt: new Date() })
+        .where(inArray(stepJobs.id, due.map((job) => job.job_id)));
+      return due;
+    });
+  }
+
+  /** Queues the next step of a run, or the same step again when it had to wait for the window. */
+  private async queueStep(ctx: Ctx, runId: string, stepId: string, runAt: Date): Promise<void> {
+    await this.db.insert(stepJobs).values({
+      id: newId("job"),
+      workspaceId: ctx.workspaceId,
+      runId,
+      stepId,
+      runAt,
+    });
+  }
+
+  private async logRun(
+    ctx: Ctx,
+    job: DueJob,
+    kind: string,
+    channel: Channel | null,
+    text: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<void> {
+    await this.db.insert(eventsTable).values({
+      id: newId("ev"),
+      workspaceId: ctx.workspaceId,
+      kind,
+      channel,
+      audienceId: job.audience_id,
+      strategyId: job.strategy_id,
+      payload: { text, step: job.step_id, ...extra },
+    });
+  }
+
+  /** People reached today, on this channel. Counted once per person per strategy — see `reached`. */
+  private async countReached(ctx: Ctx, channel: Channel): Promise<void> {
+    const day = dayKey(new Date());
+    await this.db.execute(sql`
+      insert into daily_rollups (workspace_id, day, channel, reached, engaged, replied, positive, meetings, is_sample)
+      values (${ctx.workspaceId}, ${day}, ${channel}::channel, 1, 0, 0, 0, 0, false)
+      on conflict (workspace_id, day, channel, is_sample)
+      do update set reached = daily_rollups.reached + 1`);
+  }
+
+  /**
+   * The person's provider id, which is what an invite or a message is addressed to.
+   *
+   * It is cached on the audience the first time it is looked up, together with the briefing built
+   * from the same profile read — one call to the provider serves both, and LinkedIn throttles
+   * profile reads, so it is never repeated for a person we already resolved.
+   */
+  private async providerIdFor(
+    ctx: Ctx,
+    send: SendingContext,
+    audienceId: string,
+  ): Promise<{ id: string } | { error: string }> {
+    const [row] = await this.db
+      .select({ linkedin: audiencesTable.linkedin, extra: audiencesTable.extra })
+      .from(audiencesTable)
+      .where(and(eq(audiencesTable.id, audienceId), this.ws(audiencesTable.workspaceId, ctx)))
+      .limit(1);
+    if (!row) return { error: "that lead is gone" };
+
+    const cached = readLinkedInExtra(row.extra).providerId;
+    if (cached) return { id: cached };
+
+    const identifier = linkedInIdentifier(row.linkedin ?? "");
+    if (!identifier) return { error: "no LinkedIn profile on this lead" };
+    const profile = await send.adapter.getProfile({ accountId: send.providerAccountId, identifier });
+    if (!profile) return { error: `LinkedIn did not return a profile for ${identifier}` };
+    await this.storeProfile(ctx, audienceId, profile);
+    return { id: profile.providerId };
+  }
+
+  async audienceLinkedIn(ctx: Ctx, id: string): Promise<{ handle: string; name: string; stored: LinkedInExtra } | null> {
+    const [row] = await this.db
+      .select({ linkedin: audiencesTable.linkedin, name: audiencesTable.name, extra: audiencesTable.extra })
+      .from(audiencesTable)
+      .where(and(eq(audiencesTable.id, id), this.ws(audiencesTable.workspaceId, ctx)))
+      .limit(1);
+    if (!row) return null;
+    return { handle: row.linkedin ?? "", name: row.name, stored: readLinkedInExtra(row.extra) };
+  }
+
+  async saveAudienceLinkedIn(ctx: Ctx, id: string, profile: ProviderProfile): Promise<LinkedInExtra | null> {
+    const found = await this.audienceLinkedIn(ctx, id);
+    if (!found) return null;
+    return this.storeProfile(ctx, id, profile);
+  }
+
+  /** Writes a fetched profile onto the audience: the briefing, and company/title where they were blank. */
+  private async storeProfile(ctx: Ctx, audienceId: string, profile: ProviderProfile): Promise<LinkedInExtra> {
+    const stored: LinkedInExtra = {
+      providerId: profile.providerId,
+      fetchedAt: new Date().toISOString(),
+      profileUrl: profile.profileUrl,
+      briefing: buildBriefing(profile),
+    };
+    const [current] = await this.db
+      .select({ extra: audiencesTable.extra, company: audiencesTable.company, title: audiencesTable.title })
+      .from(audiencesTable)
+      .where(and(eq(audiencesTable.id, audienceId), this.ws(audiencesTable.workspaceId, ctx)))
+      .limit(1);
+    const extra = { ...((current?.extra as Record<string, unknown>) ?? {}), linkedin: stored };
+    await this.db
+      .update(audiencesTable)
+      .set({
+        extra,
+        // Never overwrite what the operator typed; only fill what was empty.
+        ...(current?.company ? {} : { company: profile.company }),
+        ...(current?.title ? {} : { title: profile.title }),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(audiencesTable.id, audienceId), this.ws(audiencesTable.workspaceId, ctx)));
+    return stored;
+  }
+
+  /** Records an outbound message in the inbox, so a conversation we started is a conversation. */
+  private async recordOutbound(ctx: Ctx, job: DueJob, body: string): Promise<void> {
+    const now = new Date();
+    const preview = body.slice(0, 160);
+    const [open] = await this.db
+      .select({ id: threadsTable.id })
+      .from(threadsTable)
+      .where(
+        and(
+          this.ws(threadsTable.workspaceId, ctx),
+          eq(threadsTable.audienceId, job.audience_id),
+          eq(threadsTable.channel, "linkedin"),
+        ),
+      )
+      .limit(1);
+    let threadId = open?.id;
+    if (threadId) {
+      await this.db
+        .update(threadsTable)
+        .set({ preview, lastAt: now, needsReply: false })
+        .where(and(eq(threadsTable.id, threadId), this.ws(threadsTable.workspaceId, ctx)));
+    } else {
+      threadId = newId("th");
+      await this.db.insert(threadsTable).values({
+        id: threadId,
+        workspaceId: ctx.workspaceId,
+        audienceId: job.audience_id,
+        channel: "linkedin",
+        preview,
+        unread: false,
+        needsReply: false,
+        lastAt: now,
+        strategyId: job.strategy_id,
       });
-      if (ran === 0) break;
-      processed += ran;
+    }
+    await this.db.insert(messagesTable).values({
+      id: newId("msg"),
+      workspaceId: ctx.workspaceId,
+      threadId,
+      from: "us",
+      channel: "linkedin",
+      body,
+      sentAt: now,
+      read: true,
+    });
+  }
+
+  /**
+   * Performs one `send` effect, or says in the log why it could not.
+   *
+   * Every refusal is written down. A step that silently did nothing is the worst possible state
+   * for an outreach tool, because the operator believes their plan ran.
+   */
+  private async performSend(
+    ctx: Ctx,
+    job: DueJob,
+    effect: Extract<StepEffect, { type: "send" }>,
+    send: SendingContext | null,
+    person: { consent: boolean; name: string },
+  ): Promise<boolean> {
+    const why = (reason: string) =>
+      this.logRun(ctx, job, RUN_EVENT_KIND, effect.channel, `${effect.dryRunText} — not sent: ${reason}.`);
+
+    if (effect.channel !== "linkedin") {
+      await why(`${effect.channel} sending isn't built yet`);
+      return false;
+    }
+    if (!send) {
+      await why(SENDING_ENABLED ? "no healthy LinkedIn account is connected" : "sending is switched off");
+      return false;
+    }
+    if (!person.consent) {
+      await why("no consent is recorded for this lead");
+      return false;
+    }
+    const kind = effect.kind === "li_invite" ? "li_invite" : "li_msg";
+    if (send.left[kind] <= 0) {
+      await why("today's limit for this account is used up");
+      return false;
+    }
+
+    const resolved = await this.providerIdFor(ctx, send, job.audience_id);
+    if ("error" in resolved) {
+      await why(resolved.error);
+      return false;
+    }
+
+    try {
+      const ref =
+        kind === "li_invite"
+          ? (await send.adapter.sendInvite({
+              accountId: send.providerAccountId,
+              providerId: resolved.id,
+              message: effect.body,
+            })).invitationId
+          : (await send.adapter.sendMessage({
+              accountId: send.providerAccountId,
+              providerId: resolved.id,
+              text: effect.body,
+            })).messageId;
+
+      send.left[kind] -= 1;
+      const what =
+        kind === "li_invite"
+          ? `Sent ${person.name} a LinkedIn invite${effect.body ? ` with a note: “${effect.body.slice(0, 120)}”` : "."}`
+          : `Sent ${person.name} a LinkedIn message: “${effect.body.slice(0, 120)}”`;
+      await this.logRun(ctx, job, SENT_EVENT_KIND, "linkedin", what, {
+        kind,
+        accountId: send.accountId,
+        providerRef: ref,
+      });
+      if (kind === "li_msg") await this.recordOutbound(ctx, job, effect.body);
+      await this.countReached(ctx, "linkedin");
+      return true;
+    } catch (caught) {
+      const detail = caught instanceof ProviderError ? caught.message : "the provider did not answer";
+      await this.logRun(
+        ctx,
+        job,
+        SEND_FAILED_EVENT_KIND,
+        "linkedin",
+        `LinkedIn refused the ${kind === "li_invite" ? "invite" : "message"} to ${person.name}: ${detail}`,
+        { kind, accountId: send.accountId },
+      );
+      return false;
+    }
+  }
+
+  async runDueSteps(ctx: Ctx, limit = 300): Promise<{ processed: number }> {
+    const send = await this.sendingContext(ctx);
+    // A real send is a network round trip, so a tick takes far fewer of them than a dry run.
+    const ceiling = send ? Math.min(limit, 12) : limit;
+    let processed = 0;
+
+    // A step that follows another straight away is due in the same pass, so go round until quiet.
+    for (let round = 0; round < 12 && processed < ceiling; round++) {
+      const due = await this.claimDue(ctx, Math.min(send ? 4 : 100, ceiling - processed));
+      if (due.length === 0) break;
+
+      const people = await this.db
+        .select({
+          id: audiencesTable.id,
+          name: audiencesTable.name,
+          company: audiencesTable.company,
+          score: audiencesTable.score,
+          consent: audiencesTable.consent,
+        })
+        .from(audiencesTable)
+        .where(and(this.ws(audiencesTable.workspaceId, ctx), inArray(audiencesTable.id, [...new Set(due.map((d) => d.audience_id))])));
+      const byId = new Map(people.map((p) => [p.id, p]));
+
+      for (const job of due) {
+        const person = byId.get(job.audience_id);
+        if (!person) {
+          await this.db
+            .update(workflowRuns)
+            .set({ state: "stopped", finishedAt: new Date() })
+            .where(eq(workflowRuns.id, job.run_id));
+          continue;
+        }
+
+        // Outside the working window a touch waits rather than landing at midnight.
+        const node = job.graph.nodes.find((n) => n.id === job.step_id);
+        if (send && node && TOUCH_STEPS.has(node.kind)) {
+          const opening = nextOpening(new Date(), send.zone, job.graph.settings);
+          if (opening.getTime() > Date.now() + 1000) {
+            await this.queueStep(ctx, job.run_id, job.step_id, opening);
+            continue;
+          }
+        }
+
+        const result = runStep({
+          nodes: job.graph.nodes,
+          edges: job.graph.edges,
+          stepId: job.step_id,
+          audience: { id: person.id, name: person.name, company: person.company, score: person.score },
+          now: Date.now(),
+          dayMs: send ? REAL_DAY_MS : DRY_RUN_DAY_MS,
+        });
+
+        for (const effect of result.effects) {
+          if (effect.type === "log") {
+            await this.logRun(ctx, job, RUN_EVENT_KIND, effect.channel, effect.text);
+          } else if (effect.type === "task") {
+            await this.db.insert(tasksTable).values({
+              id: newId("t"),
+              workspaceId: ctx.workspaceId,
+              kind: "call",
+              audienceId: person.id,
+              summary: effect.summary,
+              channel: "call",
+              whenLabel: "Today",
+            });
+            await this.logRun(ctx, job, RUN_EVENT_KIND, "call", `Added a call to-do for ${person.name}.`);
+          } else {
+            await this.performSend(ctx, job, effect, send, person);
+          }
+        }
+
+        if (result.next) await this.queueStep(ctx, job.run_id, result.next.stepId, new Date(result.next.runAt));
+        await this.db
+          .update(workflowRuns)
+          .set(
+            result.finish
+              ? { state: result.finish, currentStepId: job.step_id, finishedAt: new Date() }
+              : { currentStepId: result.next?.stepId ?? job.step_id },
+          )
+          .where(eq(workflowRuns.id, job.run_id));
+      }
+      processed += due.length;
     }
 
     // A strategy whose every audience has finished is done.
@@ -1841,11 +2205,38 @@ export class PgRepository implements Repository {
 
   async sendMessage(ctx: Ctx, { threadId, channel, body }: SendMessageInput): Promise<Message | null> {
     const [thread] = await this.db
-      .select({ id: threadsTable.id })
+      .select({ id: threadsTable.id, audienceId: threadsTable.audienceId, strategyId: threadsTable.strategyId })
       .from(threadsTable)
       .where(and(eq(threadsTable.id, threadId), this.ws(threadsTable.workspaceId, ctx)))
       .limit(1);
     if (!thread) return null;
+
+    // A LinkedIn reply really goes out, through the same account a plan sends from, and counts
+    // against that account's day like any other message. With no connected account there is
+    // nothing to send through, so the reply is kept on the thread and the Inbox says so; a
+    // provider refusal is raised, because a reply the operator believes was sent and was not is
+    // the one outcome worth failing on.
+    if (channel === "linkedin") {
+      const send = await this.sendingContext(ctx);
+      if (send) {
+        const resolved = await this.providerIdFor(ctx, send, thread.audienceId);
+        if ("error" in resolved) throw new ProviderError(422, `That reply could not be sent: ${resolved.error}.`);
+        const { messageId } = await send.adapter.sendMessage({
+          accountId: send.providerAccountId,
+          providerId: resolved.id,
+          text: body,
+        });
+        await this.db.insert(eventsTable).values({
+          id: newId("ev"),
+          workspaceId: ctx.workspaceId,
+          kind: SENT_EVENT_KIND,
+          channel: "linkedin",
+          audienceId: thread.audienceId,
+          strategyId: thread.strategyId,
+          payload: { text: `Replied on LinkedIn: “${body.slice(0, 120)}”`, kind: "li_msg", accountId: send.accountId, providerRef: messageId },
+        });
+      }
+    }
 
     const sentAt = new Date();
     // One transaction: a reply that appended but left the thread still "needs reply" would put

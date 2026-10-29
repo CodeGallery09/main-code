@@ -22,7 +22,7 @@ const BLOCKS: Channel[] = ["email", "linkedin", "whatsapp", "call"];
 
 const CAPABILITY: Record<Channel, string> = {
   email: "Reply here",
-  linkedin: "Reply in LinkedIn",
+  linkedin: "Reply here",
   whatsapp: "View only",
   call: "Call and log",
   sms: "Not connected",
@@ -38,8 +38,23 @@ export function InboxView() {
   const [channel, setChannel] = useState<Channel | "all">("all");
   const [openId, setOpenId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
+  const [linkedInReady, setLinkedInReady] = useState(false);
 
   const list = useAsync(() => api.threads({ filter: "all" }), []);
+
+  // Replies normally arrive by webhook. This asks as well, so a workspace whose webhook is not
+  // registered still sees them; every message goes through the same idempotent writer.
+  const reload = list.reload;
+  useEffect(() => {
+    const pull = () =>
+      void api.syncInbox().then((answer) => {
+        setLinkedInReady(answer.configured && answer.accounts > 0);
+        if (answer.stored > 0) reload();
+      }, () => undefined);
+    pull();
+    const timer = window.setInterval(pull, 30_000);
+    return () => window.clearInterval(timer);
+  }, [reload]);
 
   const threads = useMemo(() => list.data?.threads ?? [], [list.data]);
   const scoped = useMemo(
@@ -66,9 +81,9 @@ export function InboxView() {
           <PageHeader
             title="Inbox"
             subtitle={
-              list.state === "ready"
-                ? `${needYou} of ${scoped.length} ${scoped.length === 1 ? "conversation needs" : "conversations need"} you · every thread shows email, LinkedIn, WhatsApp and calls together.`
-                : "Every thread shows email, LinkedIn, WhatsApp and calls together."
+              list.state === "ready" && needYou > 0
+                ? `${needYou} of ${scoped.length} ${scoped.length === 1 ? "conversation needs" : "conversations need"} you.`
+                : "Every channel, one thread per person."
             }
             actions={
               scopeNames.length > 0 ? (
@@ -216,6 +231,7 @@ export function InboxView() {
             <ThreadPane
               key={open.id}
               thread={open}
+              linkedInReady={linkedInReady}
               composing={composing}
               onCompose={() => setComposing(true)}
               onCloseComposer={() => setComposing(false)}
@@ -239,12 +255,14 @@ export function InboxView() {
 
 function ThreadPane({
   thread,
+  linkedInReady,
   composing,
   onCompose,
   onCloseComposer,
   onReplied,
 }: {
   thread: Thread;
+  linkedInReady: boolean;
   composing: boolean;
   onCompose: () => void;
   onCloseComposer: () => void;
@@ -297,6 +315,7 @@ function ThreadPane({
 
       <Footer
         thread={thread}
+        linkedInReady={linkedInReady}
         composing={composing}
         onCompose={onCompose}
         onCloseComposer={onCloseComposer}
@@ -312,12 +331,14 @@ function ThreadPane({
 /** The footer depends on the channel: it says what you may do before you try. */
 function Footer({
   thread,
+  linkedInReady,
   composing,
   onCompose,
   onCloseComposer,
   onReplied,
 }: {
   thread: Thread;
+  linkedInReady: boolean;
   composing: boolean;
   onCompose: () => void;
   onCloseComposer: () => void;
@@ -329,35 +350,22 @@ function Footer({
         <Expand key="composer">
           <Composer thread={thread} onSaved={onReplied} onClose={onCloseComposer} />
         </Expand>
-      ) : thread.channel === "email" ? (
+      ) : thread.channel === "email" || thread.channel === "linkedin" ? (
         <Expand key="bar">
-          <ReplyBar onReply={onCompose} />
+          <ReplyBar onReply={onCompose} channel={thread.channel} linkedInReady={linkedInReady} />
         </Expand>
       ) : (
         <Expand key="handoff">
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-divider bg-quiet px-4 pb-4 pt-[14px]">
             <p className="min-w-0 flex-1 basis-[280px] text-[11.5px] leading-[1.55] text-body">
-              {thread.channel === "linkedin"
-                ? "LinkedIn replies happen in LinkedIn. Automating them risks the account, so Flightpath hands you over rather than typing for you."
-                : thread.channel === "whatsapp"
-                  ? "WhatsApp is view-only here. Free-form replies have to go through WhatsApp Business."
-                  : "Calls are made on your own phone. Log the outcome afterwards so the lead's history stays true."}
+              {thread.channel === "whatsapp"
+                ? "WhatsApp is view-only here. Free-form replies have to go through WhatsApp Business."
+                : "Calls are made on your own phone. Log the outcome afterwards so the lead's history stays true."}
             </p>
             <span className="flex flex-wrap items-center gap-2">
               <Button variant="outline" onClick={onCompose}>
                 Note a reply here
               </Button>
-              {thread.channel === "linkedin" && (
-                <a
-                  href="https://www.linkedin.com/messaging/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex h-[34px] items-center gap-[7px] rounded-lg bg-primary px-[13px] text-[12px] font-medium text-primary-foreground"
-                >
-                  Reply in LinkedIn
-                  <ExternalLink aria-hidden className="size-[14px]" strokeWidth={2} />
-                </a>
-              )}
               {thread.channel === "whatsapp" && (
                 <a
                   href="https://business.whatsapp.com/"
@@ -405,7 +413,7 @@ function Rail({ thread }: { thread: Thread }) {
         <p className="text-[12.5px] font-medium">{thread.strategyName ?? "Not in a strategy"}</p>
         <p className="rounded-lg bg-secondary px-[11px] py-[9px] text-[11.5px] leading-[1.55] text-body">
           {thread.strategyName
-            ? "A reply stops the sequence for this person. Nothing further goes out — and nothing sends at all until a channel is connected."
+            ? "A reply stops the sequence for this person."
             : "This person is not in a sequence, so nothing is scheduled for them."}
         </p>
       </Card>

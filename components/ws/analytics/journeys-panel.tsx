@@ -12,8 +12,8 @@ import { AreaChart, BarRows } from "./charts";
 
 /**
  * Journeys — where launched strategies' audiences are in their plans, and the touchpoints made.
- * Read from the run records and their log, so it moves while a plan runs. While nothing sends,
- * every touchpoint is a dry-run one and the panel says so.
+ * Read from the run records and their log, so it moves while a plan runs. A touchpoint that could
+ * not actually be sent says so in the activity log rather than being counted as one.
  */
 export function JourneysPanel({ data, range }: { data: Journeys; range: RangeKey }) {
   const { strategies, touchpoints } = data;
@@ -44,13 +44,6 @@ export function JourneysPanel({ data, range }: { data: Journeys; range: RangeKey
 
   return (
     <>
-      {data.dryRun ? (
-        <p className="rounded-[10px] border border-border bg-card px-[14px] py-[9px] text-[12px] text-body">
-          <span className="font-medium">Dry run.</span> A touchpoint here is what a step would have sent, or a call
-          to-do that was added. Nobody has been contacted, so none of this feeds the reach, reply or meeting figures.
-        </p>
-      ) : null}
-
       <Appear index={1}>
         <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
           <MetricTile

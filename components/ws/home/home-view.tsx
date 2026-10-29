@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence } from "framer-motion";
 import { ChevronRight, TriangleAlert } from "lucide-react";
-import { SENDING_ENABLED } from "@/lib/capabilities";
 import { api } from "@/lib/api";
 import { INBOX_HREF, SETUP_HREF } from "@/lib/nav";
 import { setupChecks, type SetupCheck } from "@/lib/data/setup";
@@ -296,7 +295,6 @@ export function HomeView() {
                           {journeyOf.has(s.id) ? (
                             <span className="truncate font-mono text-[11px] text-muted-foreground">
                               {journeyOf.get(s.id)!.active} in journey · {journeyOf.get(s.id)!.touchpoints} touchpoints
-                              {SENDING_ENABLED ? "" : " (dry run)"}
                             </span>
                           ) : null}
                         </span>

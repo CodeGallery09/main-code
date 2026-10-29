@@ -12,6 +12,7 @@ import { EASE_OUT } from "@/components/ws/ui/motion";
 import { Button } from "@/components/ws/ui/button";
 import { StatusPill } from "@/components/ws/ui/status-pill";
 import { LoadError, Skeleton } from "@/components/ws/ui/misc";
+import { LeadBriefingPanel } from "./lead-briefing";
 
 const TIME = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const at = (iso: string) => {
@@ -94,6 +95,8 @@ export function LeadDrawer({
               link={lead.linkedin ?? undefined}
             />
           </Section>
+
+          <LeadBriefingPanel leadId={lead.id} hasHandle={Boolean(lead.linkedin)} />
 
           {profile.state === "loading" && (
             <div className="flex flex-col gap-3">

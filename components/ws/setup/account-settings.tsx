@@ -84,7 +84,7 @@ export function AccountSettings({ account, onSaved }: { account: ChannelAccount;
       </div>
 
       <p className="text-[11.5px] leading-[1.55] text-muted-foreground">
-        Limits belong to the account and are shared by every strategy that sends from it. Nothing sends yet, so these
+        Limits belong to the account and are shared by every strategy that sends from it. A launched plan stops for the day once a limit here is reached. These
         are the ceilings that will apply the day it does.
       </p>
 

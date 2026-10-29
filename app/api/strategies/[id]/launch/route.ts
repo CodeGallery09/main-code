@@ -4,7 +4,7 @@ import { withUser } from "@/lib/http";
 /**
  * POST /api/strategies/:id/launch — starts the strategy, or resumes a paused one.
  *
- * **A dry run: nothing is sent to anyone.** It enrols the audiences the plan's first step points at,
+ * **It really sends.** It enrols the audiences the plan's first step points at,
  * then runs whatever is already due, so a plan with no waits shows its work straight away.
  * POST only — a link prefetch must never start a strategy.
  */

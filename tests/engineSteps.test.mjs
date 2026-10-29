@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bucket, DRY_RUN_DAY_MS, fillMergeFields, runStep } from "../lib/engine/steps.ts";
+import { bucket, DRY_RUN_DAY_MS, fillMergeFields, REAL_DAY_MS, runStep } from "../lib/engine/steps.ts";
 
 const audience = { id: "a1", name: "Maya Ortiz", company: "Northwind", score: 82 };
 const NOW = 1_000_000;
@@ -37,13 +37,25 @@ test("the audience step just hands on", () => {
   assert.equal(r.finish, null);
 });
 
-test("a LinkedIn step is logged as a dry run with its merge fields filled, never sent", () => {
+test("a LinkedIn step hands the runner the words to send, merge fields already filled", () => {
   const r = run("n1");
   assert.equal(r.effects.length, 1);
-  assert.equal(r.effects[0].type, "log");
-  assert.match(r.effects[0].text, /^Dry run: would send Maya Ortiz a LinkedIn invite/);
-  assert.match(r.effects[0].text, /Hi Maya at Northwind/);
+  assert.equal(r.effects[0].type, "send");
+  assert.equal(r.effects[0].kind, "li_invite");
+  assert.equal(r.effects[0].channel, "linkedin");
+  assert.equal(r.effects[0].body, "Hi Maya at Northwind");
+  // The same effect carries what the log says when nothing can actually be sent.
+  assert.match(r.effects[0].dryRunText, /^Would send Maya Ortiz a LinkedIn invite/);
   assert.equal(r.next.stepId, "n2");
+});
+
+test("a real day is used when the runner asks for one", () => {
+  const real = runStep({ nodes, edges, stepId: "n2", audience, now: NOW, dayMs: REAL_DAY_MS });
+  assert.equal(real.next.runAt, NOW + 2 * REAL_DAY_MS);
+  assert.match(
+    runStep({ nodes, edges, stepId: "n2", audience, now: NOW, dayMs: REAL_DAY_MS }).effects[0].text,
+    /waits 2 days\.$/,
+  );
 });
 
 test("a wait is compressed: a day is a minute", () => {

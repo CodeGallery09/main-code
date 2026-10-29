@@ -11,11 +11,24 @@
  *   connect   `POST /hosted/accounts/link`  → `{ url }`
  *   account   `GET|DELETE /accounts/{id}`
  *   webhooks  `GET|POST /webhooks`
+ *   profile   `GET /users/{identifier}?account_id=…`
+ *   invite    `POST /users/invite`   `{ account_id, provider_id, message? }`, note ≤ 300 chars
+ *   message   `POST /chats`          multipart/form-data, `attendees_ids[]` + `text`
+ *   inbox     `GET /chats?account_id=…`, `GET /chats/{id}/messages`
  * The docs' own examples disagree between v1 and v2 on some field names, so the readers below
  * accept either spelling and the bodies send the v1 spelling, which is what `/api/v1` documents.
  */
 
-import type { HostedAuthRequest, ProviderAccount, ProviderWebhook } from "./adapter";
+import type {
+  HostedAuthRequest,
+  ProviderAccount,
+  ProviderChat,
+  ProviderMessage,
+  ProviderProfile,
+  ProviderRole,
+  ProviderSchooling,
+  ProviderWebhook,
+} from "./adapter";
 import type { ProviderAccountStatus } from "./events";
 
 /** Unipile's provider key for LinkedIn. */
@@ -126,6 +139,182 @@ export function readWebhooks(body: unknown): ProviderWebhook[] {
       id,
       source: first([row], ["source", "type", "event"]),
       requestUrl: first([row], ["request_url", "requestUrl", "url"]),
+    });
+  }
+  return out;
+}
+
+/* ---------- sending and reading people ------------------------------------ */
+
+/**
+ * The bit of a LinkedIn URL the provider can look a person up by.
+ *
+ * A stored handle is whatever the operator typed or a file carried: a full URL, a bare slug, or
+ * already a provider id. All three go to `GET /users/{identifier}`, so this only has to strip the
+ * URL down to its last path segment and leave the other two alone.
+ */
+export function linkedInIdentifier(stored: string): string {
+  const value = (stored ?? "").trim();
+  if (!value) return "";
+  // Already a provider id: LinkedIn's internal ids start ACo/ACw/AE and carry no slash.
+  if (/^(ACo|ACw|AE)[A-Za-z0-9_-]+$/.test(value)) return value;
+  const withoutQuery = value.split(/[?#]/)[0].replace(/\/+$/, "");
+  const match = withoutQuery.match(/linkedin\.com\/(?:in|pub|profile\/view\?id=)\/?([^/]+)/i);
+  if (match) return decodeURIComponent(match[1]);
+  // A bare slug, or something we cannot read as a URL: hand it over as it is.
+  return withoutQuery.includes("/") ? withoutQuery.split("/").filter(Boolean).pop() ?? "" : withoutQuery;
+}
+
+/** LinkedIn refuses an invitation note longer than this, so it is cut before it is sent. */
+export const INVITE_NOTE_LIMIT = 300;
+
+export function inviteBody(input: { accountId: string; providerId: string; message?: string }) {
+  const note = (input.message ?? "").trim();
+  return {
+    account_id: input.accountId,
+    provider_id: input.providerId,
+    ...(note ? { message: note.slice(0, INVITE_NOTE_LIMIT) } : {}),
+  };
+}
+
+const num = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value)
+    ? value
+    : typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))
+      ? Number(value)
+      : null;
+
+const bool = (value: unknown): boolean => value === true || value === "true" || value === 1;
+
+const list = (source: unknown, key: string): Record<string, unknown>[] => {
+  const raw = isRecord(source) ? source[key] : null;
+  const rows = Array.isArray(raw) ? raw : isRecord(raw) && Array.isArray(raw.items) ? raw.items : [];
+  return rows.filter(isRecord);
+};
+
+/** "2021" + "Present" → "2021 - Present". Either side may be missing. */
+function period(row: Record<string, unknown>): string {
+  const from = first([row], ["start", "start_date", "starts_at", "date_start", "from"]);
+  const to = first([row], ["end", "end_date", "ends_at", "date_end", "to"]);
+  if (from && to) return `${from} - ${to}`;
+  if (from) return `${from} - Present`;
+  return to;
+}
+
+/**
+ * One person's profile.
+ *
+ * Unipile's own field names differ between versions and between the preview and full forms of a
+ * section, so every field is read from each documented spelling — the same rule `events.ts`
+ * follows. A profile missing a `provider_id` is useless (nothing can be sent to it), so it reads
+ * as `null` rather than as a half-filled person.
+ */
+export function readProfile(body: unknown): ProviderProfile | null {
+  const root = isRecord(body) ? (isRecord(body.object) ? body.object : body) : null;
+  if (!root) return null;
+  const providerId = first([root], ["provider_id", "providerId", "id", "member_id"]);
+  if (!providerId) return null;
+
+  const firstName = first([root], ["first_name", "firstName"]);
+  const lastName = first([root], ["last_name", "lastName"]);
+  const name = [firstName, lastName].filter(Boolean).join(" ") || first([root], ["name", "display_name", "full_name"]);
+  const publicIdentifier = first([root], ["public_identifier", "publicIdentifier", "username"]);
+
+  const experience: ProviderRole[] = list(root, "work_experience")
+    .concat(list(root, "experience"))
+    .map((row) => ({
+      title: first([row], ["position", "title", "role"]),
+      company: first([row], ["company", "company_name", "organisation", "organization"]),
+      period: period(row),
+      location: first([row], ["location"]),
+      description: first([row], ["description", "summary"]),
+    }))
+    .filter((row) => row.title || row.company);
+
+  const education: ProviderSchooling[] = list(root, "education").map((row) => ({
+    school: first([row], ["school", "school_name", "institution"]),
+    degree: first([row], ["degree", "degree_name"]),
+    field: first([row], ["field_of_study", "field", "fieldOfStudy"]),
+    period: period(row),
+  }));
+
+  const skills = list(root, "skills")
+    .map((row) => first([row], ["name", "skill", "title"]))
+    .filter(Boolean);
+
+  // A role with no end date is the current one; otherwise the newest listed role is the best guess.
+  const current = experience.find((role) => /present|current/i.test(role.period)) ?? experience[0];
+  const location = first([root], ["location", "city", "geo"]) || first([isRecord(root.primary_locale) ? root.primary_locale : null], ["country"]);
+
+  return {
+    providerId,
+    publicIdentifier,
+    name,
+    headline: first([root], ["headline", "occupation"]),
+    summary: first([root], ["summary", "about", "description"]),
+    location,
+    company: first([root], ["company", "current_company"]) || current?.company || "",
+    title: first([root], ["job_title", "current_position"]) || current?.title || "",
+    profileUrl:
+      first([root], ["public_profile_url", "profile_url", "url"]) ||
+      (publicIdentifier ? `https://www.linkedin.com/in/${publicIdentifier}` : ""),
+    degree: num(isRecord(root) ? root.network_distance : null) ?? degreeWord(first([root], ["network_distance", "networkDistance"])),
+    followers: num(isRecord(root) ? (root.follower_count ?? root.followers_count) : null),
+    isPremium: bool(root.is_premium),
+    isOpenToWork: bool(root.is_open_to_work),
+    isHiring: bool(root.is_hiring),
+    experience,
+    education,
+    skills,
+  };
+}
+
+/** Unipile reports the connection degree as a number on some responses and "DISTANCE_1" on others. */
+function degreeWord(raw: string): number {
+  const match = raw.match(/(\d)/);
+  return match ? Number(match[1]) : 0;
+}
+
+/** The chat list. `attendee_provider_id` is what ties a chat to a person we already know. */
+export function readChats(body: unknown): ProviderChat[] {
+  const rows = Array.isArray(body) ? body : isRecord(body) && Array.isArray(body.items) ? body.items : [];
+  const out: ProviderChat[] = [];
+  for (const row of rows) {
+    if (!isRecord(row)) continue;
+    const id = first([row], ["id", "chat_id"]);
+    if (!id) continue;
+    out.push({
+      id,
+      attendeeId: first([row], ["attendee_provider_id", "attendeeProviderId", "provider_id"]),
+      name: first([row], ["name", "subject"]),
+      unread: num(row.unread_count) ?? 0,
+      lastAt: first([row], ["timestamp", "last_message_at", "updated_at"]),
+    });
+  }
+  return out;
+}
+
+/**
+ * The messages of one chat. `fromMe` decides whether a row is a reply or an echo of our own send,
+ * so it is read from every spelling Unipile uses and defaults to "not ours" — counting a reply as
+ * our own would hide it from the inbox, which is worse than showing one of ours.
+ */
+export function readMessages(body: unknown, chatId: string): ProviderMessage[] {
+  const rows = Array.isArray(body) ? body : isRecord(body) && Array.isArray(body.items) ? body.items : [];
+  const out: ProviderMessage[] = [];
+  for (const row of rows) {
+    if (!isRecord(row)) continue;
+    const id = first([row], ["id", "message_id"]);
+    if (!id) continue;
+    const mine = row.is_sender ?? row.isSender ?? row.from_me ?? row.fromMe;
+    out.push({
+      id,
+      chatId: first([row], ["chat_id", "chatId"]) || chatId,
+      senderId: first([row], ["sender_id", "senderId", "author_id", "from"]),
+      senderName: first([row], ["sender_name", "senderName", "author_name"]),
+      text: first([row], ["text", "body", "message"]),
+      sentAt: first([row], ["timestamp", "date", "sent_at", "created_at"]),
+      fromMe: mine === true || mine === 1 || mine === "1" || mine === "true",
     });
   }
   return out;

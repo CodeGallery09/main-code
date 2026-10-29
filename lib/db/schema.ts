@@ -325,9 +325,9 @@ export const segmentAudiences = pgTable(
  * overrides), Sending rules and Compliance. One row per workspace, created on first write —
  * `lib/app/configuration.ts#defaultWorkspaceSettings()` is what a workspace reads before that row
  * exists. Each column is a jsonb blob rather than a wide set of typed columns on purpose: the
- * shape is owned by `lib/data/validate.ts` (checked there, not by the database), and these
- * settings are not yet read by anything that sends — see `SENDING_ENABLED` in
- * `lib/capabilities.ts` — so a migration for every new toggle would be premature.
+ * shape is owned by `lib/data/validate.ts` (checked there, not by the database), and no screen
+ * edits them and the sender does not read them (it holds to the plan's sending window and the
+ * account's daily caps instead), so a migration for every new toggle would be premature.
  */
 export const workspaceSettings = pgTable("workspace_settings", {
   workspaceId: text("workspace_id")

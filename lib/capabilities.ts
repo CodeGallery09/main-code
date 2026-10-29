@@ -1,18 +1,25 @@
 /**
  * What the product can actually do today, in one place.
  *
- * **Nothing is sent to anyone yet.** LinkedIn connects, but there is no send call behind it. What
- * does exist is the dry-run engine (`lib/engine/`): Launch enrols a strategy's audiences and runs
- * their plan, logging what each step *would* send and turning call steps into real to-dos, with
- * days compressed to minutes. A launched strategy is therefore "live" in the sense that its plan is
- * running, and every screen that shows it says "dry run" while this flag is false.
+ * **LinkedIn really sends.** A launched strategy enrols its audience and runs the plan: a LinkedIn
+ * invite step sends a real connection request, a LinkedIn message step sends a real message, and a
+ * call step becomes a to-do for a person. Everything is held to the workspace's own limits — the
+ * lead's recorded consent, the account's daily caps, and the plan's sending window.
  *
- * Flip `SENDING_ENABLED` to `true` in the commit that lands the sender, and nowhere else.
+ * **Nothing else sends.** Email, WhatsApp and SMS steps are written down as what they would have
+ * sent, with the reason, because no mailbox or number can be connected yet. A workspace with no
+ * healthy LinkedIn account behaves the same way: the plan runs and every touch says why it did not
+ * go out, so a plan is never silently doing nothing.
  */
-export const SENDING_ENABLED = false;
+export const SENDING_ENABLED = true;
 
-/** One line for any screen that shows a running strategy. */
-export const DRY_RUN_NOTE = "Dry run: the plan runs and logs what it would send, but nobody is contacted.";
+/** One line for a screen that is about to start, or has started, real outreach. */
+export const LIVE_SEND_NOTE =
+  "Launching sends real LinkedIn invites and messages from your connected account.";
 
+/** Shown where a workspace cannot send yet, in place of the line above. */
 export const SENDING_OFF_NOTE =
-  "Sending isn't connected yet. You can build and save strategies and workflows; nothing is sent until LinkedIn and email are connected.";
+  "No LinkedIn account is connected, so a launched plan records what it would have sent instead of sending it.";
+
+/** Channels that can genuinely be sent on today. Everything else is written down, not sent. */
+export const SENDING_CHANNELS = ["linkedin"] as const;

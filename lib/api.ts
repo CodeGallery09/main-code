@@ -34,6 +34,7 @@ import type { WorkflowGraph } from "@/lib/app/workflow";
 import type { AccountSettingsPatch, StrategyPatch, AudiencePatch } from "@/lib/data/validate";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/audiences/segments";
 import type { Mapping } from "@/lib/audiences/validation";
+import type { LinkedInExtra } from "@/lib/audiences/summary";
 
 /** Field errors a 422 carries, keyed by field name — what the forms render inline. */
 export type FieldErrors = Record<string, string>;
@@ -127,7 +128,7 @@ export const api = {
       body: JSON.stringify(patch),
     }),
 
-  /** Starts or resumes a strategy — a dry run, nothing is sent. 422 with the reason when it cannot start. */
+  /** Starts or resumes a strategy. It really sends. 422 with the reason when it cannot start. */
   launchStrategy: (id: string) =>
     request<{ launch: LaunchResult; processed: number }>(`/api/strategies/${encodeURIComponent(id)}/launch`, {
       method: "POST",
@@ -135,6 +136,12 @@ export const api = {
 
   strategyRuns: (id: string) =>
     request<{ summary: RunSummary }>(`/api/strategies/${encodeURIComponent(id)}/runs`),
+
+  /** Asks LinkedIn for new replies. The Inbox calls it while it is open. */
+  syncInbox: () =>
+    request<{ checked: number; stored: number; accounts: number; configured: boolean }>("/api/inbox/sync", {
+      method: "POST",
+    }),
 
   /** Runs the steps that have come due; the screens call it while they are open. */
   runEngine: () => request<{ processed: number }>("/api/engine/run", { method: "POST" }),
@@ -220,6 +227,16 @@ export const api = {
   prospect: (id: string) =>
     request<{ profile: ProspectProfile }>(`/api/audiences/${encodeURIComponent(id)}/profile`),
 
+  /** The LinkedIn briefing already stored for a lead. */
+  audienceLinkedIn: (id: string) =>
+    request<{ linkedin: LinkedInExtra; handle: string; configured: boolean }>(
+      `/api/audiences/${encodeURIComponent(id)}/enrich`,
+    ),
+
+  /** Reads the lead's LinkedIn profile now and stores the briefing. Slow: it goes out to LinkedIn. */
+  readLinkedInProfile: (id: string) =>
+    request<{ linkedin: LinkedInExtra }>(`/api/audiences/${encodeURIComponent(id)}/enrich`, { method: "POST" }),
+
   createAudience: (input: AudiencePatch) =>
     request<{ audience: Audience }>("/api/audiences", { method: "POST", body: JSON.stringify(input) }),
 
@@ -251,7 +268,7 @@ export const api = {
       body: JSON.stringify({ channel, body }),
     }),
 
-  /** Launched strategies' journeys and the touchpoints in the range (dry-run figures while nothing sends). */
+  /** Launched strategies' journeys and the touchpoints made in the range. */
   journeys: (params: { range?: string } = {}) => request<{ journeys: Journeys }>(`/api/journeys${qs(params)}`),
 
   analytics: (params: { range?: string; channels?: string } = {}) =>

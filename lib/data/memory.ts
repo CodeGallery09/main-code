@@ -46,6 +46,8 @@ import type {
 } from "@/lib/data/repository";
 import { AUDIENCE_CAMPAIGN, AUDIENCE_WORKSPACE, graphFromTemplate, type WorkflowGraph } from "@/lib/app/workflow";
 import { runStep } from "@/lib/engine/steps";
+import { buildBriefing, readLinkedInExtra, type LinkedInExtra } from "@/lib/audiences/summary";
+import type { ProviderProfile } from "@/lib/channels/adapter";
 import { journeyRows } from "@/lib/engine/journey";
 import { SENDING_ENABLED } from "@/lib/capabilities";
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
@@ -147,6 +149,9 @@ type MemRun = { id: string; strategyId: string; audienceId: string; state: "acti
 type MemJob = { id: string; runId: string; stepId: string; runAt: number; done: boolean };
 const runs = shared<MemRun[]>("runs", () => []);
 const jobs = shared<MemJob[]>("jobs", () => []);
+/** Profile reads, by audience id. Like every other write here, they last until the server restarts. */
+const briefings = shared("briefings", () => new Map<string, LinkedInExtra>());
+
 const runLog = shared<(RunActivity & { strategyId: string; audienceId: string; step: string })[]>("runLog", () => []);
 
 const counters = shared<Record<string, number>>("counters", () => ({}));
@@ -476,17 +481,8 @@ export class MemoryRepository implements Repository {
           : { effects: [], next: null, finish: "stopped" as const };
 
       for (const effect of result.effects) {
-        if (effect.type === "log") {
-          runLog.unshift({
-            at: new Date().toISOString(),
-            text: effect.text,
-            audienceName: person?.name ?? "",
-            channel: effect.channel,
-            strategyId: run.strategyId,
-            audienceId: run.audienceId,
-            step: effect.step,
-          });
-        } else if (person) {
+        if (effect.type === "task") {
+          if (!person) continue;
           tasks.unshift({
             id: `t_${nextId("task")}`,
             kind: "call",
@@ -500,7 +496,19 @@ export class MemoryRepository implements Repository {
             channel: "call",
             done: false,
           });
+          continue;
         }
+        // The demo store has no provider and no database, so a touch is always a dry-run line.
+        const line = effect.type === "log" ? effect.text : `${effect.dryRunText} — not sent: this demo workspace has no connected account.`;
+        runLog.unshift({
+          at: new Date().toISOString(),
+          text: line,
+          audienceName: person?.name ?? "",
+          channel: effect.type === "log" ? effect.channel : effect.channel,
+          strategyId: run.strategyId,
+          audienceId: run.audienceId,
+          step: effect.step,
+        });
       }
       job.done = true;
       if (result.next) {
@@ -531,6 +539,26 @@ export class MemoryRepository implements Repository {
       nextDueAt: next === null ? null : new Date(next).toISOString(),
       recent: runLog.filter((l) => l.strategyId === id).slice(0, 8).map((l) => ({ at: l.at, text: l.text, audienceName: l.audienceName, channel: l.channel })),
     };
+  }
+
+  async audienceLinkedIn(_ctx: Ctx, id: string): Promise<{ handle: string; name: string; stored: LinkedInExtra } | null> {
+    const row = audienceRows.find((a) => a.id === id);
+    return row ? { handle: row.linkedin ?? "", name: row.name, stored: readLinkedInExtra({ linkedin: briefings.get(id) }) } : null;
+  }
+
+  async saveAudienceLinkedIn(_ctx: Ctx, id: string, profile: ProviderProfile): Promise<LinkedInExtra | null> {
+    const row = audienceRows.find((a) => a.id === id);
+    if (!row) return null;
+    const stored: LinkedInExtra = {
+      providerId: profile.providerId,
+      fetchedAt: new Date().toISOString(),
+      profileUrl: profile.profileUrl,
+      briefing: buildBriefing(profile),
+    };
+    briefings.set(id, stored);
+    if (!row.company) row.company = profile.company;
+    if (!row.title) row.title = profile.title;
+    return stored;
   }
 
   async getJourneys(ctx: Ctx, range: RangeKey): Promise<Journeys> {

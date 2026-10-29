@@ -108,7 +108,7 @@ export function NewStrategyView() {
               What are you reaching out for?
             </h1>
             <p className="text-[12.5px] text-muted-foreground">
-              Pick how this one runs. Nothing sends until you add an audience and turn it on.
+              Pick how this one runs. You choose the audience in the next screen, and nothing goes out until you launch it.
             </p>
           </div>
 

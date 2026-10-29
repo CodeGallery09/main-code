@@ -7,8 +7,9 @@
  * checks come from the database (`lib/data/setup.ts`, `/api/accounts`); this file only says what
  * can be configured and what each setting defaults to. Variables, Sending rules and Compliance do
  * have a real settings store behind them now (`workspace_settings`, via `/api/settings` —
- * see `defaultWorkspaceSettings()` below) — but nothing enforces them yet, because
- * `SENDING_ENABLED` in `lib/capabilities.ts` stays false until a real sender exists.
+ * see `defaultWorkspaceSettings()` below) — but no screen edits them and the sender does not read
+ * them: a plan's sending window and an account's daily caps are what actually hold sending back
+ * (`lib/engine/window.ts`, `channel_accounts.settings`).
  *
  * Only `lib/app/channels` and (as a type only, fully erased) `lib/data/types` are imported, so
  * this can still be read from a server component, a client component or a test alike.

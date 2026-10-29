@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft, Check, Rocket, CircleDashed, LayoutTemplate, Minus, Plus, Redo2, Save, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { DRY_RUN_NOTE, SENDING_ENABLED } from "@/lib/capabilities";
+import { LIVE_SEND_NOTE } from "@/lib/capabilities";
 import {
   defaults,
   issues as findIssues,
@@ -78,8 +78,8 @@ const HINT: Partial<Record<StepKind, string>> = {
  *
  * The palette on the left adds a step (drag it onto the canvas, or click to add it after the
  * selected one), the canvas holds the plan, and the panel on the right edits whatever is selected.
- * Edits save themselves a moment after you stop and once more when you leave. Nothing sends: see
- * lib/capabilities.ts.
+ * Edits save themselves a moment after you stop and once more when you leave. Launching happens on
+ * Strategies, not here, and it really sends: see lib/capabilities.ts.
  */
 export function BuilderView({
   strategyId,
@@ -452,7 +452,8 @@ export function BuilderView({
               className={cn("whitespace-nowrap font-mono text-[11px]", save === "failed" ? "text-warning" : "text-muted-foreground")}
             >
               {STATUS_LABEL[status]}
-              {status === "live" && !SENDING_ENABLED ? " · dry run" : ""} · {saveLabel[save]}
+              {" · "}
+              {saveLabel[save]}
             </span>
             {usedChannels.length ? (
               <span className="hidden items-center gap-[3px] md:flex" aria-label="Channels in this plan">
@@ -584,8 +585,7 @@ export function BuilderView({
               onRefused={say}
             />
             <p className="border-t border-border bg-chrome px-4 py-[6px] text-[11px] text-muted-foreground">
-              Figures on the steps are estimates from your audience size, not your results.{" "}
-              {SENDING_ENABLED ? "" : "Launching is a dry run: nothing is sent."} Edits save as a draft; launch from Strategies.
+              Figures on the steps are estimates from your audience size, not your results.
             </p>
             <AnimatePresence>
               {notice ? (
@@ -736,7 +736,7 @@ export function BuilderView({
 
                 {status !== "draft" && runs ? (
                   <div className="flex flex-col gap-[7px] border-t border-divider pt-3">
-                    <h3 className="label-mono">Dry run</h3>
+                    <h3 className="label-mono">Running now</h3>
                     <dl className="grid grid-cols-3 gap-2">
                       {[
                         [String(runs.active), "in plan"],
@@ -763,13 +763,9 @@ export function BuilderView({
                   </div>
                 ) : null}
 
-                {!SENDING_ENABLED ? (
-                  <p className="rounded-lg bg-accent px-[11px] py-[9px] text-[11.5px] leading-[1.55] text-body">
-                    <span className="font-medium">Launching is a dry run.</span> {DRY_RUN_NOTE} Edits here save as a draft; launch
-                    from Strategies. Days are compressed to minutes so you can watch a plan finish; call steps become
-                    real to-dos.
-                  </p>
-                ) : null}
+                <p className="rounded-lg bg-accent px-[11px] py-[9px] text-[11.5px] leading-[1.55] text-body">
+                  {LIVE_SEND_NOTE} Edits here save as a draft; launch from Strategies.
+                </p>
               </div>
             )}
           </aside>
