@@ -48,6 +48,8 @@ import type {
   WorkflowRecord,
   Workspace,
   WorkspaceSettings,
+  LaunchResult,
+  RunSummary,
 } from "@/lib/data/types";
 import type {
   AccountSettingsPatch,
@@ -175,6 +177,24 @@ export interface Repository {
     strategyId: string,
     input: { name: string; graph: WorkflowGraph },
   ): Promise<WorkflowRecord | WriteError | null>;
+
+  /* ------------------------------------------------------------------ engine -- */
+
+  /**
+   * Starts a strategy, or resumes a paused one: puts the audiences its first step points at into
+   * the plan (skipping anyone already in another strategy, or without consent), queues their first
+   * step and marks the strategy live. **A dry run: nothing is sent to anyone.** `null` when the
+   * strategy is not yours; a `WriteError` when it cannot start (the demo strategy, no plan, no
+   * steps, nobody to enrol).
+   */
+  launchStrategy(ctx: Ctx, id: string): Promise<LaunchResult | WriteError | null>;
+  /**
+   * Runs every step that is due in this workspace, for strategies that are live: logs what a step
+   * would send, adds a to-do for a call step, queues the next step. Returns how many it ran.
+   */
+  runDueSteps(ctx: Ctx, limit?: number): Promise<{ processed: number }>;
+  /** Where the strategy's audiences are in its plan, or null when the strategy is not yours. */
+  runSummary(ctx: Ctx, id: string): Promise<RunSummary | null>;
 
   /**
    * Makes sure the workspace has the demo strategy: one multichannel strategy with its audiences,

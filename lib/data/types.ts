@@ -483,3 +483,39 @@ export type WorkspaceSettings = {
     retention: string;
   };
 };
+
+/* ------------------------------------------------------------------- engine -- */
+
+/** What launching (or resuming) a strategy did. */
+export type LaunchResult = {
+  strategy: Strategy;
+  /** Audiences newly put into the plan by this launch. */
+  enrolled: number;
+  /** Audiences that were already in it, e.g. when resuming. */
+  alreadyIn: number;
+  /** Audiences the plan points at that already belong to another strategy, and were left alone. */
+  inOtherStrategy: number;
+  /** Audiences left out because nobody has recorded consent to contact them. */
+  withoutConsent: number;
+};
+
+/** One line of what a run did, newest first in `RunSummary.recent`. */
+export type RunActivity = {
+  at: string;
+  text: string;
+  audienceName: string;
+  channel: Channel | null;
+};
+
+/** Where a strategy's audiences are in its plan. Counts only — nothing here is a result. */
+export type RunSummary = {
+  enrolled: number;
+  active: number;
+  completed: number;
+  stopped: number;
+  /** Active audiences whose next step is not due yet. */
+  waiting: number;
+  /** When the soonest pending step is due, ISO, or null when nothing is pending. */
+  nextDueAt: string | null;
+  recent: RunActivity[];
+};

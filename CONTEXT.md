@@ -123,6 +123,28 @@ listed somewhere else under another name.
 | `query.ts` | 68 | Pure filter/sort/paginate helpers shared by both impls. Import-free, tested. |
 | `validate.ts` | 651 | Write-path validation, `{ok,data}|{ok,errors}`. Import-free, erasable, tested. An audience's `linkedin` goes through `normaliseUrl` (same rule as the upload's `checkUrl`: any web URL, `https://` added); a create with no stage starts at `new`. |
 
+### Execution engine — `lib/engine/` (a dry run today)
+| File | L | Purpose |
+|---|---|---|
+| `steps.ts` | 211 | `runStep(node, edges, audience, now)` → `{ effects, next, finish }`: what happens when one lead reaches one step, **as data with no side effects**. Effects are a `log` line or a `task` (only a call step makes one). `DRY_RUN_DAY_MS` (60 s) compresses a plan's days. Import-free + erasable; `tests/engineSteps.test.mjs`. |
+
+The stores apply the result: `launchStrategy`, `runDueSteps` and `runSummary` on the `Repository`
+(both impls). **A dry run: nothing is sent.** A LinkedIn/email step is logged as what it *would*
+send (merge fields filled), a call step becomes a real to-do, a condition cannot see a reply so it
+takes its No branch after waiting out its window. Real sending replaces the log line, not the shape.
+- **Launch** (`POST /api/strategies/[id]/launch`) enrols the audiences the first step points at,
+  skipping anyone already in another strategy (`audiences.strategy_id`) or without `consent`, queues
+  their first step (`workflow_runs` unique per workflow+audience, `step_jobs` pending/done with
+  `run_at`) and sets the strategy live. Refused with a reason for the demo strategy, an empty plan,
+  or nobody to enrol. `PATCH /api/strategies/[id]` with `status: live|scheduled` and a POST with
+  those statuses are **422** — only Launch goes live; Pause is a plain `PATCH status: paused`.
+- **Nothing runs by itself.** There is no cron: `POST /api/engine/run` is called by the builder
+  (every 8 s) and the Strategies screen (every 10 s) while open. The pg store claims due rows with
+  `FOR UPDATE SKIP LOCKED`, so two open tabs cannot run a job twice. A background scheduler belongs
+  with real sending.
+- `GET /api/strategies/[id]/runs` is the builder's "Dry run" card: in plan / waiting / finished
+  counts and the activity log (read from `events`).
+
 ### Database — `lib/db/`
 | File | L | Purpose |
 |---|---|---|
@@ -138,7 +160,7 @@ Tables, grouped:
 - **uploads** `uploads` (parked parsed files, swept after 1 h) `segments` `segment_audiences`
 - **domain** `audiences` `strategies` `workflows` `threads` `messages` `tasks`
 - **quota/metrics** `channel_quotas` `daily_rollups` `events`
-- **engine (not yet written to)** `workflow_runs` `step_jobs`
+- **engine (written by the dry run)** `workflow_runs` `step_jobs`
 - **cross-channel settings** `workspace_settings` (one row per workspace, three jsonb blobs: Variables/Sending rules/Compliance — see Configuration below)
 
 `workspace_id` is on every tenant-scoped table. `step_jobs.run_at` + `FOR UPDATE SKIP LOCKED`
@@ -216,8 +238,11 @@ directly.
 | `/api/tasks`, `/api/tasks/[id]/complete` | GET, POST | |
 | `/api/audiences`, `/api/audiences/[id]` | GET POST PATCH DELETE | full CRUD. List takes `?segmentId=` (one audience) and searches name, company, title, email and tags |
 | `/api/audiences/[id]/profile` | GET | the prospect profile (`getProspect`): company, journey, audiences, engagement, timeline, to-dos. Read-only; 404 across workspaces |
-| `/api/strategies`, `/api/strategies/[id]` | GET POST PATCH DELETE | full CRUD. A multichannel strategy needs ≥ 2 channels (validate.ts). |
+| `/api/strategies`, `/api/strategies/[id]` | GET POST PATCH DELETE | full CRUD. A multichannel strategy ( = "has a workflow") may have one channel. `status: live|scheduled` is refused here — use Launch. |
 | `/api/strategies/[id]/workflow` | GET, PUT | the strategy's workflow. PUT takes `{ name, graph }` and **rebuilds the graph from a whitelist** (`validateWorkflowGraph`); 422 names the reason. 404 for another workspace's strategy. |
+| `/api/strategies/[id]/launch` | POST | start or resume a strategy as a **dry run** (see "Execution engine"). 404 foreign, 422 with the reason when it cannot start |
+| `/api/strategies/[id]/runs` | GET | run counts + activity log for the builder's Dry run card |
+| `/api/engine/run` | POST | runs every due step in the caller's workspace; polled by open screens. Returns `{ processed }` |
 | `/api/workflows` | GET | every workflow in the workspace, newest edit first |
 | `/api/accounts` | GET | the workspace's LinkedIn accounts, mailboxes and sending domains, each with the strategies that use it |
 | `/api/accounts/[id]` | PATCH DELETE | PATCH is the dials only (LinkedIn daily caps; mailbox cap + rotate) — identity/state/health are never accepted. DELETE disconnects at the provider first, then removes the row |
@@ -407,11 +432,14 @@ fixed rates in `PASS`/`RATE`. Rates render with a `~` and the screen carries a p
 "estimates, not your results" line. Replace them with real counts in the commit that lands a
 sender, not before.
 
-**Nothing sends, and the UI says so (`lib/capabilities.ts`).** `SENDING_ENABLED = false` gates
-every path to "live". The builder shows "Nothing sends yet" where Launch would be (a disabled
-Launch made its own confirmation dialog unreachable) and has no Test button. The Strategies table
-offers Pause, not a switch that could only fail one way. Flip the flag only in the commit that
-lands a sender.
+**Launch is a dry run, and the UI says so (`lib/capabilities.ts`).** `SENDING_ENABLED = false`
+still means nobody is ever contacted. The builder's header has **Launch** (Pause / Resume once
+live), a "Live · dry run" state, and a side-panel "Dry run" card (counts + log); a refused launch
+shows the reason inline (e.g. the first step's audience is empty — "Leads in this strategy" has 0
+until something enrols them, so pick "Every lead in the workspace" or a segment). `DRY_RUN_NOTE`
+is the one-line wording. The Strategies table offers Pause and Launch from the same endpoint. Flip
+`SENDING_ENABLED` only in the commit that lands a sender, and replace the `log` effect for LinkedIn
+and email steps there.
 
 **Sample data** carries a "Sample" tag on the row where it appears. It cannot be removed: there is
 no "Remove sample data" control, route or repository method (it used to live on the Workspace card
@@ -489,7 +517,8 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 `adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `setup.test.mjs` · `workflowPersist.test.mjs` · `audiencesValidation` `audiencesMerge` `audiencesJourney` `audiencesProfile` `audiencesImportPlan` `prospect` `workflowSegment` ·
 `unipile.test.mjs` (the Unipile request contract + response readers) · `unipileEvents.test.mjs`
 (both documented webhook envelopes) · `webhookConfig.test.mjs` (the header/query-param match) —
-**229 tests**
+`engineSteps.test.mjs` (the pure step runner) —
+**241 tests**
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).
@@ -522,6 +551,7 @@ namespaces, no parameter properties).
 | Change how uploaded people are matched | `lib/audiences/merge.ts` (`mergeAudiences` + `findInJourney`; `planImport` follows `mergeAudiences` automatically) and `tests/audiencesMerge`/`audiencesJourney`/`audiencesImportPlan` |
 | Change what the import review shows | `ImportPreview`/`ReviewRow` in `lib/audiences/segments.ts` → `analyseUpload` in `lib/audiences/analyse.ts` → `components/ws/audiences/import-review.tsx` |
 | Add something to the prospect profile | `ProspectProfile` in `lib/data/types.ts` → `ProspectFacts` + `buildProspect` in `lib/audiences/prospect.ts` (+ `tests/prospect.test.mjs`) → `getProspect` in **both** `pg.ts` and `memory.ts` (scope every query by `workspace_id`) → `components/ws/audiences/lead-drawer.tsx` |
+| Change what a step does when it runs | `runStep` in `lib/engine/steps.ts` (+ `tests/engineSteps.test.mjs`); the stores only apply its `effects`, so both impls follow |
 | Add a builder step kind | `STEPS` + `defaults()` + `stepLabel()` in `lib/app/workflow.ts`; tests pin the five fixture graphs in `WORKFLOWS` |
 | Add a Configuration setting (no screen edits them today — the rules UI was removed; rebuild one before adding a setting) | the catalogue entry in `lib/app/configuration.ts` (and its default in `defaultWorkspaceSettings()`), a field on `WorkspaceSettings` in `lib/data/types.ts`, a check in the matching `validate*Patch` in `lib/data/validate.ts`, then a row in `components/ws/setup/setup-rules.tsx`. Rows are its own `<Field>`/`<ToggleLine>` — don't hand-roll one, and don't write a rule's label or hint into the component: the catalogue owns that copy. |
 | Add a workspace UI primitive | `components/ws/ui/` (one file per family), styled from tokens only. Check the name against `globals.css` first — it is loaded on `/dashboard` too, so a class name both stylesheets use inherits the marketing rules. |
@@ -724,15 +754,17 @@ namespaces, no parameter properties).
 
 Roughly in the order they should be closed.
 
-1. **Enrollment: when does an audience "enter a strategy"?** `audiences.strategy_id` is what the upload
-   dedupe reads, and today it is set only by hand (the audience editor) and by the sample. Choosing a
-   segment as a workflow's audience does **not** assign its audiences, and nothing releases them. The
-   natural moment is Launch (not built). Until then, two overlapping files uploaded for two draft
-   strategies will not warn about each other.
-2. **No execution engine.** `workflow_runs` / `step_jobs` are shaped for it; nothing writes them.
-   Intended shape: an authenticated `/api/jobs/tick` claiming due rows with
-   `FOR UPDATE SKIP LOCKED`, poked by cron (a GitHub Actions schedule is a free MVP scheduler).
-   `SENDING_ENABLED` stays false until it lands.
+1. **Enrollment happens at Launch only.** `launchStrategy` sets `audiences.strategy_id` for the
+   audiences the first step points at (consenting, not in another strategy). Nothing releases them
+   when a strategy is paused or deleted, and a draft's segment still does not warn about overlaps
+   with another draft until one launches.
+2. **The engine is a dry run with no scheduler.** `lib/engine/` + `launchStrategy`/`runDueSteps`
+   exist (see §3), but steps only advance while a builder or Strategies screen is open, days are
+   compressed to minutes, and nothing is sent. Real sending needs: a send call on
+   `LinkedInChannelAdapter`, the per-account daily caps enforced in the runner, quiet hours, a
+   `/api/jobs/tick` poked by cron (a GitHub Actions schedule is a free MVP scheduler) and real
+   day lengths. `SENDING_ENABLED` flips in that commit. The pg path was typechecked but not run
+   against a live database before the first production launch.
 3. **LinkedIn connects; email does not.** LinkedIn accounts connect through Unipile's hosted
    sign-in (see "Connecting LinkedIn" in §3) wherever `UNIPILE_DSN` + `UNIPILE_API_KEY` are set;
    without them the screens say so rather than offering a button that 503s. Still open on this

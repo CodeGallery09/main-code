@@ -11,6 +11,8 @@ import type {
   Analytics,
   Badges,
   ChannelAccount,
+  LaunchResult,
+  RunSummary,
   Strategy,
   ConnectSession,
   StrategyStatus,
@@ -123,6 +125,18 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
+
+  /** Starts or resumes a strategy — a dry run, nothing is sent. 422 with the reason when it cannot start. */
+  launchStrategy: (id: string) =>
+    request<{ launch: LaunchResult; processed: number }>(`/api/strategies/${encodeURIComponent(id)}/launch`, {
+      method: "POST",
+    }),
+
+  strategyRuns: (id: string) =>
+    request<{ summary: RunSummary }>(`/api/strategies/${encodeURIComponent(id)}/runs`),
+
+  /** Runs the steps that have come due; the screens call it while they are open. */
+  runEngine: () => request<{ processed: number }>("/api/engine/run", { method: "POST" }),
 
   deleteStrategy: (id: string) =>
     request<{ deleted: string }>(`/api/strategies/${encodeURIComponent(id)}`, { method: "DELETE" }),

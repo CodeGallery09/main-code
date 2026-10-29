@@ -20,6 +20,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const body = await readJson(request);
   const checked = validateStrategy(body, true);
   if (!checked.ok) return failFields(checked.errors);
+  // Going live enrols audiences and queues their steps, which only Launch does. A bare status flip
+  // would say "Live" with nothing running behind it.
+  if (checked.data.status === "live" || checked.data.status === "scheduled") {
+    return failFields({ status: "Use Launch to start a strategy." });
+  }
 
   return withUser(async (ctx) => {
     const strategy = await getRepository().updateStrategy(ctx, id, checked.data);

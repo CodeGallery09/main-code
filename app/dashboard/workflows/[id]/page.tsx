@@ -10,22 +10,11 @@ import {
   graphFromTemplate,
   TEMPLATES,
   validateWorkflowGraph,
-  type WorkflowStatus,
 } from "@/lib/app/workflow";
 import { CAMPAIGNS_HREF } from "@/lib/nav";
-import type { StrategyStatus } from "@/lib/data/types";
 import { LOGIN_HREF } from "@/lib/site";
 
 type Params = { params: Promise<{ id: string }>; searchParams: Promise<{ template?: string }> };
-
-/** The builder knows three states; a strategy has five. Finished and scheduled ones read as the nearest. */
-const STATUS_OF: Record<StrategyStatus, WorkflowStatus> = {
-  live: "live",
-  paused: "paused",
-  completed: "paused",
-  draft: "draft",
-  scheduled: "draft",
-};
 
 async function context() {
   const who = await resolveSession((await cookies()).get(SESSION_COOKIE)?.value);
@@ -83,7 +72,7 @@ export default async function BuilderPage({ params, searchParams }: Params) {
     <BuilderView
       strategyId={strategy.id}
       initialName={record?.name ?? strategy.name}
-      status={STATUS_OF[strategy.status]}
+      status={strategy.status}
       graph={graph}
       // No row yet: the builder saves the starting graph straight away so a reload finds it.
       stored={Boolean(record)}

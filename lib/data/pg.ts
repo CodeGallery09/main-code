@@ -37,6 +37,7 @@ import {
   segmentAudiences,
   segments as segmentsTable,
   sendingDomains,
+  stepJobs,
   tasks as tasksTable,
   threads as threadsTable,
   uploads as uploadsTable,
@@ -59,7 +60,8 @@ import type {
   ThreadQuery,
   WriteError,
 } from "@/lib/data/repository";
-import type { WorkflowGraph } from "@/lib/app/workflow";
+import { AUDIENCE_CAMPAIGN, AUDIENCE_WORKSPACE, type WorkflowGraph } from "@/lib/app/workflow";
+import { RUN_EVENT_KIND, runStep } from "@/lib/engine/steps";
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
 import { setupChecks, blockingCount } from "@/lib/data/setup";
 import { ACCOUNT_EVENT } from "@/lib/data/accountEvents";
@@ -102,6 +104,8 @@ import type {
   Workspace,
   WorkflowRecord,
   WorkspaceSettings,
+  LaunchResult,
+  RunSummary,
 } from "@/lib/data/types";
 
 /* ------------------------------------------------------------- utilities -- */
@@ -650,6 +654,272 @@ export class PgRepository implements Repository {
       })
       .returning();
     return row ? this.toWorkflow(row) : null;
+  }
+
+
+  /* ------------------------------------------------------------------ engine -- */
+
+  async launchStrategy(ctx: Ctx, id: string): Promise<LaunchResult | WriteError | null> {
+    const refuse = (message: string): WriteError => ({ error: { field: "strategy", message } });
+
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(strategiesTable)
+        .where(and(eq(strategiesTable.id, id), this.ws(strategiesTable.workspaceId, ctx)))
+        .limit(1);
+      if (!row) return null;
+      if (row.isSample) return refuse("The demo strategy is an example and can't be launched. Make your own strategy to run a plan.");
+      if (row.type !== "multichannel") return refuse("Only a strategy with a workflow can be launched.");
+
+      const [flow] = await tx
+        .select()
+        .from(workflowsTable)
+        .where(and(eq(workflowsTable.strategyId, id), this.ws(workflowsTable.workspaceId, ctx)))
+        .limit(1);
+      if (!flow) return refuse("Save the plan before launching it.");
+      const graph = flow.graph as WorkflowGraph;
+      const root = graph.nodes.find((n) => n.kind === "audience");
+      if (!root || graph.nodes.length < 2) return refuse("Add at least one step before launching.");
+
+      // Who the plan points at, by what its first step says.
+      const list = String(root.data.list ?? AUDIENCE_CAMPAIGN);
+      const pick = { id: audiencesTable.id, strategyId: audiencesTable.strategyId, consent: audiencesTable.consent };
+      const candidates =
+        list === AUDIENCE_CAMPAIGN
+          ? await tx.select(pick).from(audiencesTable).where(and(this.ws(audiencesTable.workspaceId, ctx), eq(audiencesTable.strategyId, id)))
+          : list === AUDIENCE_WORKSPACE
+            ? await tx.select(pick).from(audiencesTable).where(this.ws(audiencesTable.workspaceId, ctx))
+            : await tx
+                .select(pick)
+                .from(audiencesTable)
+                .innerJoin(segmentAudiences, eq(segmentAudiences.audienceId, audiencesTable.id))
+                .where(and(this.ws(audiencesTable.workspaceId, ctx), eq(segmentAudiences.segmentId, list)));
+
+      const mine = candidates.filter((a) => a.strategyId === null || a.strategyId === id);
+      const inOtherStrategy = candidates.length - mine.length;
+      const eligible = mine.filter((a) => a.consent);
+      const withoutConsent = mine.length - eligible.length;
+
+      const now = new Date();
+      let enrolledIds: string[] = [];
+      for (let i = 0; i < eligible.length; i += 2000) {
+        const batch = eligible.slice(i, i + 2000);
+        const made = await tx
+          .insert(workflowRuns)
+          .values(
+            batch.map((a) => ({
+              id: newId("run"),
+              workspaceId: ctx.workspaceId,
+              workflowId: flow.id,
+              audienceId: a.id,
+              currentStepId: root.id,
+            })),
+          )
+          .onConflictDoNothing()
+          .returning({ id: workflowRuns.id, audienceId: workflowRuns.audienceId });
+        if (made.length) {
+          await tx.insert(stepJobs).values(
+            made.map((r) => ({ id: newId("job"), workspaceId: ctx.workspaceId, runId: r.id, stepId: root.id, runAt: now })),
+          );
+          enrolledIds = enrolledIds.concat(made.map((r) => r.audienceId));
+        }
+      }
+
+      const [{ n: existing }] = await tx
+        .select({ n: count() })
+        .from(workflowRuns)
+        .where(eq(workflowRuns.workflowId, flow.id));
+      if (existing === 0) {
+        return refuse(
+          candidates.length === 0
+            ? "There is nobody in this plan's audience yet. Choose an audience with leads in it on the first step."
+            : "Nobody in this plan's audience can be enrolled: they are in another strategy, or no consent is recorded.",
+        );
+      }
+
+      // One strategy per audience: claim the ones just enrolled.
+      for (let i = 0; i < enrolledIds.length; i += 2000) {
+        await tx
+          .update(audiencesTable)
+          .set({ strategyId: id, updatedAt: now })
+          .where(
+            and(
+              this.ws(audiencesTable.workspaceId, ctx),
+              inArray(audiencesTable.id, enrolledIds.slice(i, i + 2000)),
+              sql`${audiencesTable.strategyId} is null`,
+            ),
+          );
+      }
+
+      const [live] = await tx
+        .update(strategiesTable)
+        .set({ status: "live", updatedAt: now, ...(row.status === "draft" ? { startedAt: now } : {}) })
+        .where(and(eq(strategiesTable.id, id), this.ws(strategiesTable.workspaceId, ctx)))
+        .returning();
+      return {
+        strategy: this.toStrategy(live),
+        enrolled: enrolledIds.length,
+        alreadyIn: eligible.length - enrolledIds.length,
+        inOtherStrategy,
+        withoutConsent,
+      };
+    });
+  }
+
+  async runDueSteps(ctx: Ctx, limit = 300): Promise<{ processed: number }> {
+    let processed = 0;
+    // A step that follows another straight away is due in the same pass, so go round until quiet.
+    for (let round = 0; round < 12 && processed < limit; round++) {
+      const ran = await this.db.transaction(async (tx) => {
+        const due = (
+          await tx.execute(sql`
+            select j.id as job_id, j.run_id, j.step_id, r.audience_id, w.strategy_id, w.graph
+            from step_jobs j
+            join workflow_runs r on r.id = j.run_id
+            join workflows w on w.id = r.workflow_id
+            join strategies s on s.id = w.strategy_id
+            where j.workspace_id = ${ctx.workspaceId} and j.state = 'pending' and j.run_at <= now()
+              and r.state = 'active' and s.status = 'live'
+            order by j.run_at
+            limit ${Math.min(100, limit - processed)}
+            for update of j skip locked`)
+        ).rows as {
+          job_id: string;
+          run_id: string;
+          step_id: string;
+          audience_id: string;
+          strategy_id: string;
+          graph: WorkflowGraph;
+        }[];
+        if (due.length === 0) return 0;
+
+        const people = await tx
+          .select({ id: audiencesTable.id, name: audiencesTable.name, company: audiencesTable.company, score: audiencesTable.score })
+          .from(audiencesTable)
+          .where(and(this.ws(audiencesTable.workspaceId, ctx), inArray(audiencesTable.id, [...new Set(due.map((d) => d.audience_id))])));
+        const byId = new Map(people.map((p) => [p.id, p]));
+
+        for (const job of due) {
+          const person = byId.get(job.audience_id);
+          const at = Date.now();
+          const result = person
+            ? runStep({
+                nodes: job.graph.nodes,
+                edges: job.graph.edges,
+                stepId: job.step_id,
+                audience: { id: person.id, name: person.name, company: person.company, score: person.score },
+                now: at,
+              })
+            : { effects: [], next: null, finish: "stopped" as const };
+
+          for (const effect of result.effects) {
+            if (effect.type === "log") {
+              await tx.insert(eventsTable).values({
+                id: newId("ev"),
+                workspaceId: ctx.workspaceId,
+                kind: RUN_EVENT_KIND,
+                channel: effect.channel,
+                audienceId: job.audience_id,
+                strategyId: job.strategy_id,
+                payload: { text: effect.text, step: effect.step },
+              });
+            } else if (person) {
+              await tx.insert(tasksTable).values({
+                id: newId("t"),
+                workspaceId: ctx.workspaceId,
+                kind: "call",
+                audienceId: person.id,
+                summary: effect.summary,
+                channel: "call",
+                whenLabel: "Today",
+              });
+            }
+          }
+
+          await tx.update(stepJobs).set({ state: "done" }).where(eq(stepJobs.id, job.job_id));
+          if (result.next) {
+            await tx.insert(stepJobs).values({
+              id: newId("job"),
+              workspaceId: ctx.workspaceId,
+              runId: job.run_id,
+              stepId: result.next.stepId,
+              runAt: new Date(result.next.runAt),
+            });
+          }
+          await tx
+            .update(workflowRuns)
+            .set(
+              result.finish
+                ? { state: result.finish, currentStepId: job.step_id, finishedAt: new Date() }
+                : { currentStepId: result.next?.stepId ?? job.step_id },
+            )
+            .where(eq(workflowRuns.id, job.run_id));
+        }
+        return due.length;
+      });
+      if (ran === 0) break;
+      processed += ran;
+    }
+
+    // A strategy whose every audience has finished is done.
+    await this.db.execute(sql`
+      update strategies s set status = 'completed', updated_at = now()
+      where s.workspace_id = ${ctx.workspaceId} and s.status = 'live'
+        and exists (select 1 from workflow_runs r join workflows w on w.id = r.workflow_id where w.strategy_id = s.id)
+        and not exists (select 1 from workflow_runs r join workflows w on w.id = r.workflow_id
+                        where w.strategy_id = s.id and r.state = 'active')`);
+    return { processed };
+  }
+
+  async runSummary(ctx: Ctx, id: string): Promise<RunSummary | null> {
+    const strategy = await this.getStrategy(ctx, id);
+    if (!strategy) return null;
+
+    const states = await this.db
+      .select({ state: workflowRuns.state, n: count() })
+      .from(workflowRuns)
+      .innerJoin(workflowsTable, eq(workflowsTable.id, workflowRuns.workflowId))
+      .where(and(eq(workflowsTable.strategyId, id), this.ws(workflowRuns.workspaceId, ctx)))
+      .groupBy(workflowRuns.state);
+    const of = (state: string) => states.find((s) => s.state === state)?.n ?? 0;
+
+    const [pending] = (
+      await this.db.execute(sql`
+        select count(*) filter (where j.run_at > now())::int as waiting, min(j.run_at) as next_due
+        from step_jobs j
+        join workflow_runs r on r.id = j.run_id
+        join workflows w on w.id = r.workflow_id
+        where w.strategy_id = ${id} and j.workspace_id = ${ctx.workspaceId} and j.state = 'pending' and r.state = 'active'`)
+    ).rows as { waiting: number; next_due: Date | string | null }[];
+
+    const recent = await this.db
+      .select({
+        at: eventsTable.occurredAt,
+        channel: eventsTable.channel,
+        payload: eventsTable.payload,
+        name: audiencesTable.name,
+      })
+      .from(eventsTable)
+      .leftJoin(audiencesTable, eq(audiencesTable.id, eventsTable.audienceId))
+      .where(and(this.ws(eventsTable.workspaceId, ctx), eq(eventsTable.strategyId, id), eq(eventsTable.kind, RUN_EVENT_KIND)))
+      .orderBy(desc(eventsTable.occurredAt))
+      .limit(8);
+
+    return {
+      enrolled: of("active") + of("completed") + of("stopped") + of("failed"),
+      active: of("active"),
+      completed: of("completed"),
+      stopped: of("stopped"),
+      waiting: pending?.waiting ?? 0,
+      nextDueAt: pending?.next_due ? new Date(pending.next_due).toISOString() : null,
+      recent: recent.map((r) => ({
+        at: iso(r.at),
+        text: String((r.payload as { text?: unknown }).text ?? ""),
+        audienceName: r.name ?? "",
+        channel: r.channel as Channel | null,
+      })),
+    };
   }
 
   async ensureDemo(ctx: Ctx): Promise<void> {

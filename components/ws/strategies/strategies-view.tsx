@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Copy, Pause, Pencil, Play, Plus, Trash2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, fieldErrorsOf } from "@/lib/api";
+import { DRY_RUN_NOTE, SENDING_ENABLED } from "@/lib/capabilities";
 import type { Strategy, StrategyStatus } from "@/lib/data/types";
 import { CHANNEL_NAME, CHANNEL_ORDER, channelNames } from "@/lib/ws/channels";
 import { whenLabel } from "@/lib/ws/format";
@@ -46,6 +47,7 @@ export function StrategiesView() {
   const [channel, setChannel] = useState("all");
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<Strategy | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
 
   const list = useAsync(() => api.strategies(), []);
   const all = useMemo(() => list.data?.items ?? [], [list.data]);
@@ -65,11 +67,25 @@ export function StrategiesView() {
   const live = all.filter((s) => s.status === "live").length;
   const scheduled = all.filter((s) => s.status === "scheduled").length;
 
+  // A running strategy moves while this screen is open: run what has come due, then re-read.
+  const reload = list.reload;
+  useEffect(() => {
+    if (live === 0) return;
+    const timer = window.setInterval(() => void api.runEngine().then(reload, () => undefined), 10_000);
+    return () => window.clearInterval(timer);
+  }, [live, reload]);
+
+  /** Pausing is a status change; starting or resuming is a launch, which enrols the audience and queues the steps. */
   async function toggle(s: Strategy) {
     setBusy(s.id);
+    setProblem(null);
     try {
-      await api.setStrategyStatus(s.id, s.status === "live" ? "paused" : "live");
+      if (s.status === "live") await api.setStrategyStatus(s.id, "paused");
+      else await api.launchStrategy(s.id);
       list.reload();
+    } catch (caught) {
+      const fields = fieldErrorsOf(caught);
+      setProblem(fields ? Object.values(fields)[0] : "That couldn't be changed. Try again.");
     } finally {
       setBusy(null);
     }
@@ -115,7 +131,7 @@ export function StrategiesView() {
             title="Strategies"
             subtitle={
               list.state === "ready"
-                ? `A strategy is an audience plus the sequence that reaches it. ${live === 0 ? "None are running right now." : `${live} ${live === 1 ? "is" : "are"} running right now.`}`
+                ? `A strategy is an audience plus the sequence that reaches it. ${live === 0 ? "None are running right now." : `${live} ${live === 1 ? "is" : "are"} running right now.${SENDING_ENABLED ? "" : ` ${DRY_RUN_NOTE}`}`}`
                 : "A strategy is an audience plus the sequence that reaches it."
             }
             actions={
@@ -126,6 +142,12 @@ export function StrategiesView() {
             }
           />
         </Appear>
+
+        {problem ? (
+          <p role="alert" className="rounded-[10px] border border-warning-border bg-warning-bg px-[14px] py-[9px] text-[12px] text-warning">
+            {problem}
+          </p>
+        ) : null}
 
         <Appear index={1}>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
@@ -240,7 +262,7 @@ export function StrategiesView() {
                             <Pencil aria-hidden strokeWidth={1.8} />
                           </Link>
                         ) : null}
-                        {s.status === "live" || s.status === "paused" ? (
+                        {(s.status === "live" || s.status === "paused") && !s.isSample ? (
                           <Button
                             variant="outline"
                             size="icon-sm"

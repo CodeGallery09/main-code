@@ -44,7 +44,8 @@ import type {
   ThreadQuery,
   WriteError,
 } from "@/lib/data/repository";
-import { AUDIENCE_CAMPAIGN, graphFromTemplate, type WorkflowGraph } from "@/lib/app/workflow";
+import { AUDIENCE_CAMPAIGN, AUDIENCE_WORKSPACE, graphFromTemplate, type WorkflowGraph } from "@/lib/app/workflow";
+import { runStep } from "@/lib/engine/steps";
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
 import type { AccountSettingsPatch, StrategyPatch, AudiencePatch } from "@/lib/data/validate";
 import { findInJourney, mergeAudiences, type InJourneyRow, type AudienceProfile } from "@/lib/audiences/merge";
@@ -61,6 +62,9 @@ import type {
   Badges,
   Strategy,
   StrategyStatus,
+  LaunchResult,
+  RunActivity,
+  RunSummary,
   Channel,
   ChannelAccount,
   ChannelBreakdown,
@@ -133,6 +137,13 @@ const settings = shared("settings", () => ({ row: defaultWorkspaceSettings() as 
 /** Monotonic ids for prototype creates, so two audiences made in the same millisecond differ. */
 /** Workflows saved in this process, by strategy id. Seed strategies fall back to the demo graphs. */
 const workflowRows = shared("workflowRows", () => new Map<string, WorkflowRecord>());
+
+/** The dry-run engine's state: one run per audience per strategy, its queued steps, and its log. */
+type MemRun = { id: string; strategyId: string; audienceId: string; state: "active" | "completed" | "stopped" };
+type MemJob = { id: string; runId: string; stepId: string; runAt: number; done: boolean };
+const runs = shared<MemRun[]>("runs", () => []);
+const jobs = shared<MemJob[]>("jobs", () => []);
+const runLog = shared<(RunActivity & { strategyId: string })[]>("runLog", () => []);
 
 const counters = shared<Record<string, number>>("counters", () => ({}));
 const nextId = (kind: string) => `${Date.now().toString(36)}${(counters[kind] = (counters[kind] ?? 0) + 1)}`;
@@ -373,6 +384,142 @@ export class MemoryRepository implements Repository {
     };
     workflowRows.set(strategyId, record);
     return structuredClone(record);
+  }
+
+
+  /* ------------------------------------------------------------------ engine -- */
+
+  async launchStrategy(ctx: Ctx, id: string): Promise<LaunchResult | WriteError | null> {
+    const refuse = (message: string): WriteError => ({ error: { field: "strategy", message } });
+    const strategy = strategies.find((c) => c.id === id);
+    if (!strategy) return null;
+    if (strategy.isSample) {
+      return refuse("The demo strategy is an example and can't be launched. Make your own strategy to run a plan.");
+    }
+    if (strategy.type !== "multichannel") return refuse("Only a strategy with a workflow can be launched.");
+
+    const flow = await this.getWorkflow(ctx, id);
+    if (!flow) return refuse("Save the plan before launching it.");
+    const root = flow.graph.nodes.find((n) => n.kind === "audience");
+    if (!root || flow.graph.nodes.length < 2) return refuse("Add at least one step before launching.");
+
+    const list = String(root.data.list ?? AUDIENCE_CAMPAIGN);
+    const candidates =
+      list === AUDIENCE_CAMPAIGN
+        ? audienceRows.filter((a) => a.strategyId === id)
+        : list === AUDIENCE_WORKSPACE
+          ? audienceRows
+          : audienceRows.filter((a) => segmentMembers.get(list)?.has(a.id));
+    const mine = candidates.filter((a) => !a.strategyId || a.strategyId === id);
+    const inOtherStrategy = candidates.length - mine.length;
+    const eligible = mine.filter((a) => a.consent);
+    const withoutConsent = mine.length - eligible.length;
+
+    let enrolled = 0;
+    const now = Date.now();
+    for (const a of eligible) {
+      if (runs.some((r) => r.strategyId === id && r.audienceId === a.id)) continue;
+      const run: MemRun = { id: nextId("run"), strategyId: id, audienceId: a.id, state: "active" };
+      runs.push(run);
+      jobs.push({ id: nextId("job"), runId: run.id, stepId: root.id, runAt: now, done: false });
+      a.strategyId = id;
+      enrolled += 1;
+    }
+    if (!runs.some((r) => r.strategyId === id)) {
+      return refuse(
+        candidates.length === 0
+          ? "There is nobody in this plan's audience yet. Choose an audience with leads in it on the first step."
+          : "Nobody in this plan's audience can be enrolled: they are in another strategy, or no consent is recorded.",
+      );
+    }
+    if (strategy.status === "draft") strategy.startedAt = new Date().toISOString();
+    strategy.status = "live";
+    return {
+      strategy: structuredClone(strategy),
+      enrolled,
+      alreadyIn: eligible.length - enrolled,
+      inOtherStrategy,
+      withoutConsent,
+    };
+  }
+
+  async runDueSteps(ctx: Ctx, limit = 300): Promise<{ processed: number }> {
+    let processed = 0;
+    while (processed < limit) {
+      const job = jobs.find((j) => {
+        if (j.done || j.runAt > Date.now()) return false;
+        const run = runs.find((r) => r.id === j.runId);
+        return run?.state === "active" && strategies.find((s) => s.id === run.strategyId)?.status === "live";
+      });
+      if (!job) break;
+      const run = runs.find((r) => r.id === job.runId)!;
+      const person = audienceRows.find((a) => a.id === run.audienceId);
+      const flow = await this.getWorkflow(ctx, run.strategyId);
+      const result =
+        person && flow
+          ? runStep({
+              nodes: flow.graph.nodes,
+              edges: flow.graph.edges,
+              stepId: job.stepId,
+              audience: { id: person.id, name: person.name, company: person.company, score: person.score },
+              now: Date.now(),
+            })
+          : { effects: [], next: null, finish: "stopped" as const };
+
+      for (const effect of result.effects) {
+        if (effect.type === "log") {
+          runLog.unshift({
+            at: new Date().toISOString(),
+            text: effect.text,
+            audienceName: person?.name ?? "",
+            channel: effect.channel,
+            strategyId: run.strategyId,
+          });
+        } else if (person) {
+          tasks.unshift({
+            id: `t_${nextId("task")}`,
+            kind: "call",
+            audienceId: person.id,
+            audienceName: person.name,
+            company: person.company,
+            initials: person.initials,
+            score: person.score,
+            summary: effect.summary,
+            when: "Today",
+            channel: "call",
+            done: false,
+          });
+        }
+      }
+      job.done = true;
+      if (result.next) {
+        jobs.push({ id: nextId("job"), runId: run.id, stepId: result.next.stepId, runAt: result.next.runAt, done: false });
+      }
+      if (result.finish) run.state = result.finish;
+      processed += 1;
+    }
+
+    for (const s of strategies) {
+      const mineRuns = runs.filter((r) => r.strategyId === s.id);
+      if (s.status === "live" && mineRuns.length > 0 && mineRuns.every((r) => r.state !== "active")) s.status = "completed";
+    }
+    return { processed };
+  }
+
+  async runSummary(_ctx: Ctx, id: string): Promise<RunSummary | null> {
+    if (!strategies.some((s) => s.id === id)) return null;
+    const mine = runs.filter((r) => r.strategyId === id);
+    const pending = jobs.filter((j) => !j.done && mine.some((r) => r.id === j.runId && r.state === "active"));
+    const next = pending.reduce<number | null>((min, j) => (min === null || j.runAt < min ? j.runAt : min), null);
+    return {
+      enrolled: mine.length,
+      active: mine.filter((r) => r.state === "active").length,
+      completed: mine.filter((r) => r.state === "completed").length,
+      stopped: mine.filter((r) => r.state === "stopped").length,
+      waiting: pending.filter((j) => j.runAt > Date.now()).length,
+      nextDueAt: next === null ? null : new Date(next).toISOString(),
+      recent: runLog.filter((l) => l.strategyId === id).slice(0, 8).map(({ strategyId: _s, ...row }) => row),
+    };
   }
 
   /** The demo workspace is born with its demo strategy and nothing removes it. */

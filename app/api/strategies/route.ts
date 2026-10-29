@@ -22,6 +22,9 @@ export async function POST(request: Request) {
   const body = await readJson(request);
   const checked = validateStrategy(body);
   if (!checked.ok) return failFields(checked.errors);
+  if (checked.data.status === "live" || checked.data.status === "scheduled") {
+    return failFields({ status: "A new strategy starts as a draft. Use Launch to start it." });
+  }
 
   return withUser(async (ctx) => {
     const strategy = await getRepository().createStrategy(ctx, checked.data);

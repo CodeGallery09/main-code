@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, Check, CircleDashed, LayoutTemplate, Minus, Plus, Redo2, Save, Trash2, TriangleAlert, Undo2 } from "lucide-react";
-import { api } from "@/lib/api";
-import { SENDING_ENABLED } from "@/lib/capabilities";
+import { ArrowLeft, Check, Pause, Rocket, CircleDashed, LayoutTemplate, Minus, Plus, Redo2, Save, Trash2, TriangleAlert, Undo2 } from "lucide-react";
+import { api, fieldErrorsOf } from "@/lib/api";
+import { DRY_RUN_NOTE, SENDING_ENABLED } from "@/lib/capabilities";
 import {
   defaults,
   issues as findIssues,
@@ -30,7 +30,7 @@ import {
 } from "@/lib/app/workflow";
 import { connect, freePort, freeSlot, keepInView, removeNode } from "@/lib/ws/graphEdit";
 import { SETUP_HREF } from "@/lib/nav";
-import type { Channel } from "@/lib/data/types";
+import type { Channel, RunSummary, StrategyStatus } from "@/lib/data/types";
 import { cn, fmt } from "@/lib/ws/utils";
 import { SidebarRail } from "@/components/ws/shell/sidebar";
 import { Button } from "@/components/ws/ui/button";
@@ -51,6 +51,14 @@ const ZOOMS = [0.6, 0.7, 0.8, 0.9, 1, 1.15];
 
 /** The two channels a user can connect today; a step on one without an account can't run. */
 const ACCOUNT_OF: Partial<Record<StepChannel, Channel>> = { li: "linkedin", mail: "email" };
+
+const STATUS_LABEL: Record<StrategyStatus, string> = {
+  draft: "Draft",
+  scheduled: "Scheduled",
+  live: "Live",
+  paused: "Paused",
+  completed: "Finished",
+};
 
 /** One line under each palette step, so the list explains itself. */
 const HINT: Partial<Record<StepKind, string>> = {
@@ -76,7 +84,7 @@ const HINT: Partial<Record<StepKind, string>> = {
 export function BuilderView({
   strategyId,
   initialName,
-  status,
+  status: initialStatus,
   graph,
   stored,
   audiences,
@@ -84,7 +92,7 @@ export function BuilderView({
 }: {
   strategyId: string;
   initialName: string;
-  status: "live" | "paused" | "draft";
+  status: StrategyStatus;
   graph: WorkflowGraph;
   stored: boolean;
   audiences: AudienceOption[];
@@ -101,6 +109,9 @@ export function BuilderView({
   const [notice, setNotice] = useState<string | null>(null);
   const [save, setSave] = useState<Save>(stored ? "idle" : "saving");
   const [depth, setDepth] = useState({ past: 0, future: 0 });
+  const [status, setStatus] = useState<StrategyStatus>(initialStatus);
+  const [runs, setRuns] = useState<RunSummary | null>(null);
+  const [launching, setLaunching] = useState(false);
 
   // Steps added here must not reuse an id the server already handed over.
   useEffect(() => reserveIds(graph.nodes), [graph]);
@@ -237,6 +248,71 @@ export function BuilderView({
       setSave("failed");
     }
   }, [graph.settings, strategyId]);
+
+  /* ---------- launching ---------- */
+
+  const refreshRuns = useCallback(async () => {
+    try {
+      setRuns((await api.strategyRuns(strategyId)).summary);
+    } catch {
+      /* The panel just keeps what it had. */
+    }
+  }, [strategyId]);
+
+  // While the strategy is live, run what has come due and read the result back. The screens drive
+  // the engine for now: there is no background schedule until real sending lands.
+  useEffect(() => {
+    if (status === "draft") return;
+    let stop = false;
+    const tick = async () => {
+      if (status === "live") await api.runEngine().catch(() => undefined);
+      if (!stop) await refreshRuns();
+    };
+    void tick();
+    if (status !== "live") return () => void (stop = true);
+    const timer = window.setInterval(() => void tick(), 8000);
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+    };
+  }, [status, refreshRuns]);
+
+  async function launch() {
+    if (launching) return;
+    setLaunching(true);
+    try {
+      // The plan that runs is the plan that is saved, so save what is on screen first.
+      if (dirty.current) await persist();
+      const { launch: result } = await api.launchStrategy(strategyId);
+      setStatus(result.strategy.status);
+      const bits = [
+        `${result.enrolled} ${result.enrolled === 1 ? "lead" : "leads"} enrolled`,
+        result.inOtherStrategy ? `${result.inOtherStrategy} skipped (in another strategy)` : "",
+        result.withoutConsent ? `${result.withoutConsent} skipped (no consent recorded)` : "",
+      ].filter(Boolean);
+      say(`Launched as a dry run — ${bits.join(", ")}.`);
+      void refreshRuns();
+    } catch (caught) {
+      const fields = fieldErrorsOf(caught);
+      say(fields ? Object.values(fields)[0] : caught instanceof Error ? caught.message : "That couldn't be launched.");
+    } finally {
+      setLaunching(false);
+    }
+  }
+
+  async function pauseRun() {
+    if (launching) return;
+    setLaunching(true);
+    try {
+      const { strategy } = await api.setStrategyStatus(strategyId, "paused");
+      setStatus(strategy.status);
+      say("Paused. Nothing more runs until you resume.");
+    } catch {
+      say("That couldn't be paused. Try again.");
+    } finally {
+      setLaunching(false);
+    }
+  }
 
   // Debounced while editing, and flushed when the page goes away so a half-typed edit survives.
   useEffect(() => {
@@ -413,7 +489,8 @@ export function BuilderView({
             <span
               className={cn("whitespace-nowrap font-mono text-[11px]", save === "failed" ? "text-warning" : "text-muted-foreground")}
             >
-              {status === "draft" ? "Draft" : status === "live" ? "Live" : "Paused"} · {saveLabel[save]}
+              {STATUS_LABEL[status]}
+              {status === "live" && !SENDING_ENABLED ? " · dry run" : ""} · {saveLabel[save]}
             </span>
             {usedChannels.length ? (
               <span className="hidden items-center gap-[3px] md:flex" aria-label="Channels in this plan">
@@ -446,6 +523,23 @@ export function BuilderView({
                 </>
               )}
             </Button>
+            {status === "live" ? (
+              <Button variant="outline" size="sm" onClick={() => void pauseRun()} disabled={launching}>
+                <Pause aria-hidden strokeWidth={2} />
+                Pause
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void launch()}
+                disabled={launching || save === "saving"}
+                title={DRY_RUN_NOTE}
+              >
+                <Rocket aria-hidden strokeWidth={1.9} />
+                {launching ? "Starting…" : status === "paused" ? "Resume" : "Launch"}
+              </Button>
+            )}
             <Button variant="outline" size="icon" aria-label="Undo" disabled={depth.past === 0} onClick={undo}>
               <Undo2 aria-hidden strokeWidth={1.9} />
             </Button>
@@ -538,7 +632,7 @@ export function BuilderView({
             />
             <p className="border-t border-border bg-chrome px-4 py-[6px] text-[11px] text-muted-foreground">
               Figures on the steps are estimates from your audience size, not your results.{" "}
-              {SENDING_ENABLED ? "" : "Nothing sends yet."}
+              {SENDING_ENABLED ? "" : "Launching is a dry run: nothing is sent."}
             </p>
             <AnimatePresence>
               {notice ? (
@@ -687,10 +781,39 @@ export function BuilderView({
                   </div>
                 ) : null}
 
+                {status !== "draft" && runs ? (
+                  <div className="flex flex-col gap-[7px] border-t border-divider pt-3">
+                    <h3 className="label-mono">Dry run</h3>
+                    <dl className="grid grid-cols-3 gap-2">
+                      {[
+                        [String(runs.active), "in plan"],
+                        [String(runs.waiting), "waiting"],
+                        [String(runs.completed + runs.stopped), "finished"],
+                      ].map(([value, label]) => (
+                        <div key={label} className="flex flex-col gap-[3px] rounded-lg border border-border px-[10px] py-2">
+                          <dd className="font-mono text-[16px] font-bold leading-none">{value}</dd>
+                          <dt className="label-mono">{label}</dt>
+                        </div>
+                      ))}
+                    </dl>
+                    {runs.recent.length ? (
+                      <ul className="flex flex-col gap-[6px]">
+                        {runs.recent.map((r, i) => (
+                          <li key={`${r.at}-${i}`} className="text-[11.5px] leading-[1.45] text-body">
+                            {r.text}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-[11.5px] text-muted-foreground">Nothing has run yet.</p>
+                    )}
+                  </div>
+                ) : null}
+
                 {!SENDING_ENABLED ? (
                   <p className="rounded-lg bg-accent px-[11px] py-[9px] text-[11.5px] leading-[1.55] text-body">
-                    <span className="font-medium">Nothing sends yet.</span> The plan is saved and ready; there is no
-                    sender behind it, so turning a strategy on would be a claim we can&apos;t keep.
+                    <span className="font-medium">Launch is a dry run.</span> {DRY_RUN_NOTE} Days are compressed to
+                    minutes so you can watch a plan finish; call steps become real to-dos.
                   </p>
                 ) : null}
               </div>
