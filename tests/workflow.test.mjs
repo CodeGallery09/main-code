@@ -13,8 +13,10 @@ import {
   blankWorkflow,
   copyField,
   edgePath,
+  SEQUENCE_KINDS,
   graphForChannel,
   getWorkflow,
+  graphFromSequence,
   graphFromTemplate,
   issues,
   layout,
@@ -235,4 +237,98 @@ test("the copy field matches where each step really stores its words", () => {
   assert.equal(copyField("call"), "notes");
   assert.equal(copyField("email"), "body");
   assert.equal(copyField("li_msg"), "body");
+});
+
+
+/* ---------- a sequence written as a list --------------------------------- */
+
+/** Walks the single chain out of the Audience step, so the test reads the order a lead meets. */
+function chain(graph) {
+  const onward = new Map(graph.edges.map((e) => [e.source, e.target]));
+  const order = [];
+  let at = graph.nodes.find((n) => n.kind === "audience");
+  while (at) {
+    order.push(at);
+    const next = onward.get(at.id);
+    at = next ? graph.nodes.find((n) => n.id === next) : null;
+  }
+  return order;
+}
+
+test("a written sequence becomes one straight chain, in the order it was written", () => {
+  const graph = graphFromSequence([
+    { kind: "li_invite", data: { note: "Hello" } },
+    { kind: "li_msg", wait: 3, data: { body: "Following up" } },
+    { kind: "email", wait: 5, data: { subject: "One more", body: "Last try" } },
+  ]);
+  assert.deepEqual(
+    chain(graph).map((n) => n.kind),
+    ["audience", "li_invite", "wait", "li_msg", "wait", "email", "exit"],
+  );
+  // Every node is on the chain: nothing is orphaned where it would silently never run.
+  assert.equal(chain(graph).length, graph.nodes.length);
+});
+
+test("the first touch has no wait before it, and a wait of zero adds no step", () => {
+  const graph = graphFromSequence([
+    { kind: "li_invite", wait: 9, data: { note: "Hi" } },
+    { kind: "li_msg", wait: 0, data: { body: "Hi again" } },
+  ]);
+  assert.deepEqual(
+    chain(graph).map((n) => n.kind),
+    ["audience", "li_invite", "li_msg", "exit"],
+  );
+});
+
+test("a sequence carries its own words, including a deliberately blank one", () => {
+  const graph = graphFromSequence([
+    { kind: "li_invite", data: { note: "" } },
+    { kind: "call", wait: 2, data: { notes: "Ask about renewal" } },
+  ]);
+  const byKind = Object.fromEntries(graph.nodes.map((n) => [n.kind, n.data]));
+  assert.equal(byKind.li_invite.note, "");
+  assert.equal(byKind.call.notes, "Ask about renewal");
+  // A blank note is reported before a launch rather than refused here.
+  assert.equal(
+    blankCopySteps(graph).some((b) => b.kind === "li_invite"),
+    true,
+  );
+});
+
+test("a sequence starts on the audience it was given", () => {
+  const graph = graphFromSequence([{ kind: "li_invite", data: { note: "Hi" } }], "seg_123");
+  assert.equal(graph.nodes.find((n) => n.kind === "audience").data.list, "seg_123");
+});
+
+test("waits are whole, non-negative days", () => {
+  const graph = graphFromSequence([
+    { kind: "li_invite", data: { note: "Hi" } },
+    { kind: "li_msg", wait: 2.6, data: { body: "a" } },
+    { kind: "email", wait: -4, data: { body: "b" } },
+  ]);
+  const waits = graph.nodes.filter((n) => n.kind === "wait").map((n) => n.data.days);
+  assert.deepEqual(waits, [3]);
+});
+
+test("an empty sequence is still a valid plan that does nothing", () => {
+  assert.deepEqual(
+    chain(graphFromSequence([])).map((n) => n.kind),
+    ["audience", "exit"],
+  );
+});
+
+test("a sequence only offers touches the palette offers, and all of them", () => {
+  const offered = PALETTE.flatMap(([, kinds]) => kinds).filter((k) => STEPS[k].group === "channel");
+  assert.deepEqual([...SEQUENCE_KINDS].sort(), [...offered].sort());
+});
+
+test("a step the palette does not offer is dropped rather than quietly built", () => {
+  const graph = graphFromSequence([
+    { kind: "li_invite", data: { note: "Hi" } },
+    { kind: "sms", wait: 1, data: { body: "nope" } },
+  ]);
+  assert.equal(
+    graph.nodes.some((n) => n.kind === "sms"),
+    false,
+  );
 });

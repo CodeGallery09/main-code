@@ -787,6 +787,53 @@ export function graphForChannel(channel: StepChannel, audience: string = AUDIENC
   return { nodes, edges, settings: { ...DEFAULT_SETTINGS, days: [...DEFAULT_SETTINGS.days] } };
 }
 
+/* ---------- a sequence written as a list ---------------------------------- */
+
+/**
+ * The touches a sequence may be written from — the same four the palette offers, for the same
+ * reason: a step that cannot run today has no business being offered. Order matters; it is the
+ * order they are listed in the composer.
+ */
+export const SEQUENCE_KINDS: StepKind[] = ["li_invite", "li_msg", "email", "call"];
+
+/** One touch in a written sequence: what it sends, how long to wait first, and its words. */
+export type SequenceStep = {
+  kind: StepKind;
+  /** Days to wait before this touch. Ignored on the first, which goes out as soon as it is launched. */
+  wait?: number;
+  /** The copy, already in the field this kind carries it in (`copyField`), plus a subject for email. */
+  data?: StepData;
+};
+
+/**
+ * A plan written as an ordered list rather than drawn on the canvas.
+ *
+ * Most outreach is a straight line — touch, wait, touch, wait, touch — and making someone drag
+ * cards around to express that was the long way round to a message they had already written. This
+ * turns the list into exactly the same graph the builder would have produced, so the sequence is a
+ * real strategy the moment it is saved: it is listed on Strategies, it launches there, and opening
+ * it in the builder shows the same steps, ready to branch if it ever needs to.
+ *
+ * A wait is only inserted where one was asked for, and never before the first touch, which goes out
+ * at launch. With no touches at all the plan is an Audience and an Exit, which is valid and does
+ * nothing — `blankCopySteps` and the launch checks still read it correctly.
+ */
+export function graphFromSequence(
+  steps: SequenceStep[],
+  audience: string = AUDIENCE_CAMPAIGN,
+): WorkflowGraph {
+  const touches = steps.filter((step) => SEQUENCE_KINDS.includes(step.kind));
+  let tail: Spec = ["exit"];
+  for (let i = touches.length - 1; i >= 0; i -= 1) {
+    const step = touches[i];
+    tail = [step.kind, { ...step.data }, { out: tail }];
+    const days = i > 0 ? Math.max(0, Math.round(step.wait ?? 0)) : 0;
+    if (days > 0) tail = ["wait", { days, biz: true }, { out: tail }];
+  }
+  const { nodes, edges } = fromSpec(["audience", { list: audience }, { out: tail }]);
+  return { nodes, edges, settings: { ...DEFAULT_SETTINGS, days: [...DEFAULT_SETTINGS.days] } };
+}
+
 /* ---------- is this plan actually ready to send? --------------------------- */
 
 /** The field on a step that carries the words it sends. */

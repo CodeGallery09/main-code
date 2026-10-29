@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence } from "framer-motion";
-import { Pencil, X } from "lucide-react";
+import { Pencil, Plus, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { MERGE_VARS, type StepNode, type WorkflowGraph } from "@/lib/app/workflow";
 import type { Channel, WorkflowRecord } from "@/lib/data/types";
@@ -12,7 +12,9 @@ import { bodyField, firstLine, readMessages, type MessageRow } from "@/lib/ws/me
 import { shortDate } from "@/lib/ws/format";
 import { useAsync } from "@/lib/ws/use-async";
 import { cn } from "@/lib/ws/utils";
+import { CAMPAIGNS_HREF } from "@/lib/nav";
 import { PageBody, PageHeader, SetupTabs, TopBar } from "@/components/ws/shell/page";
+import { SequenceComposer } from "@/components/ws/setup/sequence-composer";
 import { useWorkspace } from "@/components/ws/shell/workspace-context";
 import { Card, CardHeader, CardTitle, FILL } from "@/components/ws/ui/card";
 import { Button } from "@/components/ws/ui/button";
@@ -31,6 +33,12 @@ type Filter = "all" | Channel;
  * library: a message lives on the step that sends it. So the tab shows the
  * real copy out of every plan, with the strategy it belongs to, and says
  * plainly that an edit changes that one step.
+ *
+ * **It is also where a sequence is written.** Copy was only ever authored inside the builder's
+ * canvas, which meant dragging cards around to express a straight line — and the words were the
+ * whole point of the exercise. "Write a sequence" here asks for the touches in order and creates
+ * the strategy and its plan, the same two calls the New strategy screen makes, so what comes out
+ * is launchable rather than a template that cannot send.
  */
 export function SetupMessagesView() {
   const { badges } = useWorkspace();
@@ -38,6 +46,9 @@ export function SetupMessagesView() {
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
+  const [writing, setWriting] = useState(false);
+  /** The sequence just created, so the screen can say where it is launched from. */
+  const [made, setMade] = useState<{ id: string; name: string } | null>(null);
 
   const rows = useMemo(() => readMessages(workflows.data?.items ?? []), [workflows.data]);
   const needle = q.trim().toLowerCase();
@@ -63,9 +74,32 @@ export function SetupMessagesView() {
         <Appear>
           <PageHeader
             title="Messages"
-            subtitle="Every message in your plans, with the strategy it belongs to. Editing one changes that step — there is no shared template library yet, so nothing else moves with it."
+            subtitle="Write a sequence here and it becomes a strategy you can launch. Editing a message changes that one step — there is no shared template library yet."
+            actions={
+              <Button onClick={() => setWriting(true)}>
+                <Plus aria-hidden strokeWidth={2} />
+                Write a sequence
+              </Button>
+            }
           />
         </Appear>
+
+        {made ? (
+          <Appear index={1}>
+            <p className="rounded-[10px] border border-border bg-accent px-[13px] py-[9px] text-[12px] leading-[1.55]">
+              <strong className="font-semibold">{made.name}</strong> is written and saved as a draft. Its messages
+              are in the list below.{" "}
+              <Link href={`/dashboard/workflows/${made.id}`} className="underline">
+                Open it in the builder
+              </Link>{" "}
+              to branch it, or{" "}
+              <Link href={CAMPAIGNS_HREF} className="underline">
+                go to Strategies
+              </Link>{" "}
+              to launch it.
+            </p>
+          </Appear>
+        ) : null}
 
         {rows.length > 0 && (
           <Appear index={1}>
@@ -166,6 +200,16 @@ export function SetupMessagesView() {
           registration. Neither channel is connected, which is why neither is offered in the builder.
         </p>
       </PageBody>
+
+      <SequenceComposer
+        open={writing}
+        onClose={() => setWriting(false)}
+        onCreated={(strategy) => {
+          setWriting(false);
+          setMade({ id: strategy.id, name: strategy.name });
+          workflows.reload();
+        }}
+      />
     </>
   );
 }

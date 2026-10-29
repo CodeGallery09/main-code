@@ -477,7 +477,8 @@ reads what only the server can read, and renders one `"use client"` view. Keep i
 | `builder/builder-view.tsx` + `canvas.tsx` + `inspector.tsx` | 794 + 382 + 415 | `/api/accounts`, `/api/strategies/[id]/workflow` | the drag-and-drop builder, see below |
 | `setup/setup-overview-view.tsx` + `account-settings.tsx` | 401 + 132 | `/api/accounts` | connected accounts, each account's dials behind its Settings, hosted-sign-in result banner, disconnect. No Pause: nothing is sending to pause |
 | `setup/setup-integrations-view.tsx` | 250 | `/api/accounts` | the provider catalogue (`providerView()`) and the **one place an account is connected** (a labelled Connect button starts the hosted LinkedIn sign-in). The sending-rules cards and Workspace card that sat beside it as "Config" were removed at the user's request; `/api/settings`, `workspace_settings` and `lib/app/configuration.ts` are still there but no screen edits them |
-| `setup/setup-messages-view.tsx` | 283 | `/api/workflows` | **all message copy in the workspace, in one place**, read out of every stored graph by `lib/ws/messages.ts` — the same fields the builder's inspector writes. What is missing is a shared template library, not editing |
+| `setup/setup-messages-view.tsx` | 327 | `/api/workflows` | **all message copy in the workspace, in one place**, read out of every stored graph by `lib/ws/messages.ts` — the same fields the builder's inspector writes. Each row expands into an editor that writes back to that one step. Its header opens the sequence composer. What is missing is a shared template library, not editing |
+| `setup/sequence-composer.tsx` | 480 | `/api/strategies`, `/api/strategies/[id]/workflow`, `/api/audiences`, `/api/audiences/segments` | **write a sequence as a list**: name, audience, then the touches in order with a wait before each and the copy written inline. Saves with the same two calls New strategy makes (`createStrategy` + `saveWorkflow` over `graphFromSequence`), so what comes out is a real draft strategy, launchable from Strategies and openable on the canvas |
 | `analytics/analytics-view.tsx` + `charts.tsx` + `journeys-panel.tsx` | 198 + 89 + 153 | `/api/analytics`, `/api/journeys` | two tabs: Results (the recorded funnel, now fed by real sends and replies) and Journeys (launched strategies' per-step reach and touchpoints), which opens by default once something is launched. Hairline grid, single near-black accent |
 | `ui/` | ~700 | — | `button` (cva: default/outline/ghost/dashed/danger/warning/inverse; sizes sm 30 · md 34 · lg 38 · icon 30 · icon-sm 28) · `card` · `status-pill` · `segmented` (shared-layout thumb) · `channel-tile` · `confirm` · `motion` (`Appear`, `Swap`, `Row`, `Expand`, and the one easing pair) · `misc` (`Initials, Meter, Switch, NativeSelect, SearchInput, Sparkline, MetricTile, EmptyState, Tag, ChannelChip, Skeleton, LoadError`) |
 | `lib/ws/` | 462 | — | `utils.ts` (`cn`, `fmt`, `pct`, `initialsOf`) · `channels.ts` (the domain `Channel` union → display name, monogram, colour, order) · `format.ts` (metric values and footers; says "Nothing yet"/"No comparison" rather than inventing a 0%) · `use-async.ts` (the loading/ready/failed/retry contract every card shares) · `graphEdit.ts` (pure canvas edits, tested) · `messages.ts` (real copy out of stored graphs) |
@@ -534,10 +535,27 @@ dependency** and the `.react-flow__*` class names are gone with `app.css`.
 `idle` when a stored graph loaded — it used to start at "Unsaved changes" on a page that had
 changed nothing. Status (live/paused) belongs to the *strategy*, not the graph.
 
-**Where copy is written.** The inspector *does* edit the words a step sends (the invite note,
-the message body, the caller's notes); Setup → Messages reads the same fields back out of every
-stored graph so all the copy in a workspace can be seen in one place. What is not built there is a
-shared template library — a message lives on the step that sends it.
+**Where copy is written.** Two places, writing the same fields. The inspector edits the words a
+step sends (the invite note, the message body, the caller's notes) one card at a time on the
+canvas; Setup → Messages reads those same fields back out of every stored graph, so all the copy in
+a workspace is in one list, and each row expands into an editor that writes back to that one step.
+**Messages is also where a sequence is written from nothing** — see "Writing a sequence as a list"
+below. What is not built in either place is a shared template library: a message lives on the step
+that sends it, and an edit moves nothing else.
+
+**Writing a sequence as a list.** `graphFromSequence(steps, audience)` in `lib/app/workflow.ts`
+turns an ordered list of touches — kind, days to wait first, copy — into the same graph the canvas
+would have produced: `audience → touch → wait → touch → … → exit`, with no wait before the first
+touch (it goes out at launch) and none where zero was asked for. Most outreach is a straight line,
+and making someone drag cards around to say so was the long way round to a message they had already
+written. `components/ws/setup/sequence-composer.tsx` is the form over it, and it saves by the
+ordinary route: `createStrategy` then `saveWorkflow`, exactly as `new-strategy-view.tsx` does. So a
+written sequence **is a strategy** — it appears on Strategies, launches there, and opens on the
+canvas with every step where the list put it. It is deliberately not a saved template: a template
+cannot send, and this product does not offer controls that cannot act. Branching, A/B splits and
+goals stay on the canvas; the composer offers exactly `SEQUENCE_KINDS`, which a test pins to the
+palette's own channel steps, so a touch that cannot run is never offered here either. Covered by
+`tests/workflow.test.mjs`.
 
 **What LinkedIn does with an invitation note is not ours to promise.** The inspector counts against
 300 characters (the API's limit, mirrored from `INVITE_NOTE_LIMIT` in
@@ -686,6 +704,7 @@ namespaces, no parameter properties).
 | Add a per-account figure | `AccountActivity` in `lib/data/types.ts` → `accountActivity()` in **both** repository impls → `SeatActivity` in `ChannelTabs.tsx`. Count real `events` rows; never estimate |
 | Move a lead into or out of an uploaded audience | `segmentIds` on `AudienceInput` (`lib/data/validate.ts`) → `setSegments`/`segmentsOf` in `pg.ts` and their equivalents in `memory.ts` → the checkbox list in `components/ws/audiences/lead-form.tsx`. Sending the list replaces the whole membership; leaving the key out leaves it alone |
 | Change what a new strategy starts with | `components/ws/strategies/new-strategy-view.tsx` (shape, audience, play) + `graphFromTemplate`/`graphForChannel` in `lib/app/workflow.ts`, which take the audience id. Never let the Audience step default to one that is empty by definition — see §5 |
+| Change what a written sequence can contain, or how it is laid out | `SEQUENCE_KINDS` and `graphFromSequence` in `lib/app/workflow.ts` (+ `tests/workflow.test.mjs`), then the form in `components/ws/setup/sequence-composer.tsx`. The composer must offer only what the palette offers; a test pins the two together |
 | Read something else from a lead's LinkedIn profile | `buildBriefing` in `lib/audiences/summary.ts` (+ `tests/leadBriefing.test.mjs`) → `storeProfile` in `pg.ts`. It is filled in by `lib/engine/enrich.ts`, so nothing needs to call it per lead |
 | Warn about something before a plan is launched | `blankCopySteps` (or a sibling) in `lib/app/workflow.ts` + a test, then the `Confirm` body in `components/ws/strategies/strategies-view.tsx`, which reads the plan when the dialog opens |
 | Change how uploaded people are matched | `lib/audiences/merge.ts` (`mergeAudiences` + `findInJourney`; `planImport` follows `mergeAudiences` automatically) and `tests/audiencesMerge`/`audiencesJourney`/`audiencesImportPlan` |
