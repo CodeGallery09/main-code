@@ -344,7 +344,57 @@ export type AccountSettingsPatch = {
   visits?: number;
   cap?: number;
   rotate?: boolean;
+  hours?: { days: string[]; from: string; to: string; zone: string };
+  warmup?: boolean;
 };
+
+/** The weekday names an account's working day is stored with. */
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const clockMinutes = (value: unknown): number | null => {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours > 23 || minutes > 59 ? null : hours * 60 + minutes;
+};
+
+/**
+ * An account's working day. It is validated here rather than trusted because it is the one
+ * setting that decides when a real message lands on a real person: a window that is open all
+ * night is how an account gets restricted.
+ */
+function validateHours(input: unknown, errors: ValidationErrors): AccountSettingsPatch["hours"] | undefined {
+  if (!isObject(input)) {
+    errors.hours = "Expected a working day.";
+    return undefined;
+  }
+  const days = Array.isArray(input.days) ? input.days : null;
+  if (!days || !days.length || days.some((d) => typeof d !== "string" || !WEEKDAYS.includes(d))) {
+    errors.hours = "Pick at least one weekday.";
+    return undefined;
+  }
+  if (new Set(days).size !== days.length) {
+    errors.hours = "Each weekday can only be picked once.";
+    return undefined;
+  }
+  const from = clockMinutes(input.from);
+  const to = clockMinutes(input.to);
+  if (from === null || to === null) {
+    errors.hours = "The sending window needs times like 09:30.";
+    return undefined;
+  }
+  if (to <= from) {
+    errors.hours = "The sending window has to end after it starts.";
+    return undefined;
+  }
+  const zone = typeof input.zone === "string" ? input.zone.trim() : "";
+  if (zone.length > 64) {
+    errors.hours = "That time zone name is too long.";
+    return undefined;
+  }
+  return { days: days as string[], from: input.from as string, to: input.to as string, zone };
+}
 
 const wholeNumber = (value: unknown, max: number): number | null =>
   typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= max ? value : null;
@@ -372,6 +422,14 @@ export function validateAccountPatch(
     numeric("connections", LINKEDIN_LIMITS.connections, "Connection requests");
     numeric("messages", LINKEDIN_LIMITS.messages, "Messages");
     numeric("visits", LINKEDIN_LIMITS.visits, "Profile visits");
+    if (input.hours !== undefined) {
+      const hours = validateHours(input.hours, errors);
+      if (hours) out.hours = hours;
+    }
+    if (input.warmup !== undefined) {
+      if (typeof input.warmup !== "boolean") errors.warmup = "Warm-up must be on or off.";
+      else out.warmup = input.warmup;
+    }
   } else {
     numeric("cap", EMAIL_CAP_MAX, "The daily cap");
     if (input.rotate !== undefined) {
@@ -382,7 +440,7 @@ export function validateAccountPatch(
 
   // Keys that belong to the other channel are mistakes, not no-ops.
   const allowed =
-    channel === "linkedin" ? ["connections", "messages", "visits"] : ["cap", "rotate"];
+    channel === "linkedin" ? ["connections", "messages", "visits", "hours", "warmup"] : ["cap", "rotate"];
   for (const key of Object.keys(input)) {
     if (!allowed.includes(key)) errors[key] = "That setting can't be changed here.";
   }

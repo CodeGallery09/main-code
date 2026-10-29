@@ -223,3 +223,30 @@ test("compliance domains and retention are checked", () => {
   assert.equal(validateCompliancePatch({ consent: { mail: 1 } }).ok, true);
   assert.equal(validateCompliancePatch({ consent: { mail: 2.5 } }).ok, false, "not an integer");
 });
+
+test("an account's working day is checked, not trusted", async () => {
+  const { validateAccountPatch } = await import("../lib/data/validate.ts");
+  const good = validateAccountPatch("linkedin", {
+    hours: { days: ["Mon", "Wed"], from: "09:30", to: "17:00", zone: "Asia/Kolkata" },
+    warmup: false,
+  });
+  assert.equal(good.ok, true);
+  assert.deepEqual(good.data.hours.days, ["Mon", "Wed"]);
+  assert.equal(good.data.warmup, false);
+
+  const nights = validateAccountPatch("linkedin", { hours: { days: ["Mon"], from: "18:00", to: "09:00", zone: "" } });
+  assert.equal(nights.ok, false);
+  assert.match(nights.errors.hours, /end after it starts/);
+
+  for (const bad of [
+    { days: [], from: "09:00", to: "17:00", zone: "" },
+    { days: ["Funday"], from: "09:00", to: "17:00", zone: "" },
+    { days: ["Mon", "Mon"], from: "09:00", to: "17:00", zone: "" },
+    { days: ["Mon"], from: "9am", to: "17:00", zone: "" },
+  ]) {
+    assert.equal(validateAccountPatch("linkedin", { hours: bad }).ok, false, JSON.stringify(bad));
+  }
+
+  // Hours are a LinkedIn dial; a mailbox has none.
+  assert.equal(validateAccountPatch("email", { hours: { days: ["Mon"], from: "09:00", to: "17:00", zone: "" } }).ok, false);
+});

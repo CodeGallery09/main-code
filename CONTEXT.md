@@ -123,11 +123,13 @@ listed somewhere else under another name.
 | `query.ts` | 68 | Pure filter/sort/paginate helpers shared by both impls. Import-free, tested. |
 | `validate.ts` | 651 | Write-path validation, `{ok,data}|{ok,errors}`. Import-free, erasable, tested. An audience's `linkedin` goes through `normaliseUrl` (same rule as the upload's `checkUrl`: any web URL, `https://` added); a create with no stage starts at `new`. |
 
-### Execution engine — `lib/engine/` (LinkedIn really sends)
+### Execution engine — `lib/engine/` (LinkedIn really sends, on a schedule)
 | File | L | Purpose |
 |---|---|---|
 | `steps.ts` | 262 | `runStep(node, edges, audience, now, dayMs?)` → `{ effects, next, finish }`: what happens when one lead reaches one step, **as data with no side effects**. Effects are a `send` (a channel step: the body, the subject, and the line to log if it cannot go out), a `log` line, or a `task` (only a call step makes one). `REAL_DAY_MS` is a day; `DRY_RUN_DAY_MS` (60 s) compresses one for a workspace that cannot send. Import-free + erasable; `tests/engineSteps.test.mjs`. |
-| `window.ts` | 91 | `insideWindow(at, zone, window)` / `nextOpening(at, zone, window)`: whether a touch may go out now, in the **workspace owner's IANA timezone**, and when the window next opens. An unusable window reads as always open and a bad zone falls back to UTC — a mistyped setting must not stop a plan. Import-free; `tests/sendWindow.test.mjs`. |
+| `window.ts` | 115 | `insideWindow` / `nextOpening` / `nextDayOpening` / `minutesLeftInWindow`: whether a touch may go out now, when the window next opens, and when it opens **after today** (so a spent Friday rolls to Monday). Read in the account's zone, or the workspace owner's. An unusable window reads as always open and a bad zone falls back to UTC — a mistyped setting must not stop a plan. Import-free; `tests/sendWindow.test.mjs`, `tests/pacing.test.mjs`. |
+| `pacing.ts` | 118 | How fast an account may act, as pure arithmetic: `warmupCap` (day one is a fifth of the ceiling, full at `WARMUP_DAYS` = 14), `paceGapMs` (spread what is left across the hours left, floor `MIN_GAP_MS` = 90 s), `jittered` (±40%, so the rhythm is not a metronome), `nextTouchAt`, `readHours`, `DEFAULT_HOURS`. Decides *when*, never *whether*. Import-free; `tests/pacing.test.mjs`. |
+| `scheduler.ts` | 85 | `runScheduledTick()`: every workspace with a live strategy, up to 40 a tick, each given a `Ctx` built from the owner's membership — **never from a request**, like `lib/channels/inbound.ts`. Runs its due steps, then pulls replies. One tenant's failure is recorded and the rest carry on; an unreachable provider is not a failed tick. Server-only. |
 
 | `journey.ts` | 103 | `journeyOrder()` walks a plan from its Audience step (yes before no) and `journeyRows()` turns it into one row per reachable step with its reach and who is waiting there. Shared by both stores' `getJourneys`; import-free, `tests/journey.test.mjs`. |
 
@@ -137,10 +139,10 @@ The stores apply the result: `launchStrategy`, `runDueSteps`, `runSummary` and `
   `adapter.sendInvite` / `adapter.sendMessage`. Email, WhatsApp and SMS steps are written down with
   the reason they could not go out; a call step becomes a real to-do; a condition cannot see a reply
   yet, so it takes its No branch after waiting out its window.
-- **Three real brakes**, checked in this order and each logged when it stops a touch: the lead's
-  recorded `consent`; the account's daily cap (`channel_accounts.settings.connections` / `.messages`,
-  counted against today's `events` of kind `sent`); and the plan's **sending window**, with a touch
-  outside it re-queued at `nextOpening` rather than sent late or dropped.
+- **Four real brakes**: the lead's recorded `consent` (a refusal, logged); the account's working
+  hours; its daily cap (`channel_accounts.settings.connections` / `.messages`, counted against
+  today's `events` of kind `sent`, after the warm-up ramp); and pacing. See "A touch is deferred"
+  below for what each one does instead of sending.
 - **At most once, on purpose.** `claimDue` selects `FOR UPDATE SKIP LOCKED` and marks the job `done`
   inside the same short transaction; the send happens afterwards, outside any transaction. An invite
   that goes out twice is worse than a step that is missed, because the person on the other end sees it.
@@ -157,11 +159,25 @@ The stores apply the result: `launchStrategy`, `runDueSteps`, `runSummary` and `
   `run_at`) and sets the strategy live. Refused with a reason for the demo strategy, an empty plan,
   or nobody to enrol. `PATCH /api/strategies/[id]` with `status: live|scheduled` and a POST with
   those statuses are **422** — only Launch goes live; Pause is a plain `PATCH status: paused`.
-- **Nothing runs by itself — and now that matters.** There is no cron: `POST /api/engine/run` is
-  called by the builder (every 8 s) and the Strategies, Home and Analytics screens (every 10 s)
-  while open. With real day lengths a plan only advances while someone has Flightpath open, so a
-  `/api/jobs/tick` poked by a schedule (a GitHub Actions cron is a free MVP) is the **next thing
-  this needs**.
+- **Plans run on a schedule.** `POST|GET /api/jobs/tick` → `runScheduledTick()`, on a Vercel cron
+  every 10 minutes (`vercel.json`). It is the **only route with no session**, because it acts for
+  every workspace, so it is authorised by `CRON_SECRET` carried as `Authorization: Bearer …` (what
+  Vercel Cron sends) or `?token=` (what GitHub Actions or cron-job.org can send). **Unset refuses
+  every call**: an open endpoint that advances everybody's outreach is not something to leave
+  lying around, and the Home setup card then says the deployment has no scheduler. Vercel's Hobby
+  plan runs a cron once a day, so a faster beat needs an external poke at that same URL.
+  `POST /api/engine/run` still exists and is called by the builder (every 8 s) and the Strategies,
+  Home and Analytics screens (every 10 s) while open — the same work, done sooner.
+- **A touch is deferred, never dropped.** `whenCanSend` decides in order: outside the account's
+  working hours → `nextOpening`; today's cap spent → `nextDayOpening` (Friday afternoon rolls to
+  Monday morning); too soon after the last send → `nextTouchAt`. Each one re-queues the step with
+  `queueStep`, so a plan that runs out of allowance resumes with nobody skipped. The first two are
+  logged once per tick; pacing is silent, being the normal rhythm rather than an event.
+- **Hours and warm-up live on the account** (`channel_accounts.settings.hours` / `.warmup` — no
+  migration; the jsonb already existed), because the account is what gets restricted: one seat has
+  one working day however many strategies send from it. `GET /api/accounts` returns each LinkedIn
+  account's `pace` (today's counts against today's ceilings, warming or not, open or not, when it
+  next may send) and the Setup row shows it.
 - **Journeys and touchpoints are read, not stored.** `getJourneys` counts `workflow_runs` and the run log in `events` (a touchpoint is a logged step with a channel). They appear on Analytics → **Journeys** tab (opens by default once something is launched), on Home's strategy rows, and as the Touchpoints column and journey line in the Strategies table. **The rollups are written by real outcomes only**: a successful send upserts `daily_rollups.reached` and an inbound reply upserts `engaged`/`replied`, so Analytics → Results is the real funnel while the Journeys tab is the plan's shape.
 - A strategy's `audiences` figure is counted live from `audiences.strategy_id` (`audienceCounts` / `withMembers`), except for the sample, which keeps its stored number; the stored column was never maintained.
 - `GET /api/strategies/[id]/runs` is the builder's run card: in plan / waiting / finished counts and
@@ -280,11 +296,12 @@ directly.
 | `/api/strategies/[id]/runs` | GET | run counts + activity log for the builder's run card |
 | `/api/journeys` | GET | `?range=` — every launched strategy's journey (per-step reach, who is waiting where) plus touchpoints by channel and day. Read live from `workflow_runs` and the run log; `dryRun` is true only when the deployment cannot send |
 | `/api/engine/run` | POST | runs every due step in the caller's workspace, **sending for real**; polled by open screens. Returns `{ processed }` |
+| `/api/jobs/tick` | GET, POST | **the scheduler's door, and the only route with no session.** Authorised by `CRON_SECRET` (Bearer header or `?token=`); 503 when unset, 401 when wrong. Returns `{ workspaces, processed, pulled, failed }` |
 | `/api/inbox/sync` | POST | pulls recent LinkedIn chats into the Inbox through the idempotent webhook writer. Returns `{ checked, stored, accounts, configured }`; the Inbox polls it every 30 s |
 | `/api/audiences/[id]/enrich` | GET, POST | GET the briefing stored on a lead (free; no provider call). POST reads their LinkedIn profile now through a healthy account and stores it; 503 when no provider is configured, 422 with the reason when there is no URL, no account or no profile |
 | `/api/workflows` | GET | every workflow in the workspace, newest edit first |
 | `/api/accounts` | GET | the workspace's LinkedIn accounts, mailboxes and sending domains, each with the strategies that use it |
-| `/api/accounts/[id]` | PATCH DELETE | PATCH is the dials only (LinkedIn daily caps; mailbox cap + rotate) — identity/state/health are never accepted. DELETE disconnects at the provider first, then removes the row |
+| `/api/accounts/[id]` | PATCH DELETE | PATCH is the dials only (LinkedIn daily caps, working hours and the warm-up toggle; mailbox cap + rotate) — identity/state/health are never accepted. DELETE disconnects at the provider first, then removes the row |
 | `/api/accounts/[id]/strategies` | PUT | `{ strategyIds }` replaces the strategies sending from an account; a foreign strategy id is a 422 |
 | `/api/accounts/activity` | GET | `?days=` — real per-account counts from `events` (inbound messages, status changes). Zero means zero, never an estimate |
 | `/api/integrations/linkedin/connect` | POST | opens a Unipile hosted sign-in; `{ accountId }` repairs one instead. 503 `not_configured` with no API key, 502 when the provider refuses. **GET is a 405** — a link prefetch must not open a sign-in |
@@ -817,14 +834,16 @@ Roughly in the order they should be closed.
    audiences the first step points at (consenting, not in another strategy). Nothing releases them
    when a strategy is paused or deleted, and a draft's segment still does not warn about overlaps
    with another draft until one launches.
-2. **The engine sends, but has no scheduler.** LinkedIn invites and messages go out for real,
-   held to consent, the account's daily caps and the plan's sending window (see §3). What is still
-   missing is the clock: steps only advance while a builder, Strategies, Home or Analytics screen
-   is open, and days are now real, so a plan left alone stalls. Next: `/api/jobs/tick` poked by a
-   schedule (a GitHub Actions cron is a free MVP). Also open — a retry for a provider refusal
-   (today it is logged as `send_failed` and the lead moves on), and a condition that can see a
-   reply. The pg send path was typechecked and walked in the memory store, but **not run against a
-   live LinkedIn account from here**.
+2. **The engine sends and runs on a schedule; what is left is finer-grained.** Invites and
+   messages go out for real, held to consent, the account's working hours, its warm-up ramp and
+   daily caps, and a jittered pace, with every deferral re-queued rather than dropped (see §3).
+   Still open: a **retry** for a provider refusal (today it is logged as `send_failed` and the
+   lead moves on); a **condition that can see a reply**, so a sequence stops for someone who
+   answered mid-step rather than at the next check; **per-account round-robin** when a workspace
+   has several seats (the runner uses the first healthy one); and the tick's 40-workspace ceiling,
+   which needs a cursor once there are more. The send path was verified end to end against a local
+   Postgres — enrolment, the cap-reached deferral rolling to the next working morning, the tick's
+   auth — but **not against a live LinkedIn account from here**.
 3. **LinkedIn connects and sends; email does not.** LinkedIn accounts connect through Unipile's
    hosted sign-in (see "Connecting LinkedIn" in §3) wherever `UNIPILE_DSN` + `UNIPILE_API_KEY` are
    set; without them the screens say so rather than offering a button that 503s. Caps are now

@@ -618,7 +618,11 @@ export class MemoryRepository implements Repository {
   }
 
   async listAccounts(_ctx: Ctx): Promise<AccountsSnapshot> {
-    return { accounts: accounts.map((a) => this.account(a)), domains: domains.map((d) => ({ ...d })) };
+    return {
+      accounts: accounts.map((a) => this.account(a)),
+      domains: domains.map((d) => ({ ...d })),
+      scheduler: Boolean(process.env.CRON_SECRET?.trim()),
+    };
   }
 
   async updateAccount(_ctx: Ctx, id: string, patch: AccountSettingsPatch): Promise<ChannelAccount | WriteError | null> {

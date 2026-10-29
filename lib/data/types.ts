@@ -315,6 +315,31 @@ export type LinkedInSettings = {
   visits: number;
   /** InMail credits left, or null when the account cannot report them. */
   inmail: number | null;
+  /**
+   * The working day this account sends inside. It lives on the account, not on a strategy,
+   * because the account is what gets restricted: one seat has one working day however many
+   * strategies send from it. `zone` empty means the workspace owner's zone.
+   */
+  hours: { days: string[]; from: string; to: string; zone: string };
+  /** Ramp a newly connected account up to its ceiling over a fortnight instead of starting there. */
+  warmup: boolean;
+};
+
+/** What an account has actually done today, and when its next touch is allowed out. */
+export type AccountPace = {
+  /** Today's ceiling after the warm-up ramp, which may be below the configured cap. */
+  invitesToday: number;
+  invitesCap: number;
+  messagesToday: number;
+  messagesCap: number;
+  /** True while the ramp is still below the configured ceilings. */
+  warming: boolean;
+  /** Days since the account was connected. */
+  ageDays: number;
+  /** Whether the working day is open right now. */
+  open: boolean;
+  /** ISO time of the next moment this account may send, or null when it may send now. */
+  nextOpenAt: string | null;
 };
 
 export type EmailSettings = {
@@ -369,6 +394,8 @@ export type LinkedInAccount = AccountBase & {
    */
   state: "healthy" | "signed_out" | "restricted" | "connecting";
   settings: LinkedInSettings;
+  /** What this account has done today and when it may act next. Null where it was not computed. */
+  pace: AccountPace | null;
 };
 
 export type EmailAccount = AccountBase & {
@@ -391,6 +418,11 @@ export type SendingDomain = {
 export type AccountsSnapshot = {
   accounts: ChannelAccount[];
   domains: SendingDomain[];
+  /**
+   * Whether this deployment has a scheduler (`CRON_SECRET`). Without one, a plan only advances
+   * while somebody has Flightpath open, which the operator has to be told rather than discover.
+   */
+  scheduler: boolean;
 };
 
 /* ------------------------------------------------- connecting an account -- */

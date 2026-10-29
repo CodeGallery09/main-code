@@ -62,3 +62,18 @@ test("tab badges count only blocking checks, on the tab they point to", () => {
   const checks = setupChecks({ accounts: [], domains: [] });
   assert.deepEqual(tabIssues(checks), { li: 1 });
 });
+
+test("a deployment with no scheduler says so, but is never a blocker", () => {
+  const off = byId(setupChecks({ accounts: [], domains: [], scheduler: false }), "scheduler");
+  assert.equal(off.tone, "info");
+  assert.match(off.detail, /only advance while/);
+
+  const on = byId(setupChecks({ accounts: [], domains: [], scheduler: true }), "scheduler");
+  assert.equal(on.tone, "ok");
+
+  // Info never counts against the score, so it cannot leave a workspace permanently short.
+  assert.equal(
+    blockingCount(setupChecks({ accounts: [], domains: [], scheduler: false })),
+    blockingCount(setupChecks({ accounts: [], domains: [], scheduler: true })),
+  );
+});

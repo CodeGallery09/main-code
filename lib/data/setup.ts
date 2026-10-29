@@ -60,6 +60,24 @@ export function setupChecks(snapshot: AccountsSnapshot): SetupCheck[] {
   const linkedin = snapshot.accounts.filter((a) => a.channel === "linkedin");
   const mailboxes = snapshot.accounts.filter((a) => a.channel === "email");
 
+  /* The clock */
+  checks.push(
+    snapshot.scheduler
+      ? {
+          id: "scheduler",
+          tone: "ok",
+          title: "Plans run on a schedule",
+          detail: "Live strategies advance on their own, whether or not anyone has Flightpath open.",
+        }
+      : {
+          // Only a deployer can set this, so it is never a blocker the user is left unable to clear.
+          id: "scheduler",
+          tone: "info",
+          title: "No scheduler on this deployment",
+          detail: "Live plans only advance while a Flightpath screen is open. Set CRON_SECRET to run them on a schedule.",
+        },
+  );
+
   /* LinkedIn */
   if (!linkedin.length) {
     checks.push({

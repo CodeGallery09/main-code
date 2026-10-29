@@ -258,6 +258,7 @@ function AccountRow({
           <span className="break-all text-[11.5px] text-muted-foreground">
             {account.handle} · {account.connection.statusDetail || account.connection.provider}
           </span>
+          {account.channel === "linkedin" && account.pace ? <PaceLine pace={account.pace} /> : null}
         </span>
         <span className="shrink-0">
           <StatusPill tone={needsAction ? "warning" : "success"}>{label}</StatusPill>
@@ -290,6 +291,29 @@ function AccountRow({
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+/**
+ * What this account has done today and when it may act next.
+ *
+ * Without this line a plan that has gone quiet is indistinguishable from a plan that is broken,
+ * and the operator's next move is to launch it again. Every number is a count, never an estimate.
+ */
+function PaceLine({ pace }: { pace: NonNullable<Extract<ChannelAccount, { channel: "linkedin" }>["pace"]> }) {
+  const next = pace.nextOpenAt ? new Date(pace.nextOpenAt) : null;
+  const resumes =
+    next && !Number.isNaN(next.getTime())
+      ? new Intl.DateTimeFormat("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(next)
+      : null;
+  return (
+    <span className="flex flex-wrap items-center gap-x-[10px] gap-y-[2px] font-mono text-[11px] text-muted-foreground">
+      <span>
+        {pace.invitesToday}/{pace.invitesCap} invites · {pace.messagesToday}/{pace.messagesCap} messages today
+      </span>
+      {pace.warming ? <span>Easing in · day {pace.ageDays + 1} of 14</span> : null}
+      {resumes ? <span>{pace.open ? "Day spent · resumes" : "Outside hours · resumes"} {resumes}</span> : null}
+    </span>
   );
 }
 

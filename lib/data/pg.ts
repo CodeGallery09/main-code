@@ -70,7 +70,8 @@ import {
   runStep,
   type StepEffect,
 } from "@/lib/engine/steps";
-import { nextOpening } from "@/lib/engine/window";
+import { insideWindow, minutesLeftInWindow, nextDayOpening, nextOpening } from "@/lib/engine/window";
+import { DEFAULT_CAPS, WARMUP_DAYS, nextTouchAt, readHours, warmupCap, type SendingHours } from "@/lib/engine/pacing";
 import { getLinkedInAdapter, ProviderError, type LinkedInChannelAdapter } from "@/lib/channels";
 import type { ProviderProfile } from "@/lib/channels/adapter";
 import { linkedInIdentifier } from "@/lib/channels/unipileRequests";
@@ -163,8 +164,14 @@ type SendingContext = {
   accountName: string;
   /** IANA zone the sending window is read in. */
   zone: string;
+  /** The account's working day, which is what the window is read against. */
+  hours: SendingHours;
   /** What is left of today's allowance, counted down as this tick sends. */
   left: { li_invite: number; li_msg: number };
+  /** Today's ceilings after the warm-up ramp, for the log line when one is reached. */
+  cap: { li_invite: number; li_msg: number };
+  /** Epoch ms of this account's last real send, so touches can be spaced out. Null if none today. */
+  lastSentAt: number | null;
 };
 
 /** Step kinds that reach a person, and so must respect the sending window. */
@@ -207,6 +214,21 @@ function toConnectSession(row: typeof connectSessions.$inferSelect): ConnectSess
 
 /** `YYYY-MM-DD` in UTC — matches the grain of `daily_rollups.day`. */
 const dayKey = (date: Date): string => date.toISOString().slice(0, 10);
+
+/** A moment written the way a person reads it, in the account's own zone. */
+const when = (at: Date, zone: string): string => {
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone || "UTC",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(at);
+  } catch {
+    return at.toISOString();
+  }
+};
 
 function daysAgo(n: number): string {
   const date = new Date();
@@ -844,6 +866,8 @@ export class PgRepository implements Repository {
         providerAccountId: channelAccounts.providerAccountId,
         name: channelAccounts.name,
         settings: channelAccounts.settings,
+        connectedAt: channelAccounts.connectedAt,
+        createdAt: channelAccounts.createdAt,
       })
       .from(channelAccounts)
       .where(
@@ -865,27 +889,52 @@ export class PgRepository implements Repository {
       .where(and(eq(memberships.workspaceId, ctx.workspaceId), eq(memberships.role, "owner")))
       .limit(1);
 
-    const caps = (account.settings ?? {}) as { connections?: number; messages?: number };
-    const sentToday = (
-      await this.db.execute(sql`
-        select payload ->> 'kind' as kind, count(*)::int as n
-        from events
-        where workspace_id = ${ctx.workspaceId} and kind = ${SENT_EVENT_KIND}
-          and occurred_at >= date_trunc('day', now())
-        group by 1`)
-    ).rows as { kind: string | null; n: number }[];
-    const used = (kind: string) => sentToday.find((row) => row.kind === kind)?.n ?? 0;
+    const stored = (account.settings ?? {}) as { connections?: number; messages?: number; warmup?: boolean; hours?: unknown };
+    const hours = readHours(stored.hours);
+    const zone = hours.zone || owner?.zone || "UTC";
+    const today = await this.sentToday(ctx);
+
+    // A fresh seat that fires its whole ceiling on day one is the fastest way to get restricted.
+    const since = account.connectedAt ?? account.createdAt ?? new Date();
+    const ageDays = Math.max(0, (Date.now() - since.getTime()) / 86_400_000);
+    const ramp = (cap: number) => (stored.warmup === false ? Math.floor(cap) : warmupCap(cap, ageDays));
+    const cap = {
+      li_invite: ramp(stored.connections ?? DEFAULT_CAPS.connections),
+      li_msg: ramp(stored.messages ?? DEFAULT_CAPS.messages),
+    };
 
     return {
       adapter,
       accountId: account.id,
       providerAccountId: account.providerAccountId,
       accountName: account.name,
-      zone: owner?.zone || "UTC",
+      zone,
+      hours,
+      cap,
       left: {
-        li_invite: Math.max(0, (caps.connections ?? 20) - used("li_invite")),
-        li_msg: Math.max(0, (caps.messages ?? 40) - used("li_msg")),
+        li_invite: Math.max(0, cap.li_invite - today.used("li_invite")),
+        li_msg: Math.max(0, cap.li_msg - today.used("li_msg")),
       },
+      lastSentAt: today.lastAt,
+    };
+  }
+
+  /** What this workspace has really sent since local midnight, by kind, and when it last sent. */
+  private async sentToday(ctx: Ctx): Promise<{ used: (kind: string) => number; lastAt: number | null }> {
+    const rows = (
+      await this.db.execute(sql`
+        select payload ->> 'kind' as kind, count(*)::int as n, max(occurred_at) as last_at
+        from events
+        where workspace_id = ${ctx.workspaceId} and kind = ${SENT_EVENT_KIND}
+          and occurred_at >= date_trunc('day', now())
+        group by 1`)
+    ).rows as { kind: string | null; n: number; last_at: Date | string | null }[];
+    const times = rows
+      .map((row) => (row.last_at ? new Date(row.last_at).getTime() : NaN))
+      .filter((t) => Number.isFinite(t));
+    return {
+      used: (kind) => rows.find((row) => row.kind === kind)?.n ?? 0,
+      lastAt: times.length ? Math.max(...times) : null,
     };
   }
 
@@ -985,10 +1034,16 @@ export class PgRepository implements Repository {
 
     const identifier = linkedInIdentifier(row.linkedin ?? "");
     if (!identifier) return { error: "no LinkedIn profile on this lead" };
-    const profile = await send.adapter.getProfile({ accountId: send.providerAccountId, identifier });
-    if (!profile) return { error: `LinkedIn did not return a profile for ${identifier}` };
-    await this.storeProfile(ctx, audienceId, profile);
-    return { id: profile.providerId };
+    // A provider that is down must stall this one lead, never the whole tick: every other job in
+    // the queue still deserves its turn.
+    try {
+      const profile = await send.adapter.getProfile({ accountId: send.providerAccountId, identifier });
+      if (!profile) return { error: `LinkedIn did not return a profile for ${identifier}` };
+      await this.storeProfile(ctx, audienceId, profile);
+      return { id: profile.providerId };
+    } catch (caught) {
+      return { error: caught instanceof ProviderError ? caught.message : "LinkedIn could not be reached" };
+    }
   }
 
   async audienceLinkedIn(ctx: Ctx, id: string): Promise<{ handle: string; name: string; stored: LinkedInExtra } | null> {
@@ -1082,6 +1137,45 @@ export class PgRepository implements Repository {
   }
 
   /**
+   * When this account may make its next touch, or `null` when it may make one now.
+   *
+   * Three reasons to wait, in the order they bite: the working day is shut, today's allowance is
+   * spent, or the last touch was too recent. **None of them drops the step** — each one re-queues
+   * it, so a plan that runs out of allowance on Friday afternoon picks up on Monday morning with
+   * nobody skipped. The first two are worth telling the operator about; pacing is not, because it
+   * is the normal rhythm rather than an event.
+   */
+  private whenCanSend(send: SendingContext, stepKind: string): { at: Date; note?: string } | null {
+    const kind = stepKind === "li_invite" ? "li_invite" : stepKind === "li_msg" ? "li_msg" : null;
+    if (!kind) return null;
+    const now = new Date();
+
+    if (!insideWindow(now, send.zone, send.hours)) {
+      const at = nextOpening(now, send.zone, send.hours);
+      return at.getTime() > now.getTime() + 1000
+        ? { at, note: `Outside ${send.accountName}'s sending hours — the next touch goes out ${when(at, send.zone)}.` }
+        : null;
+    }
+
+    if (send.left[kind] <= 0) {
+      const at = nextDayOpening(now, send.zone, send.hours);
+      const what = kind === "li_invite" ? "connection requests" : "messages";
+      return {
+        at,
+        note: `${send.accountName} has used today's ${send.cap[kind]} ${what}. The rest of the plan resumes ${when(at, send.zone)}.`,
+      };
+    }
+
+    const at = nextTouchAt({
+      now: now.getTime(),
+      lastSentAt: send.lastSentAt,
+      remaining: send.left[kind],
+      minutesLeft: minutesLeftInWindow(now, send.zone, send.hours),
+    });
+    return at > now.getTime() + 1000 ? { at: new Date(at) } : null;
+  }
+
+  /**
    * Performs one `send` effect, or says in the log why it could not.
    *
    * Every refusal is written down. A step that silently did nothing is the worst possible state
@@ -1110,10 +1204,6 @@ export class PgRepository implements Repository {
       return false;
     }
     const kind = effect.kind === "li_invite" ? "li_invite" : "li_msg";
-    if (send.left[kind] <= 0) {
-      await why("today's limit for this account is used up");
-      return false;
-    }
 
     const resolved = await this.providerIdFor(ctx, send, job.audience_id);
     if ("error" in resolved) {
@@ -1136,6 +1226,8 @@ export class PgRepository implements Repository {
             })).messageId;
 
       send.left[kind] -= 1;
+      // The next touch is spaced from this one, so a tick cannot fire a burst.
+      send.lastSentAt = Date.now();
       const what =
         kind === "li_invite"
           ? `Sent ${person.name} a LinkedIn invite${effect.body ? ` with a note: “${effect.body.slice(0, 120)}”` : "."}`
@@ -1167,6 +1259,8 @@ export class PgRepository implements Repository {
     // A real send is a network round trip, so a tick takes far fewer of them than a dry run.
     const ceiling = send ? Math.min(limit, 12) : limit;
     let processed = 0;
+    // One "limit reached" line per tick is a note; one per waiting lead is a flood.
+    const toldToday = new Set<string>();
 
     // A step that follows another straight away is due in the same pass, so go round until quiet.
     for (let round = 0; round < 12 && processed < ceiling; round++) {
@@ -1195,12 +1289,16 @@ export class PgRepository implements Repository {
           continue;
         }
 
-        // Outside the working window a touch waits rather than landing at midnight.
+        // A touch that cannot go out right now waits; it is never dropped and never rushed.
         const node = job.graph.nodes.find((n) => n.id === job.step_id);
         if (send && node && TOUCH_STEPS.has(node.kind)) {
-          const opening = nextOpening(new Date(), send.zone, job.graph.settings);
-          if (opening.getTime() > Date.now() + 1000) {
-            await this.queueStep(ctx, job.run_id, job.step_id, opening);
+          const wait = this.whenCanSend(send, node.kind);
+          if (wait) {
+            await this.queueStep(ctx, job.run_id, job.step_id, wait.at);
+            if (wait.note && !toldToday.has(wait.note)) {
+              toldToday.add(wait.note);
+              await this.logRun(ctx, job, RUN_EVENT_KIND, "linkedin", wait.note);
+            }
             continue;
           }
         }
@@ -1450,7 +1548,11 @@ export class PgRepository implements Repository {
           messages: raw.messages ?? 0,
           visits: raw.visits ?? 0,
           inmail: raw.inmail ?? null,
+          hours: readHours(raw.hours),
+          // Warm-up is on unless the operator turned it off: the safe default is the slow one.
+          warmup: raw.warmup !== false,
         },
+        pace: null,
       };
     }
     const raw = row.settings as Partial<EmailSettings>;
@@ -1489,8 +1591,11 @@ export class PgRepository implements Repository {
     for (const link of links) {
       byAccount.set(link.accountId, [...(byAccount.get(link.accountId) ?? []), link.strategyId]);
     }
+    const accounts = rows.map((row) => this.toAccount(row, byAccount.get(row.id) ?? []));
+    await this.attachPace(ctx, accounts);
     return {
-      accounts: rows.map((row) => this.toAccount(row, byAccount.get(row.id) ?? [])),
+      accounts,
+      scheduler: Boolean(process.env.CRON_SECRET?.trim()),
       domains: domains.map((d) => ({
         id: d.id,
         host: d.host,
@@ -1500,6 +1605,57 @@ export class PgRepository implements Repository {
         isSample: d.isSample,
       })),
     };
+  }
+
+  /**
+   * Fills in what each LinkedIn account has done today and when it may act next.
+   *
+   * The operator needs to see this: a plan that looks stalled is usually an account that has used
+   * its day or is outside its hours, and without this the screen cannot say which.
+   */
+  private async attachPace(ctx: Ctx, accounts: ChannelAccount[]): Promise<void> {
+    const linkedIn = accounts.filter((a): a is Extract<ChannelAccount, { channel: "linkedin" }> => a.channel === "linkedin");
+    if (!linkedIn.length) return;
+    const [today, zone] = await Promise.all([this.sentToday(ctx), this.ownerZone(ctx)]);
+    const now = new Date();
+
+    for (const account of linkedIn) {
+      const hours = account.settings.hours;
+      const at = hours.zone || zone;
+      const since = account.connection.connectedAt ? new Date(account.connection.connectedAt) : now;
+      const ageDays = Math.max(0, (now.getTime() - since.getTime()) / 86_400_000);
+      const ramp = (cap: number) => (account.settings.warmup ? warmupCap(cap, ageDays) : Math.floor(cap));
+      const invitesCap = ramp(account.settings.connections);
+      const messagesCap = ramp(account.settings.messages);
+      const open = insideWindow(now, at, hours);
+      const spent = today.used("li_invite") >= invitesCap && today.used("li_msg") >= messagesCap;
+      const nextOpenAt = open
+        ? spent
+          ? nextDayOpening(now, at, hours)
+          : null
+        : nextOpening(now, at, hours);
+      account.pace = {
+        invitesToday: today.used("li_invite"),
+        invitesCap,
+        messagesToday: today.used("li_msg"),
+        messagesCap,
+        warming: account.settings.warmup && ageDays < WARMUP_DAYS,
+        ageDays: Math.floor(ageDays),
+        open,
+        nextOpenAt: nextOpenAt ? nextOpenAt.toISOString() : null,
+      };
+    }
+  }
+
+  /** The workspace owner's zone, which an account follows unless it names its own. */
+  private async ownerZone(ctx: Ctx): Promise<string> {
+    const [owner] = await this.db
+      .select({ zone: users.timeZone })
+      .from(users)
+      .innerJoin(memberships, eq(memberships.userId, users.id))
+      .where(and(eq(memberships.workspaceId, ctx.workspaceId), eq(memberships.role, "owner")))
+      .limit(1);
+    return owner?.zone || "UTC";
   }
 
   private async accountById(ctx: Ctx, id: string): Promise<ChannelAccount | null> {

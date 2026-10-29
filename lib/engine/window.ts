@@ -89,3 +89,27 @@ export function nextOpening(at: Date, zone: string, window: SendWindow): Date {
   }
   return at;
 }
+
+/** Minutes left in today's window, or 0 when it is already shut. */
+export function minutesLeftInWindow(at: Date, zone: string, window: SendWindow): number {
+  if (!insideWindow(at, zone, window)) return 0;
+  const to = minutesOf(window.to);
+  if (to === null) return 0;
+  const { minutes } = localClock(at, zone);
+  return Math.max(0, to - minutes);
+}
+
+/**
+ * The next opening **after** today's, for an account that has spent its day.
+ *
+ * A limit that is reached must not drop the touch: it waits for tomorrow's window. Jumping past
+ * this local day's closing time and then asking for the next opening lands on the next chosen
+ * weekday, so a Friday evening rolls to Monday morning rather than to Saturday.
+ */
+export function nextDayOpening(at: Date, zone: string, window: SendWindow): Date {
+  const to = minutesOf(window.to);
+  if (to === null) return new Date(at.getTime() + 86_400_000);
+  const { minutes } = localClock(at, zone);
+  const pastClose = new Date(at.getTime() + Math.max(1, to - minutes + 1) * 60_000);
+  return nextOpening(pastClose, zone, window);
+}

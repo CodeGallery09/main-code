@@ -7,6 +7,8 @@ import type { ChannelAccount } from "@/lib/data/types";
 import { Button } from "@/components/ws/ui/button";
 import { Switch } from "@/components/ws/ui/misc";
 
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
 /**
  * The dials on one account: daily ceilings, and for a mailbox whether it joins
  * the rotation. Identity, health and connection state are facts the provider
@@ -19,6 +21,8 @@ export function AccountSettings({ account, onSaved }: { account: ChannelAccount;
           connections: account.settings.connections,
           messages: account.settings.messages,
           visits: account.settings.visits,
+          hours: { ...account.settings.hours, days: [...account.settings.hours.days] },
+          warmup: account.settings.warmup,
         }
       : { cap: account.settings.cap, rotate: account.settings.rotate },
   );
@@ -84,9 +88,71 @@ export function AccountSettings({ account, onSaved }: { account: ChannelAccount;
       </div>
 
       <p className="text-[11.5px] leading-[1.55] text-muted-foreground">
-        Limits belong to the account and are shared by every strategy that sends from it. A launched plan stops for the day once a limit here is reached. These
-        are the ceilings that will apply the day it does.
+        Limits belong to the account and are shared by every strategy that sends from it. When a limit is reached the plan does not skip anyone — the rest of
+        the queue waits for the next working morning.
       </p>
+
+      {account.channel === "linkedin" && values.hours ? (
+        <>
+          <span className="label-mono">Working hours</span>
+          <div className="flex flex-wrap gap-[5px]">
+            {WEEKDAYS.map((day) => {
+              const on = values.hours!.days.includes(day);
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() =>
+                    setValues((state) => {
+                      const days = state.hours!.days.includes(day)
+                        ? state.hours!.days.filter((d) => d !== day)
+                        : [...state.hours!.days, day];
+                      return { ...state, hours: { ...state.hours!, days: WEEKDAYS.filter((d) => days.includes(d)) } };
+                    })
+                  }
+                  className={`h-[28px] rounded-lg border px-[10px] text-[11.5px] ${
+                    on ? "border-primary bg-primary text-primary-foreground" : "border-input bg-card text-muted-foreground"
+                  }`}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
+            <Clock
+              id={`${account.id}-from`}
+              label="Starts"
+              value={values.hours.from}
+              onChange={(v) => setValues((state) => ({ ...state, hours: { ...state.hours!, from: v } }))}
+            />
+            <Clock
+              id={`${account.id}-to`}
+              label="Stops"
+              value={values.hours.to}
+              onChange={(v) => setValues((state) => ({ ...state, hours: { ...state.hours!, to: v } }))}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-input bg-card px-[11px] py-[7px]">
+            <span className="min-w-0 text-[11.5px] font-medium">
+              Ease a new account in over two weeks
+              <span className="block text-[11px] font-normal text-muted-foreground">
+                Starts at a fifth of these limits and climbs. A fresh account sending its ceiling on day one is what gets a seat restricted.
+              </span>
+            </span>
+            <Switch
+              checked={values.warmup ?? true}
+              onChange={(v) => setValues((state) => ({ ...state, warmup: v }))}
+              label="Ease a new account in over two weeks"
+            />
+          </div>
+          <p className="text-[11.5px] leading-[1.55] text-muted-foreground">
+            Touches are spread across these hours with an uneven gap rather than sent in a burst, in{" "}
+            {account.settings.hours.zone || "your workspace's time zone"}.
+          </p>
+        </>
+      ) : null}
 
       {error ? (
         <p role="alert" className="text-[11.5px] text-warning">
@@ -96,9 +162,26 @@ export function AccountSettings({ account, onSaved }: { account: ChannelAccount;
 
       <div className="flex justify-end">
         <Button size="sm" disabled={busy} onClick={() => void save()}>
-          {busy ? "Saving…" : "Save the limits"}
+          {busy ? "Saving…" : "Save these settings"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function Clock({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex flex-col gap-[5px]">
+      <label htmlFor={id} className="label-mono">
+        {label}
+      </label>
+      <input
+        id={id}
+        type="time"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-[34px] rounded-lg border border-input bg-card px-[11px] font-mono text-[12px]"
+      />
     </div>
   );
 }
