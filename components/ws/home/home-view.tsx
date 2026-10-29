@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence } from "framer-motion";
 import { ChevronRight, TriangleAlert } from "lucide-react";
+import { SENDING_ENABLED } from "@/lib/capabilities";
 import { api } from "@/lib/api";
 import { INBOX_HREF, SETUP_HREF } from "@/lib/nav";
 import { setupChecks, type SetupCheck } from "@/lib/data/setup";
@@ -64,6 +65,7 @@ export function HomeView() {
 
   const overview = useAsync<Overview>(() => api.overview("7d"), []);
   const accounts = useAsync(() => api.accounts(), []);
+  const journeys = useAsync(() => api.journeys({ range: "7d" }), []);
 
   const data = overview.data;
   const tasks = useMemo(() => (data?.tasks ?? []).filter((t) => !done.includes(t.id)), [data, done]);
@@ -71,6 +73,24 @@ export function HomeView() {
   const countOf = (f: Filter) => (f === "all" ? tasks.length : tasks.filter((t) => t.kind === f).length);
 
   const live = (data?.strategies ?? []).filter((s) => s.status === "live");
+  const journeyOf = new Map((journeys.data?.journeys.strategies ?? []).map((j) => [j.id, j]));
+
+  // A running strategy moves while this screen is open: run what has come due, then re-read.
+  const liveCount = live.length;
+  const reloadOverview = overview.reload;
+  const reloadJourneys = journeys.reload;
+  useEffect(() => {
+    if (liveCount === 0) return;
+    const timer = window.setInterval(
+      () =>
+        void api.runEngine().then(() => {
+          reloadOverview();
+          reloadJourneys();
+        }, () => undefined),
+      10_000,
+    );
+    return () => window.clearInterval(timer);
+  }, [liveCount, reloadOverview, reloadJourneys]);
   const replies = data?.metrics.find((m) => m.id === "replies");
   const meetings = data?.metrics.find((m) => m.id === "meetings");
 
@@ -273,6 +293,12 @@ export function HomeView() {
                           <span className="truncate font-mono text-[11px] text-muted-foreground">
                             {channelNames(s.channels)}
                           </span>
+                          {journeyOf.has(s.id) ? (
+                            <span className="truncate font-mono text-[11px] text-muted-foreground">
+                              {journeyOf.get(s.id)!.active} in journey · {journeyOf.get(s.id)!.touchpoints} touchpoints
+                              {SENDING_ENABLED ? "" : " (dry run)"}
+                            </span>
+                          ) : null}
                         </span>
                         <span className="flex shrink-0 items-center gap-[10px]">
                           <span className="font-mono text-[11.5px] font-medium">

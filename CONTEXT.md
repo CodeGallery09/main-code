@@ -128,11 +128,13 @@ listed somewhere else under another name.
 |---|---|---|
 | `steps.ts` | 211 | `runStep(node, edges, audience, now)` → `{ effects, next, finish }`: what happens when one lead reaches one step, **as data with no side effects**. Effects are a `log` line or a `task` (only a call step makes one). `DRY_RUN_DAY_MS` (60 s) compresses a plan's days. Import-free + erasable; `tests/engineSteps.test.mjs`. |
 
-The stores apply the result: `launchStrategy`, `runDueSteps` and `runSummary` on the `Repository`
+| `journey.ts` | 103 | `journeyOrder()` walks a plan from its Audience step (yes before no) and `journeyRows()` turns it into one row per reachable step with its reach and who is waiting there. Shared by both stores' `getJourneys`; import-free, `tests/journey.test.mjs`. |
+
+The stores apply the result: `launchStrategy`, `runDueSteps`, `runSummary` and `getJourneys` on the `Repository`
 (both impls). **A dry run: nothing is sent.** A LinkedIn/email step is logged as what it *would*
 send (merge fields filled), a call step becomes a real to-do, a condition cannot see a reply so it
 takes its No branch after waiting out its window. Real sending replaces the log line, not the shape.
-- **Launch** (`POST /api/strategies/[id]/launch`) enrols the audiences the first step points at,
+- **Launch lives in the Strategies table only** (a labelled Launch / Resume / Pause button on each row; the builder has just "Launch on Strategies", a link, and saves as it goes without touching status). A successful launch switches the table to the Live tab. **Launch** (`POST /api/strategies/[id]/launch`) enrols the audiences the first step points at,
   skipping anyone already in another strategy (`audiences.strategy_id`) or without `consent`, queues
   their first step (`workflow_runs` unique per workflow+audience, `step_jobs` pending/done with
   `run_at`) and sets the strategy live. Refused with a reason for the demo strategy, an empty plan,
@@ -142,6 +144,8 @@ takes its No branch after waiting out its window. Real sending replaces the log 
   (every 8 s) and the Strategies screen (every 10 s) while open. The pg store claims due rows with
   `FOR UPDATE SKIP LOCKED`, so two open tabs cannot run a job twice. A background scheduler belongs
   with real sending.
+- **Journeys and touchpoints are read, not stored.** `getJourneys` counts `workflow_runs` and `events` of kind `dry_run_step` (a touchpoint is one with a channel). They appear on Analytics → **Journeys** tab (opens by default once something is launched), on Home's strategy rows, and as the Touchpoints column and journey line in the Strategies table. They are deliberately **not** written into `daily_rollups`: a dry run would otherwise inflate the real reach/reply/meeting figures, and Analytics → Results stays real. Fold them into the rollups in the commit that lands a real sender.
+- A strategy's `audiences` figure is counted live from `audiences.strategy_id` (`audienceCounts` / `withMembers`), except for the sample, which keeps its stored number; the stored column was never maintained.
 - `GET /api/strategies/[id]/runs` is the builder's "Dry run" card: in plan / waiting / finished
   counts and the activity log (read from `events`).
 
@@ -242,6 +246,7 @@ directly.
 | `/api/strategies/[id]/workflow` | GET, PUT | the strategy's workflow. PUT takes `{ name, graph }` and **rebuilds the graph from a whitelist** (`validateWorkflowGraph`); 422 names the reason. 404 for another workspace's strategy. |
 | `/api/strategies/[id]/launch` | POST | start or resume a strategy as a **dry run** (see "Execution engine"). 404 foreign, 422 with the reason when it cannot start |
 | `/api/strategies/[id]/runs` | GET | run counts + activity log for the builder's Dry run card |
+| `/api/journeys` | GET | `?range=` — every launched strategy's journey (per-step reach, who is waiting where) plus touchpoints by channel and day. Read live from `workflow_runs` and the `dry_run_step` events; `dryRun` is true while nothing sends |
 | `/api/engine/run` | POST | runs every due step in the caller's workspace; polled by open screens. Returns `{ processed }` |
 | `/api/workflows` | GET | every workflow in the workspace, newest edit first |
 | `/api/accounts` | GET | the workspace's LinkedIn accounts, mailboxes and sending domains, each with the strategies that use it |
@@ -357,7 +362,7 @@ reads what only the server can read, and renders one `"use client"` view. Keep i
 | `setup/setup-overview-view.tsx` + `account-settings.tsx` | 401 + 132 | `/api/accounts` | connected accounts, each account's dials behind its Settings, hosted-sign-in result banner, disconnect. No Pause: nothing is sending to pause |
 | `setup/setup-integrations-view.tsx` | 250 | `/api/accounts` | the provider catalogue (`providerView()`) and the **one place an account is connected** (a labelled Connect button starts the hosted LinkedIn sign-in). The sending-rules cards and Workspace card that sat beside it as "Config" were removed at the user's request; `/api/settings`, `workspace_settings` and `lib/app/configuration.ts` are still there but no screen edits them |
 | `setup/setup-messages-view.tsx` | 283 | `/api/workflows` | **all message copy in the workspace, in one place**, read out of every stored graph by `lib/ws/messages.ts`. The builder never edits copy (§5) |
-| `analytics/analytics-view.tsx` + `charts.tsx` | 138 + 89 | `/api/analytics` | one report, no tabs. Hairline grid, single near-black accent |
+| `analytics/analytics-view.tsx` + `charts.tsx` + `journeys-panel.tsx` | 190 + 89 + 160 | `/api/analytics`, `/api/journeys` | two tabs: Results (recorded figures) and Journeys (launched strategies' per-step reach and touchpoints, dry-run labelled). Hairline grid, single near-black accent |
 | `ui/` | ~700 | — | `button` (cva: default/outline/ghost/dashed/danger/warning/inverse; sizes sm 30 · md 34 · lg 38 · icon 30 · icon-sm 28) · `card` · `status-pill` · `segmented` (shared-layout thumb) · `channel-tile` · `confirm` · `motion` (`Appear`, `Swap`, `Row`, `Expand`, and the one easing pair) · `misc` (`Initials, Meter, Switch, NativeSelect, SearchInput, Sparkline, MetricTile, EmptyState, Tag, ChannelChip, Skeleton, LoadError`) |
 | `lib/ws/` | 462 | — | `utils.ts` (`cn`, `fmt`, `pct`, `initialsOf`) · `channels.ts` (the domain `Channel` union → display name, monogram, colour, order) · `format.ts` (metric values and footers; says "Nothing yet"/"No comparison" rather than inventing a 0%) · `use-async.ts` (the loading/ready/failed/retry contract every card shares) · `graphEdit.ts` (pure canvas edits, tested) · `messages.ts` (real copy out of stored graphs) |
 | `components/glass.ts` | ~230 | — | refraction + specular runtime, **marketing-only** (`SiteGlass.tsx` imports it). Was `components/app/glass.ts` |
@@ -518,7 +523,7 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 `unipile.test.mjs` (the Unipile request contract + response readers) · `unipileEvents.test.mjs`
 (both documented webhook envelopes) · `webhookConfig.test.mjs` (the header/query-param match) —
 `engineSteps.test.mjs` (the pure step runner) —
-**241 tests**
+**245 tests** (`journey.test.mjs` is the newest)
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).

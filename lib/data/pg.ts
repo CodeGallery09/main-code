@@ -62,6 +62,8 @@ import type {
 } from "@/lib/data/repository";
 import { AUDIENCE_CAMPAIGN, AUDIENCE_WORKSPACE, type WorkflowGraph } from "@/lib/app/workflow";
 import { RUN_EVENT_KIND, runStep } from "@/lib/engine/steps";
+import { journeyRows } from "@/lib/engine/journey";
+import { SENDING_ENABLED } from "@/lib/capabilities";
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
 import { setupChecks, blockingCount } from "@/lib/data/setup";
 import { ACCOUNT_EVENT } from "@/lib/data/accountEvents";
@@ -106,6 +108,8 @@ import type {
   WorkspaceSettings,
   LaunchResult,
   RunSummary,
+  Journeys,
+  JourneyStrategy,
 } from "@/lib/data/types";
 
 /* ------------------------------------------------------------- utilities -- */
@@ -507,7 +511,8 @@ export class PgRepository implements Repository {
       .where(and(...where))
       .orderBy(desc(strategiesTable.startedAt));
 
-    const items = rows.map((row) => this.toStrategy(row));
+    const members = await this.audienceCounts(ctx);
+    const items = rows.map((row) => this.withMembers(this.toStrategy(row), members));
 
     const delivered = items.reduce((sum, c) => sum + (c.delivered ?? 0), 0);
     const sent = items.reduce((sum, c) => sum + (c.sent ?? 0), 0);
@@ -535,7 +540,22 @@ export class PgRepository implements Repository {
       .from(strategiesTable)
       .where(and(eq(strategiesTable.id, id), this.ws(strategiesTable.workspaceId, ctx)))
       .limit(1);
-    return row ? this.toStrategy(row) : null;
+    return row ? this.withMembers(this.toStrategy(row), await this.audienceCounts(ctx)) : null;
+  }
+
+  /** Audiences per strategy, counted live: the stored `strategies.audiences` is never maintained. */
+  private async audienceCounts(ctx: Ctx): Promise<Map<string, number>> {
+    const rows = await this.db
+      .select({ id: audiencesTable.strategyId, n: count() })
+      .from(audiencesTable)
+      .where(and(this.ws(audiencesTable.workspaceId, ctx), sql`${audiencesTable.strategyId} is not null`))
+      .groupBy(audiencesTable.strategyId);
+    return new Map(rows.map((r) => [r.id as string, Number(r.n)]));
+  }
+
+  /** The demo strategy keeps its stored figure; every real one reports who is actually in it. */
+  private withMembers(strategy: Strategy, members: Map<string, number>): Strategy {
+    return strategy.isSample ? strategy : { ...strategy, audiences: members.get(strategy.id) ?? 0 };
   }
 
   async createStrategy(ctx: Ctx, input: StrategyPatch): Promise<Strategy> {
@@ -919,6 +939,102 @@ export class PgRepository implements Repository {
         audienceName: r.name ?? "",
         channel: r.channel as Channel | null,
       })),
+    };
+  }
+
+  async getJourneys(ctx: Ctx, range: RangeKey): Promise<Journeys> {
+    const w = ctx.workspaceId;
+    const days = rangeDays(range);
+    const from = daysAgo(days - 1);
+
+    // Every strategy that has been launched, with where its audiences are.
+    const plans = (
+      await this.db.execute(sql`
+        select s.id, s.name, s.status, f.graph,
+          count(r.id)::int as enrolled,
+          (count(r.id) filter (where r.state = 'active'))::int as active,
+          (count(r.id) filter (where r.state = 'completed'))::int as completed,
+          (count(r.id) filter (where r.state = 'stopped'))::int as stopped
+        from strategies s
+        join workflows f on f.strategy_id = s.id
+        join workflow_runs r on r.workflow_id = f.id
+        where s.workspace_id = ${w}
+        group by s.id, f.id
+        order by s.updated_at desc`)
+    ).rows as {
+      id: string;
+      name: string;
+      status: StrategyStatus;
+      graph: WorkflowGraph;
+      enrolled: number;
+      active: number;
+      completed: number;
+      stopped: number;
+    }[];
+
+    const reach = (
+      await this.db.execute(sql`
+        select strategy_id, payload->>'step' as step, count(distinct audience_id)::int as n, (count(*) filter (where channel is not null))::int as touches
+        from events
+        where workspace_id = ${w} and kind = ${RUN_EVENT_KIND} and strategy_id is not null
+        group by 1, 2`)
+    ).rows as { strategy_id: string; step: string | null; n: number; touches: number }[];
+
+    const here = (
+      await this.db.execute(sql`
+        select f.strategy_id, r.current_step_id as step, count(*)::int as n
+        from workflow_runs r join workflows f on f.id = r.workflow_id
+        where r.workspace_id = ${w} and r.state = 'active' and r.current_step_id is not null
+        group by 1, 2`)
+    ).rows as { strategy_id: string; step: string; n: number }[];
+
+    const strategies: JourneyStrategy[] = plans.map((p) => {
+      const mine = reach.filter((r) => r.strategy_id === p.id && r.step);
+      return {
+        id: p.id,
+        name: p.name,
+        status: p.status,
+        enrolled: p.enrolled,
+        active: p.active,
+        completed: p.completed,
+        stopped: p.stopped,
+        touchpoints: mine.reduce((sum, r) => sum + r.touches, 0),
+        steps: journeyRows(
+          p.graph.nodes,
+          p.graph.edges,
+          new Map(mine.map((r) => [r.step as string, r.n])),
+          new Map(here.filter((h) => h.strategy_id === p.id).map((h) => [h.step, h.n])),
+          p.enrolled,
+        ) as JourneyStrategy["steps"],
+      };
+    });
+
+    // Touchpoints in the window: by channel and by day, zero-filled so the chart has a full axis.
+    const touches = (
+      await this.db.execute(sql`
+        select channel, to_char(occurred_at at time zone 'UTC', 'YYYY-MM-DD') as day, count(*)::int as n
+        from events
+        where workspace_id = ${w} and kind = ${RUN_EVENT_KIND} and channel is not null
+          and occurred_at >= ${from + "T00:00:00Z"}::timestamptz
+        group by 1, 2`)
+    ).rows as { channel: Channel; day: string; n: number }[];
+
+    const perChannel = new Map<Channel, number>();
+    const perDay = new Map<string, number>();
+    for (const t of touches) {
+      perChannel.set(t.channel, (perChannel.get(t.channel) ?? 0) + t.n);
+      perDay.set(t.day, (perDay.get(t.day) ?? 0) + t.n);
+    }
+    const axis = Array.from({ length: days }, (_, i) => daysAgo(days - 1 - i));
+
+    return {
+      strategies,
+      touchpoints: {
+        total: [...perDay.values()].reduce((a, b) => a + b, 0),
+        byChannel: [...perChannel].map(([channel, count]) => ({ channel, count })).sort((a, b) => b.count - a.count),
+        byDay: axis.map((date) => ({ date, count: perDay.get(date) ?? 0 })),
+      },
+      dryRun: !SENDING_ENABLED,
     };
   }
 

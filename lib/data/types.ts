@@ -519,3 +519,48 @@ export type RunSummary = {
   nextDueAt: string | null;
   recent: RunActivity[];
 };
+
+/** One step of a launched plan and how many audiences have reached it. */
+export type JourneyStep = {
+  id: string;
+  /** What the step is, e.g. "LinkedIn invite". */
+  label: string;
+  kind: string;
+  /** Set when the step is a touchpoint on a channel. */
+  channel: Channel | null;
+  depth: number;
+  /** Distinct audiences that have got to this step. */
+  reached: number;
+  /** Audiences sitting on this step right now, waiting for it to run. */
+  here: number;
+};
+
+/** A launched strategy's journey: how its audiences moved through the plan. */
+export type JourneyStrategy = {
+  id: string;
+  name: string;
+  status: StrategyStatus;
+  enrolled: number;
+  active: number;
+  completed: number;
+  stopped: number;
+  /** Touchpoints on a channel so far: a step that would send, or a call to-do. */
+  touchpoints: number;
+  steps: JourneyStep[];
+};
+
+/**
+ * What launched strategies have done, read from the run records and their log. While
+ * `SENDING_ENABLED` is false every touchpoint is a dry-run one: it records what *would* have gone
+ * out, not something a person received.
+ */
+export type Journeys = {
+  strategies: JourneyStrategy[];
+  touchpoints: {
+    total: number;
+    byChannel: { channel: Channel; count: number }[];
+    byDay: { date: string; count: number }[];
+  };
+  /** True while nothing is actually sent, so screens say these are dry-run figures. */
+  dryRun: boolean;
+};

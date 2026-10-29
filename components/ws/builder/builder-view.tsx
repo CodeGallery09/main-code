@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, Check, Pause, Rocket, CircleDashed, LayoutTemplate, Minus, Plus, Redo2, Save, Trash2, TriangleAlert, Undo2 } from "lucide-react";
-import { api, fieldErrorsOf } from "@/lib/api";
+import { ArrowLeft, Check, Rocket, CircleDashed, LayoutTemplate, Minus, Plus, Redo2, Save, Trash2, TriangleAlert, Undo2 } from "lucide-react";
+import { api } from "@/lib/api";
 import { DRY_RUN_NOTE, SENDING_ENABLED } from "@/lib/capabilities";
 import {
   defaults,
@@ -33,7 +33,7 @@ import { SETUP_HREF } from "@/lib/nav";
 import type { Channel, RunSummary, StrategyStatus } from "@/lib/data/types";
 import { cn, fmt } from "@/lib/ws/utils";
 import { SidebarRail } from "@/components/ws/shell/sidebar";
-import { Button } from "@/components/ws/ui/button";
+import { Button, buttonVariants } from "@/components/ws/ui/button";
 import { EASE_OUT } from "@/components/ws/ui/motion";
 import { Switch } from "@/components/ws/ui/misc";
 import { ChannelTile } from "@/components/ws/ui/channel-tile";
@@ -109,9 +109,8 @@ export function BuilderView({
   const [notice, setNotice] = useState<string | null>(null);
   const [save, setSave] = useState<Save>(stored ? "idle" : "saving");
   const [depth, setDepth] = useState({ past: 0, future: 0 });
-  const [status, setStatus] = useState<StrategyStatus>(initialStatus);
+  const [status] = useState<StrategyStatus>(initialStatus);
   const [runs, setRuns] = useState<RunSummary | null>(null);
-  const [launching, setLaunching] = useState(false);
 
   // Steps added here must not reuse an id the server already handed over.
   useEffect(() => reserveIds(graph.nodes), [graph]);
@@ -276,43 +275,6 @@ export function BuilderView({
       window.clearInterval(timer);
     };
   }, [status, refreshRuns]);
-
-  async function launch() {
-    if (launching) return;
-    setLaunching(true);
-    try {
-      // The plan that runs is the plan that is saved, so save what is on screen first.
-      if (dirty.current) await persist();
-      const { launch: result } = await api.launchStrategy(strategyId);
-      setStatus(result.strategy.status);
-      const bits = [
-        `${result.enrolled} ${result.enrolled === 1 ? "lead" : "leads"} enrolled`,
-        result.inOtherStrategy ? `${result.inOtherStrategy} skipped (in another strategy)` : "",
-        result.withoutConsent ? `${result.withoutConsent} skipped (no consent recorded)` : "",
-      ].filter(Boolean);
-      say(`Launched as a dry run — ${bits.join(", ")}.`);
-      void refreshRuns();
-    } catch (caught) {
-      const fields = fieldErrorsOf(caught);
-      say(fields ? Object.values(fields)[0] : caught instanceof Error ? caught.message : "That couldn't be launched.");
-    } finally {
-      setLaunching(false);
-    }
-  }
-
-  async function pauseRun() {
-    if (launching) return;
-    setLaunching(true);
-    try {
-      const { strategy } = await api.setStrategyStatus(strategyId, "paused");
-      setStatus(strategy.status);
-      say("Paused. Nothing more runs until you resume.");
-    } catch {
-      say("That couldn't be paused. Try again.");
-    } finally {
-      setLaunching(false);
-    }
-  }
 
   // Debounced while editing, and flushed when the page goes away so a half-typed edit survives.
   useEffect(() => {
@@ -523,23 +485,14 @@ export function BuilderView({
                 </>
               )}
             </Button>
-            {status === "live" ? (
-              <Button variant="outline" size="sm" onClick={() => void pauseRun()} disabled={launching}>
-                <Pause aria-hidden strokeWidth={2} />
-                Pause
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void launch()}
-                disabled={launching || save === "saving"}
-                title={DRY_RUN_NOTE}
-              >
-                <Rocket aria-hidden strokeWidth={1.9} />
-                {launching ? "Starting…" : status === "paused" ? "Resume" : "Launch"}
-              </Button>
-            )}
+            <Link
+              href="/dashboard/strategies"
+              title={status === "live" ? "Pause or review it on Strategies" : "Edits save as a draft. Launch it from Strategies."}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              <Rocket aria-hidden strokeWidth={1.9} />
+              {status === "live" ? "On Strategies" : "Launch on Strategies"}
+            </Link>
             <Button variant="outline" size="icon" aria-label="Undo" disabled={depth.past === 0} onClick={undo}>
               <Undo2 aria-hidden strokeWidth={1.9} />
             </Button>
@@ -632,7 +585,7 @@ export function BuilderView({
             />
             <p className="border-t border-border bg-chrome px-4 py-[6px] text-[11px] text-muted-foreground">
               Figures on the steps are estimates from your audience size, not your results.{" "}
-              {SENDING_ENABLED ? "" : "Launching is a dry run: nothing is sent."}
+              {SENDING_ENABLED ? "" : "Launching is a dry run: nothing is sent."} Edits save as a draft; launch from Strategies.
             </p>
             <AnimatePresence>
               {notice ? (
@@ -812,8 +765,9 @@ export function BuilderView({
 
                 {!SENDING_ENABLED ? (
                   <p className="rounded-lg bg-accent px-[11px] py-[9px] text-[11.5px] leading-[1.55] text-body">
-                    <span className="font-medium">Launch is a dry run.</span> {DRY_RUN_NOTE} Days are compressed to
-                    minutes so you can watch a plan finish; call steps become real to-dos.
+                    <span className="font-medium">Launching is a dry run.</span> {DRY_RUN_NOTE} Edits here save as a draft; launch
+                    from Strategies. Days are compressed to minutes so you can watch a plan finish; call steps become
+                    real to-dos.
                   </p>
                 ) : null}
               </div>

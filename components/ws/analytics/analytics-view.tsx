@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { RangeKey } from "@/lib/data/types";
 import { CHANNEL_NAME } from "@/lib/ws/channels";
@@ -14,6 +14,7 @@ import { Segmented } from "@/components/ws/ui/segmented";
 import { Appear } from "@/components/ws/ui/motion";
 import { EmptyState, LoadError, Meter, MetricTile, Skeleton } from "@/components/ws/ui/misc";
 import { AreaChart, BarRows } from "./charts";
+import { JourneysPanel } from "./journeys-panel";
 
 const RANGES: { value: RangeKey; label: string }[] = [
   { value: "7d", label: "7 days" },
@@ -22,9 +23,32 @@ const RANGES: { value: RangeKey; label: string }[] = [
 ];
 
 /** Analytics — the same figures as Home, over a longer window and broken down. */
+type Tab = "results" | "journeys";
+
 export function AnalyticsView() {
   const [range, setRange] = useState<RangeKey>("30d");
+  const [tab, setTab] = useState<Tab>("results");
   const report = useAsync(() => api.analytics({ range }), [range]);
+  const journeys = useAsync(() => api.journeys({ range }), [range]);
+
+  // Open on the journeys the first time one exists: that is what a launch changes.
+  const chosen = useRef(false);
+  const launched = journeys.state === "ready" ? journeys.data.journeys.strategies : null;
+  useEffect(() => {
+    if (launched && launched.length > 0 && !chosen.current) {
+      chosen.current = true;
+      setTab("journeys");
+    }
+  }, [launched]);
+
+  // A running strategy moves while this screen is open: run what has come due, then re-read.
+  const running = launched?.some((s) => s.status === "live") ?? false;
+  const reloadJourneys = journeys.reload;
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setInterval(() => void api.runEngine().then(reloadJourneys, () => undefined), 10_000);
+    return () => window.clearInterval(timer);
+  }, [running, reloadJourneys]);
 
   return (
     <>
@@ -33,15 +57,46 @@ export function AnalyticsView() {
         <Appear>
           <PageHeader
             title="Analytics"
-            subtitle="What has been recorded: people reached, replies, meetings. Nothing here is projected."
+            subtitle={
+              tab === "results"
+                ? "What has been recorded: people reached, replies, meetings. Nothing here is projected."
+                : "Where launched strategies' audiences are in their plans, and every touchpoint made."
+            }
             actions={
-              <Segmented<RangeKey> label="Date range" value={range} onChange={setRange} options={RANGES} />
+              <div className="flex flex-wrap items-center gap-2">
+                <Segmented<Tab>
+                  label="Analytics view"
+                  value={tab}
+                  onChange={(next) => {
+                    chosen.current = true;
+                    setTab(next);
+                  }}
+                  options={[
+                    { value: "results", label: "Results" },
+                    { value: "journeys", label: "Journeys", count: launched?.length },
+                  ]}
+                />
+                <Segmented<RangeKey> label="Date range" value={range} onChange={setRange} options={RANGES} />
+              </div>
             }
           />
         </Appear>
 
-        <DemoNote />
+        {tab === "journeys" ? (
+          journeys.state === "ready" ? (
+            <JourneysPanel data={journeys.data.journeys} range={range} />
+          ) : journeys.state === "failed" ? (
+            <Card>
+              <LoadError message="We couldn't load your journeys." onRetry={journeys.reload} />
+            </Card>
+          ) : (
+            <Skeleton className="h-[92px] rounded-xl" />
+          )
+        ) : null}
 
+        {tab === "results" ? <DemoNote /> : null}
+
+        {tab === "results" ? (
         <Appear index={1}>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
             {report.state === "ready"
@@ -57,14 +112,15 @@ export function AnalyticsView() {
               : [0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-[92px] rounded-xl" />)}
           </div>
         </Appear>
+        ) : null}
 
-        {report.state === "failed" && (
+        {tab === "results" && report.state === "failed" && (
           <Card>
             <LoadError message="We couldn't load your analytics." onRetry={report.reload} />
           </Card>
         )}
 
-        {report.state === "ready" && (
+        {tab === "results" && report.state === "ready" && (
           <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:grid-rows-1">
             <div className="flex min-w-0 flex-col gap-4 lg:min-h-0">
               <Appear index={2}>

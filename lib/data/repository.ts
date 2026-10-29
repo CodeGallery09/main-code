@@ -50,6 +50,7 @@ import type {
   WorkspaceSettings,
   LaunchResult,
   RunSummary,
+  Journeys,
 } from "@/lib/data/types";
 import type {
   AccountSettingsPatch,
@@ -195,6 +196,11 @@ export interface Repository {
   runDueSteps(ctx: Ctx, limit?: number): Promise<{ processed: number }>;
   /** Where the strategy's audiences are in its plan, or null when the strategy is not yours. */
   runSummary(ctx: Ctx, id: string): Promise<RunSummary | null>;
+  /**
+   * Every launched strategy's journey (per-step reach, who is where) and the touchpoints made in
+   * the range. Read from the run records and their log, so it moves as the plan runs.
+   */
+  getJourneys(ctx: Ctx, range: RangeKey): Promise<Journeys>;
 
   /**
    * Makes sure the workspace has the demo strategy: one multichannel strategy with its audiences,

@@ -13,6 +13,7 @@ import type {
   ChannelAccount,
   LaunchResult,
   RunSummary,
+  Journeys,
   Strategy,
   ConnectSession,
   StrategyStatus,
@@ -249,6 +250,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ channel, body }),
     }),
+
+  /** Launched strategies' journeys and the touchpoints in the range (dry-run figures while nothing sends). */
+  journeys: (params: { range?: string } = {}) => request<{ journeys: Journeys }>(`/api/journeys${qs(params)}`),
 
   analytics: (params: { range?: string; channels?: string } = {}) =>
     request<Analytics>(`/api/analytics${qs(params)}`),

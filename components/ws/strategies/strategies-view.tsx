@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Copy, Pause, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { Copy, Pause, Pencil, Plus, Rocket, Trash2 } from "lucide-react";
 import { api, fieldErrorsOf } from "@/lib/api";
 import { DRY_RUN_NOTE, SENDING_ENABLED } from "@/lib/capabilities";
 import type { Strategy, StrategyStatus } from "@/lib/data/types";
@@ -27,6 +27,7 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: "scheduled", label: "Scheduled" },
   { value: "draft", label: "Draft" },
   { value: "paused", label: "Paused" },
+  { value: "completed", label: "Finished" },
 ];
 
 /**
@@ -34,8 +35,8 @@ const FILTERS: { value: Filter; label: string }[] = [
  * no matter how long a strategy's name is; the table scrolls sideways rather
  * than squeezing them.
  */
-const COLS = "grid-cols-[minmax(260px,2.4fr)_110px_90px_90px_96px_96px_96px_112px]";
-const HEADS = ["Strategy", "Status", "Audiences", "Sent", "Delivered", "Open rate", "Reply rate", "Actions"];
+const COLS = "grid-cols-[minmax(230px,2.2fr)_100px_84px_104px_80px_90px_84px_84px_176px]";
+const HEADS = ["Strategy", "Status", "Audiences", "Touchpoints", "Sent", "Delivered", "Open rate", "Reply rate", "Actions"];
 
 /** Numbers a strategy has not produced yet read "—", never a fabricated 0. */
 const num = (v: number | null) => (v === null ? "—" : fmt(v));
@@ -48,8 +49,15 @@ export function StrategiesView() {
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<Strategy | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [launched, setLaunched] = useState<string | null>(null);
 
   const list = useAsync(() => api.strategies(), []);
+  // Where each launched strategy's audiences are, and the touchpoints so far (dry run until sending lands).
+  const journeys = useAsync(() => api.journeys({ range: "90d" }), []);
+  const journeyOf = useMemo(
+    () => new Map((journeys.data?.journeys.strategies ?? []).map((j) => [j.id, j])),
+    [journeys.data],
+  );
   const all = useMemo(() => list.data?.items ?? [], [list.data]);
 
   const rows = useMemo(() => {
@@ -69,20 +77,39 @@ export function StrategiesView() {
 
   // A running strategy moves while this screen is open: run what has come due, then re-read.
   const reload = list.reload;
+  const reloadJourneys = journeys.reload;
   useEffect(() => {
     if (live === 0) return;
-    const timer = window.setInterval(() => void api.runEngine().then(reload, () => undefined), 10_000);
+    const timer = window.setInterval(
+      () =>
+        void api.runEngine().then(() => {
+          reload();
+          reloadJourneys();
+        }, () => undefined),
+      10_000,
+    );
     return () => window.clearInterval(timer);
-  }, [live, reload]);
+  }, [live, reload, reloadJourneys]);
 
   /** Pausing is a status change; starting or resuming is a launch, which enrols the audience and queues the steps. */
   async function toggle(s: Strategy) {
     setBusy(s.id);
     setProblem(null);
+    setLaunched(null);
     try {
-      if (s.status === "live") await api.setStrategyStatus(s.id, "paused");
-      else await api.launchStrategy(s.id);
+      if (s.status === "live") {
+        await api.setStrategyStatus(s.id, "paused");
+      } else {
+        const { launch } = await api.launchStrategy(s.id);
+        const skipped = launch.inOtherStrategy + launch.withoutConsent;
+        setLaunched(
+          `${launch.strategy.name} is live${SENDING_ENABLED ? "" : " as a dry run"}: ${launch.enrolled} ${launch.enrolled === 1 ? "lead" : "leads"} in the plan${skipped ? `, ${skipped} skipped (in another strategy or no consent)` : ""}.`,
+        );
+        // It is running now, so show it where running strategies are.
+        setFilter("live");
+      }
       list.reload();
+      journeys.reload();
     } catch (caught) {
       const fields = fieldErrorsOf(caught);
       setProblem(fields ? Object.values(fields)[0] : "That couldn't be changed. Try again.");
@@ -142,6 +169,12 @@ export function StrategiesView() {
             }
           />
         </Appear>
+
+        {launched ? (
+          <p role="status" className="rounded-[10px] border border-border bg-card px-[14px] py-[9px] text-[12px] text-body">
+            {launched}
+          </p>
+        ) : null}
 
         {problem ? (
           <p role="alert" className="rounded-[10px] border border-warning-border bg-warning-bg px-[14px] py-[9px] text-[12px] text-warning">
@@ -206,7 +239,7 @@ export function StrategiesView() {
             </div>
 
             <div className="overflow-x-auto lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-              <div className="min-w-[940px]">
+              <div className="min-w-[1120px]">
                 <div className={cn("sticky top-0 z-[1] grid gap-3 border-b border-border bg-chrome px-4 py-[7px]", COLS)}>
                   {HEADS.map((h, i) => (
                     <span key={h} className={cn("label-mono text-[10.5px] tracking-[0.07em]", i >= 2 && "text-right")}>
@@ -243,11 +276,20 @@ export function StrategiesView() {
                         <span className="truncate font-mono text-[10.5px] text-muted-foreground">
                           {channelNames(s.channels)} · {whenLabel(s.status, s.startedAt)}
                         </span>
+                        {journeyOf.has(s.id) ? (
+                          <span className="truncate font-mono text-[10.5px] text-muted-foreground">
+                            {journeyOf.get(s.id)!.active} in journey · {journeyOf.get(s.id)!.completed + journeyOf.get(s.id)!.stopped} finished
+                            {s.status === "live" && !SENDING_ENABLED ? " · dry run" : ""}
+                          </span>
+                        ) : null}
                       </span>
                       <span>
                         <StrategyStatusPill status={s.status} />
                       </span>
                       <span className="text-right font-mono text-[11.5px]">{fmt(s.audiences)}</span>
+                      <span className="text-right font-mono text-[11.5px]">
+                        {journeyOf.has(s.id) ? fmt(journeyOf.get(s.id)!.touchpoints) : "—"}
+                      </span>
                       <span className="text-right font-mono text-[11.5px]">{num(s.sent)}</span>
                       <span className="text-right font-mono text-[11.5px]">{num(s.delivered)}</span>
                       <span className="text-right font-mono text-[11.5px]">{rate(s.openRate)}</span>
@@ -262,16 +304,29 @@ export function StrategiesView() {
                             <Pencil aria-hidden strokeWidth={1.8} />
                           </Link>
                         ) : null}
-                        {(s.status === "live" || s.status === "paused") && !s.isSample ? (
-                          <Button
-                            variant="outline"
-                            size="icon-sm"
-                            disabled={busy === s.id}
-                            aria-label={s.status === "live" ? `Pause ${s.name}` : `Resume ${s.name}`}
-                            onClick={() => void toggle(s)}
-                          >
-                            {s.status === "live" ? <Pause aria-hidden strokeWidth={1.9} /> : <Play aria-hidden strokeWidth={1.9} />}
-                          </Button>
+                        {s.type === "multichannel" && !s.isSample && s.status !== "completed" ? (
+                          s.status === "live" ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={busy === s.id}
+                              aria-label={`Pause ${s.name}`}
+                              onClick={() => void toggle(s)}
+                            >
+                              <Pause aria-hidden strokeWidth={1.9} />
+                              Pause
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              disabled={busy === s.id}
+                              aria-label={`${s.status === "paused" ? "Resume" : "Launch"} ${s.name}`}
+                              onClick={() => void toggle(s)}
+                            >
+                              <Rocket aria-hidden strokeWidth={1.9} />
+                              {busy === s.id ? "Starting…" : s.status === "paused" ? "Resume" : "Launch"}
+                            </Button>
+                          )
                         ) : null}
                         <Button
                           variant="outline"

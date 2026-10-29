@@ -46,6 +46,8 @@ import type {
 } from "@/lib/data/repository";
 import { AUDIENCE_CAMPAIGN, AUDIENCE_WORKSPACE, graphFromTemplate, type WorkflowGraph } from "@/lib/app/workflow";
 import { runStep } from "@/lib/engine/steps";
+import { journeyRows } from "@/lib/engine/journey";
+import { SENDING_ENABLED } from "@/lib/capabilities";
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
 import type { AccountSettingsPatch, StrategyPatch, AudiencePatch } from "@/lib/data/validate";
 import { findInJourney, mergeAudiences, type InJourneyRow, type AudienceProfile } from "@/lib/audiences/merge";
@@ -63,6 +65,8 @@ import type {
   Strategy,
   StrategyStatus,
   LaunchResult,
+  Journeys,
+  JourneyStrategy,
   RunActivity,
   RunSummary,
   Channel,
@@ -143,7 +147,7 @@ type MemRun = { id: string; strategyId: string; audienceId: string; state: "acti
 type MemJob = { id: string; runId: string; stepId: string; runAt: number; done: boolean };
 const runs = shared<MemRun[]>("runs", () => []);
 const jobs = shared<MemJob[]>("jobs", () => []);
-const runLog = shared<(RunActivity & { strategyId: string })[]>("runLog", () => []);
+const runLog = shared<(RunActivity & { strategyId: string; audienceId: string; step: string })[]>("runLog", () => []);
 
 const counters = shared<Record<string, number>>("counters", () => ({}));
 const nextId = (kind: string) => `${Date.now().toString(36)}${(counters[kind] = (counters[kind] ?? 0) + 1)}`;
@@ -275,7 +279,7 @@ export class MemoryRepository implements Repository {
         : null;
 
     return {
-      items: items.map((c) => ({ ...c })),
+      items: items.map((c) => this.withMembers(c)),
       totals: {
         audiences: items.reduce((sum, c) => sum + c.audiences, 0),
         delivered: delivered || sent,
@@ -287,7 +291,12 @@ export class MemoryRepository implements Repository {
 
   async getStrategy(_ctx: Ctx, id: string): Promise<Strategy | null> {
     const found = strategies.find((c) => c.id === id);
-    return found ? { ...found } : null;
+    return found ? this.withMembers(found) : null;
+  }
+
+  /** The demo strategy keeps its stored figure; every real one reports who is actually in it. */
+  private withMembers(strategy: Strategy): Strategy {
+    return strategy.isSample ? { ...strategy } : { ...strategy, audiences: audienceRows.filter((a) => a.strategyId === strategy.id).length };
   }
 
   async createStrategy(_ctx: Ctx, input: StrategyPatch): Promise<Strategy> {
@@ -474,6 +483,8 @@ export class MemoryRepository implements Repository {
             audienceName: person?.name ?? "",
             channel: effect.channel,
             strategyId: run.strategyId,
+            audienceId: run.audienceId,
+            step: effect.step,
           });
         } else if (person) {
           tasks.unshift({
@@ -518,7 +529,54 @@ export class MemoryRepository implements Repository {
       stopped: mine.filter((r) => r.state === "stopped").length,
       waiting: pending.filter((j) => j.runAt > Date.now()).length,
       nextDueAt: next === null ? null : new Date(next).toISOString(),
-      recent: runLog.filter((l) => l.strategyId === id).slice(0, 8).map(({ strategyId: _s, ...row }) => row),
+      recent: runLog.filter((l) => l.strategyId === id).slice(0, 8).map((l) => ({ at: l.at, text: l.text, audienceName: l.audienceName, channel: l.channel })),
+    };
+  }
+
+  async getJourneys(ctx: Ctx, range: RangeKey): Promise<Journeys> {
+    const days = rangeDays(range);
+    const launched = strategies.filter((s) => runs.some((r) => r.strategyId === s.id));
+    const out: JourneyStrategy[] = [];
+    for (const s of launched) {
+      const flow = await this.getWorkflow(ctx, s.id);
+      if (!flow) continue;
+      const mine = runs.filter((r) => r.strategyId === s.id);
+      const log = runLog.filter((l) => l.strategyId === s.id);
+      const reachedBy = new Map<string, number>();
+      for (const step of new Set(log.map((l) => l.step))) {
+        reachedBy.set(step, new Set(log.filter((l) => l.step === step).map((l) => l.audienceId)).size);
+      }
+      const hereBy = new Map<string, number>();
+      for (const j of jobs) {
+        const run = mine.find((r) => r.id === j.runId);
+        if (!j.done && run?.state === "active") hereBy.set(j.stepId, (hereBy.get(j.stepId) ?? 0) + 1);
+      }
+      out.push({
+        id: s.id,
+        name: s.name,
+        status: s.status,
+        enrolled: mine.length,
+        active: mine.filter((r) => r.state === "active").length,
+        completed: mine.filter((r) => r.state === "completed").length,
+        stopped: mine.filter((r) => r.state === "stopped").length,
+        touchpoints: log.filter((l) => l.channel !== null).length,
+        steps: journeyRows(flow.graph.nodes, flow.graph.edges, reachedBy, hereBy, mine.length) as JourneyStrategy["steps"],
+      });
+    }
+
+    const day = (d: Date) => d.toISOString().slice(0, 10);
+    const axis = Array.from({ length: days }, (_, i) => day(new Date(Date.now() - (days - 1 - i) * 86_400_000)));
+    const touches = runLog.filter((l) => l.channel !== null && day(new Date(l.at)) >= axis[0]);
+    const perChannel = new Map<Channel, number>();
+    for (const t of touches) perChannel.set(t.channel as Channel, (perChannel.get(t.channel as Channel) ?? 0) + 1);
+    return {
+      strategies: out,
+      touchpoints: {
+        total: touches.length,
+        byChannel: [...perChannel].map(([channel, count]) => ({ channel, count })).sort((x, y) => y.count - x.count),
+        byDay: axis.map((date) => ({ date, count: touches.filter((t) => day(new Date(t.at)) === date).length })),
+      },
+      dryRun: !SENDING_ENABLED,
     };
   }
 
