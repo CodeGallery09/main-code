@@ -178,6 +178,15 @@ The stores apply the result: `launchStrategy`, `runDueSteps`, `runSummary` and `
   backstop. The endpoint is idempotent, so the two overlapping costs nothing. Two GitHub habits to
   know: a scheduled workflow only runs from the **default branch**, and GitHub **disables the
   schedule after 60 days** with no commits. Secrets: `FLIGHTPATH_URL`, `FLIGHTPATH_CRON_SECRET`.
+- **Three values turn it on, and all three are needed**: `CRON_SECRET` in Vercel (Production), and
+  `FLIGHTPATH_URL` + `FLIGHTPATH_CRON_SECRET` as GitHub repository secrets. With the GitHub pair
+  unset the job exits 0 with a `::warning::` rather than failing — **a scheduled job that fails
+  emails the repository owner, and this one runs every ten minutes**, so it shouts only where a
+  person has to act: a secret that is set but **refused** (401/403, meaning `CRON_SECRET` is unset
+  on the deployment or the two values differ). A timeout or a 5xx is a warning too, because the
+  next run is ten minutes away and the endpoint is idempotent. It shipped failing on *everything*,
+  including never having been configured, and sent mail every ten minutes until it was fixed —
+  which is how a real failure ends up unread. Never make "not set up yet" a failing run.
 - **Nothing here is billable.** Actions minutes are unlimited on a public repository, which this one
   is; a free account's spending limit is $0, so Actions stops rather than charges if it is ever made
   private (2,000 free minutes a month against roughly 4,300 needed — go hourly, or point

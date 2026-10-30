@@ -4,15 +4,30 @@ name: Advance live plans
 # ten-minute beat comes from here instead and `vercel.json` keeps a daily run as a backstop. Both
 # call the same endpoint; it is idempotent, so an overlap costs nothing.
 #
+# **It is a backstop, not the only beat.** `POST /api/engine/run`, which every open Strategies,
+# Home, Analytics and builder screen already polls, rides a global tick in under an advisory lock,
+# so ordinary use advances every workspace whether or not this job runs. What this adds is the
+# hours when nobody is looking.
+#
 # **This costs nothing.** Actions minutes are unlimited on a public repository, which this one is.
 # If it is ever made private, a free account gets 2,000 minutes a month and this job would spend
 # roughly 4,300 of them — so make the schedule hourly, or move the beat to a free external pinger
 # (cron-job.org, UptimeRobot) pointed at the same URL with `?token=<secret>`. Either way nothing is
 # billed: a free GitHub account has a $0 spending limit, so Actions stops rather than charging.
 #
-# Needs two repository secrets (Settings → Secrets and variables → Actions):
-#   FLIGHTPATH_URL     https://your-domain           — no trailing slash
-#   FLIGHTPATH_CRON_SECRET                           — the same value as CRON_SECRET in Vercel
+# **Turning it on takes three values, and all three are needed.** With any of them missing the beat
+# simply does not run; the product keeps working off the in-app tick.
+#   1. `CRON_SECRET` in Vercel (Production) — the endpoint refuses *every* call while this is unset.
+#   2. `FLIGHTPATH_URL` repository secret — https://your-domain, no trailing slash.
+#   3. `FLIGHTPATH_CRON_SECRET` repository secret — the same value as (1).
+# GitHub secrets live under Settings → Secrets and variables → Actions.
+#
+# **What this job shouts about, and what it does not.** A scheduled job that fails emails the
+# repository owner, so it fails only where a person has to do something: a secret that is set but
+# rejected. Not being set up at all is a warning, not a failure — otherwise a backstop nobody has
+# configured yet sends mail every ten minutes forever, which teaches you to ignore the mail. A
+# server-side blip is a warning too: the next run is ten minutes away and the endpoint is
+# idempotent, so a single 500 during a deploy fixes itself.
 #
 # Two things GitHub does that are worth knowing: a scheduled workflow only runs from the default
 # branch, and GitHub disables the schedule after 60 days with no commits to the repository. If the
@@ -38,8 +53,8 @@ jobs:
           SECRET: ${{ secrets.FLIGHTPATH_CRON_SECRET }}
         run: |
           if [ -z "$URL" ] || [ -z "$SECRET" ]; then
-            echo "FLIGHTPATH_URL or FLIGHTPATH_CRON_SECRET is not set — nothing to call."
-            exit 1
+            echo "::warning title=Scheduled beat is not set up::Set FLIGHTPATH_URL and FLIGHTPATH_CRON_SECRET as repository secrets, and CRON_SECRET in Vercel, to turn it on. Until then plans still advance from the in-app tick whenever a screen is open."
+            exit 0
           fi
           # The secret rides in the header, never the URL, so it stays out of the run log.
           code=$(curl --silent --show-error --fail-with-body \
@@ -50,8 +65,17 @@ jobs:
           echo "HTTP $code"
           cat /tmp/tick.json || true
           echo
-          # 401 or 503 means the secret is wrong or unset on the deployment; that is worth failing on.
           case "$code" in
+            # It ran.
             200) exit 0 ;;
-            *) exit 1 ;;
+            # The secret is set but the deployment does not accept it: either CRON_SECRET is unset
+            # there, or the two values differ. Nothing improves until someone fixes it, so fail.
+            401|403)
+              echo "::error title=The scheduler's secret was refused::FLIGHTPATH_CRON_SECRET does not match CRON_SECRET on the deployment, or CRON_SECRET is unset there."
+              exit 1 ;;
+            # Anything else — a timeout, a 5xx mid-deploy, an empty code from a dropped connection.
+            # The next run is ten minutes away and the endpoint is idempotent.
+            *)
+              echo "::warning title=The engine did not answer::HTTP ${code:-no response}. Retrying on the next run in ten minutes."
+              exit 0 ;;
           esac
