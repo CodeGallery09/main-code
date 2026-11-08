@@ -207,7 +207,7 @@ export function FounderBooker() {
           <div data-pip="cta" className="glass-lg mx-auto grid max-w-[1020px] grid-cols-1 overflow-hidden md:grid-cols-[272px_minmax(0,1fr)]">
             {/* ---- left: what this is ---- */}
             <aside className="flex flex-col border-b border-line p-7 md:border-r md:border-b-0">
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-accent text-[17px] font-extrabold text-white" aria-hidden="true">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-accent text-[17px] font-extrabold text-surface" aria-hidden="true">
                 F
               </span>
               <p className="mt-4 text-[14px] font-bold text-muted">Flightpath founders</p>

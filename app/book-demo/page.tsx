@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Check } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { SiteFrame } from "@/components/SiteFrame";
 import { DemoForm } from "@/components/demo/DemoForm";
 import { DemoWorkflow } from "@/components/demo/DemoWorkflow";
 
@@ -29,7 +30,7 @@ export default function BookDemoPage() {
   const deliveryConfigured = Boolean(process.env.DEMO_REQUEST_WEBHOOK_URL);
 
   return (
-    <>
+    <SiteFrame>
       <Navbar />
       <main id="main">
         <section id="top" data-pip-section="book-intro" aria-labelledby="book-demo-title" className="relative overflow-hidden">
@@ -89,6 +90,6 @@ export default function BookDemoPage() {
         </section>
       </main>
       <Footer />
-    </>
+    </SiteFrame>
   );
 }

@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { SiteFrame } from "@/components/SiteFrame";
 
 export function AuthPage({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
-    <>
+    <SiteFrame>
       <Navbar />
       <main id="main">
         <section id="top" aria-labelledby="auth-title" className="relative overflow-hidden py-16 md:py-24">
@@ -21,6 +22,6 @@ export function AuthPage({ title, subtitle, children }: { title: string; subtitl
         </section>
       </main>
       <Footer />
-    </>
+    </SiteFrame>
   );
 }

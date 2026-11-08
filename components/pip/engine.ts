@@ -22,9 +22,13 @@ const sec = (id: string) => `[data-pip-section="${id}"]`;
 /* ---- per-section perches and explanations ---- */
 const SECTIONS: Section[] = [
   { id: "hero", el: sec("hero"), items: [
-    { sel: "[data-hcard]", idx: 0, kind: "top", at: 0.5, line: "Hi! I'm Pip, resident bird of this site. These cards are sample data from one workflow." },
-    { sel: "[data-hcard]", idx: 3, kind: "top", at: 0.5, line: "Engagement score: past 70, a human steps in. Scroll and watch the cards line up." },
-    { sel: "[data-hcard]", idx: 5, kind: "top", at: 0.5, line: "Zero duplicate touches. LinkedIn and email run on one clock." },
+    // Act one has nothing to perch on — the cards are still in the dark and the
+    // object fills the right of the frame — so he stands at the left edge.
+    { kind: "screen", fx: 0.07, line: "Hi! I'm Pip, resident bird of this site. That's MoM-BH*-1 behind me: a black hole wrapped in a star." },
+    // Still at the edge: the cards are invisible for most of this section, and a
+    // perch on one of them puts him in the middle of the object.
+    { kind: "screen", fx: 0.07, line: "Engagement score: past 70, a human steps in. Scroll and watch the cards line up." },
+    { kind: "screen", fx: 0.07, line: "Zero duplicate touches. LinkedIn and email run on one clock." },
   ] },
   { id: "journey", el: sec("journey"), items: [
     { sel: "#journey-card", kind: "top", at: 0.9, fallback: { kind: "screen", fx: 0.06 }, line: "Meet Maya, a sample audience. Pick how she responds and watch her route change." },

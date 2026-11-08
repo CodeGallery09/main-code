@@ -182,10 +182,10 @@ export function UntangleFlow() {
 
         <span
           ref={hub}
-          className="absolute inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 text-[14px] font-bold whitespace-nowrap text-white shadow-[0_16px_34px_-14px_rgb(10_10_10/0.5),inset_0_1px_0_rgb(255_255_255/0.3)]"
+          className="absolute inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 text-[14px] font-bold whitespace-nowrap text-surface shadow-[0_16px_34px_-14px_rgb(10_10_10/0.5),inset_0_1px_0_rgb(255_255_255/0.3)]"
           style={{ left: `${HUB.x}%`, top: `${HUB.y}%`, transform: "translate(-50%,-50%)" }}
         >
-          <span className="live-dot text-white" />
+          <span className="live-dot text-surface" />
           Flightpath
         </span>
 

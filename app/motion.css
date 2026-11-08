@@ -59,6 +59,9 @@
 /* --- Parallax -------------------------------------------------------- */
 .mo-parallax { will-change: transform; }
 
+/* --- ScrollScene ----------------------------------------------------- */
+.mo-scene { will-change: transform, opacity; }
+
 /* --- Magnetic -------------------------------------------------------- */
 .mo-magnetic {
   display: inline-flex;
@@ -88,128 +91,99 @@
 }
 
 /* =====================================================================
-   ORB — the hero object. A dark sphere under a creased membrane, lit from
-   the upper left, with one bright point where the creases converge.
-   Greyscale throughout: the form is carried entirely by the light.
+   MoM-BH*-1 — the hero object. The canvas (components/motion/BlackHoleStar)
+   draws the disc, the horizon and the photon ring; everything here is the
+   envelope around it and the light it throws into the room.
+   Greyscale: temperature, not hue.
    ===================================================================== */
-.mo-orb {
-  --orb-rx: 0deg;
-  --orb-ry: 0deg;
-  --orb-lx: 38%;
-  --orb-ly: 28%;
-  --orb-y: 0px;
-  --orb-scale: 1;
+.bh {
+  --bh-rx: 0deg;
+  --bh-ry: 0deg;
+  --bh-y: 0px;
+  --bh-scale: 1;
   position: relative;
   aspect-ratio: 1;
-  isolation: isolate;
-  transform: translate3d(0, var(--orb-y), 0) scale(var(--orb-scale));
-  color: rgb(255 255 255 / 0.35);
+  transform: translate3d(0, var(--bh-y), 0) scale(var(--bh-scale));
+  color: rgb(255 255 255 / 0.3);
 }
 
-/* The light the object throws onto the room behind it. */
-.mo-orb-halo {
+/* What the object lights up behind itself. */
+.bh-halo {
   position: absolute;
-  inset: -22%;
+  inset: -26%;
   border-radius: 50%;
-  background: radial-gradient(circle at var(--orb-lx) var(--orb-ly), rgb(255 255 255 / 0.1), transparent 62%);
-  filter: blur(26px);
-  animation: mo-orb-breathe 11s ease-in-out infinite;
+  background: radial-gradient(circle, rgb(196 196 210 / 0.14), rgb(120 120 140 / 0.05) 42%, transparent 66%);
+  filter: blur(30px);
+  animation: bh-breathe 13s ease-in-out infinite;
 }
 
-.mo-orb-tilt {
+.bh-tilt {
   position: absolute;
   inset: 0;
-  perspective: 1200px;
+  transform: perspective(1400px) rotateX(var(--bh-rx)) rotateY(var(--bh-ry));
+  transition: transform 140ms linear;
 }
 
-.mo-orb-body {
+/* The body of the envelope: dense hydrogen, lit only from the inside. */
+.bh-body {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  overflow: hidden;
-  transform: rotateX(var(--orb-rx)) rotateY(var(--orb-ry));
-  transition: transform 120ms linear;
   background:
-    radial-gradient(circle at var(--orb-lx) var(--orb-ly), #4a4a50 0%, #26262a 28%, #121214 60%, #060607 100%);
-  box-shadow:
-    inset 0 0 90px 10px rgb(0 0 0 / 0.9),
-    0 60px 140px -50px rgb(0 0 0 / 0.95);
+    radial-gradient(circle at 44% 38%, #1d1d22 0%, #141418 30%, #0b0b0e 62%, #060608 88%, #040405 100%);
+  box-shadow: inset 0 0 100px 18px rgb(0 0 0 / 0.85);
 }
 
-/* The membrane. Two sets of creases turn against each other, slowly. */
-.mo-orb-skin {
+.bh-canvas {
   position: absolute;
-  inset: -2%;
-  width: 104%;
-  height: 104%;
-  mix-blend-mode: screen;
-  opacity: 0.5;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
 }
-.mo-orb-spin {
-  /* Against the view box, not the group's own bounds, so both layers turn
-     about the point the creases converge on. */
-  transform-box: view-box;
-  transform-origin: 16px -6px;
-  animation: mo-orb-turn 120s linear infinite;
-}
-.mo-orb-spin-back { animation-duration: 190s; animation-direction: reverse; }
 
-/* Darkens the lower right so the sphere turns away from the light. */
-.mo-orb-shade {
+/* The hydrogen cocoon: a dense dark body the disc is seen through, lit from
+   the inside out rather than by any light in the room. */
+.bh-shell {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: radial-gradient(circle at var(--orb-lx) var(--orb-ly), transparent 30%, rgb(0 0 0 / 0.55) 72%, rgb(0 0 0 / 0.9) 100%);
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 46%, rgb(8 8 11 / 0.3) 72%, rgb(5 5 7 / 0.72) 92%, rgb(3 3 5 / 0.9) 100%);
 }
 
-/* The thin lit edge along the top left. */
-.mo-orb-rim {
+/* The lit edge of the envelope, where the cocoon is thinnest. */
+.bh-limb {
   position: absolute;
   inset: 0;
   border-radius: 50%;
+  pointer-events: none;
   background: conic-gradient(
-    from 210deg,
+    from 200deg,
     transparent 0deg,
-    rgb(255 255 255 / 0.5) 42deg,
-    rgb(255 255 255 / 0.06) 96deg,
-    transparent 150deg
+    rgb(255 255 255 / 0.3) 46deg,
+    rgb(255 255 255 / 0.05) 104deg,
+    transparent 158deg,
+    transparent 300deg,
+    rgb(255 255 255 / 0.12) 342deg,
+    transparent 360deg
   );
-  mask: radial-gradient(circle, transparent 96.2%, #000 96.6%);
-  -webkit-mask: radial-gradient(circle, transparent 96.2%, #000 96.6%);
-  opacity: 0.8;
+  mask: radial-gradient(circle, transparent 96.4%, #000 96.8%);
+  -webkit-mask: radial-gradient(circle, transparent 96.4%, #000 96.8%);
 }
 
-/* The point everything converges on. */
-.mo-orb-core {
+/* A hairline orbit, the one thing in frame that reads as an instrument. */
+.bh-ring {
   position: absolute;
-  left: calc(50% + 8%);
-  top: calc(50% - 3%);
-  width: 4.2%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow:
-    0 0 14px 3px rgb(255 255 255 / 0.9),
-    0 0 48px 14px rgb(255 255 255 / 0.4),
-    0 0 130px 50px rgb(255 255 255 / 0.14);
-  animation: mo-orb-pulse 5.5s ease-in-out infinite;
+  inset: -8%;
+  animation: bh-turn 260s linear infinite reverse;
 }
 
-/* A hairline orbit, the only thing that reads as an instrument. */
-.mo-orb-ring {
-  position: absolute;
-  inset: -7%;
-  animation: mo-orb-turn 240s linear infinite reverse;
-}
-
-@keyframes mo-orb-turn { to { transform: rotate(360deg); } }
-@keyframes mo-orb-breathe {
-  0%, 100% { transform: scale(1); opacity: 0.9; }
-  50% { transform: scale(1.06); opacity: 1; }
-}
-@keyframes mo-orb-pulse {
-  0%, 100% { opacity: 0.92; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.12); }
+@keyframes bh-turn { to { transform: rotate(360deg); } }
+@keyframes bh-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.07); opacity: 1; }
 }
 
 /* =====================================================================
@@ -224,9 +198,8 @@
     transition: none !important;
   }
   .mo-marquee-track { animation: none; }
-  .mo-orb-halo,
-  .mo-orb-spin,
-  .mo-orb-core,
-  .mo-orb-ring { animation: none; }
-  .mo-orb-body { transition: none; }
+  .mo-scene { transform: none !important; opacity: 1 !important; }
+  .bh-halo,
+  .bh-ring { animation: none; }
+  .bh-tilt { transition: none; }
 }

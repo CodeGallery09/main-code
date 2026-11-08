@@ -27,7 +27,7 @@ export function WhyFlightpath() {
         <Reveal delay={100} className="mt-14">
           <div className="card grid grid-cols-1 overflow-hidden md:grid-cols-2">
             <div data-why="today" className="border-b border-line p-6 sm:p-8 md:border-r md:border-b-0">
-              <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-warn">Today · five tools, five clocks</p>
+              <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-muted">Today · five tools, five clocks</p>
               <div className="why-area why-tangle mt-5" aria-hidden="true">
                 <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
                   {LINKS.map(([a, b], k) => {
@@ -62,7 +62,7 @@ export function WhyFlightpath() {
             </div>
 
             <div data-why="flightpath" className="p-6 sm:p-8">
-              <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-success">With Flightpath · one workflow, one clock</p>
+              <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink">With Flightpath · one workflow, one clock</p>
               <div className="mt-5">
                 <UntangleFlow />
               </div>

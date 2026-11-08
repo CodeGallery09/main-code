@@ -6,7 +6,8 @@ import { ArrowUpRight, Phone } from "lucide-react";
 import { DEMO_HREF } from "@/lib/site";
 import { pipSay } from "@/lib/pip";
 import { ChannelIcon } from "./ChannelIcon";
-import { Magnetic, Orb, TextReveal } from "./motion";
+import { BlackHoleStar, Magnetic, TextReveal } from "./motion";
+import { HeroChamber } from "./HeroChamber";
 
 const d = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -241,19 +242,23 @@ export function Hero() {
       className="hero"
     >
       <div ref={stickyRef} className="hero-sticky">
-        {/* The room the object sits in: a near-black ground with one soft wash of light. */}
-        <div className="hero-night" aria-hidden="true" />
+        {/* The room the object hangs in. */}
+        <HeroChamber />
 
         <div className="hero-wrap container-page relative pt-16 pb-20 md:pt-24">
           <div ref={orbRef} className="hero-orb">
-            <Orb />
+            <BlackHoleStar />
+            {/* The object is MoM-BH*-1, the JWST black-hole-star candidate: a black
+                hole inside an envelope of hydrogen. The caption labels the picture,
+                the way the reference does — it is not a claim about the product. */}
+            <p className="hero-orb-caption">JWST / MoM-BH*-1 / z &asymp; 10.2</p>
           </div>
 
           <div className="hero-copy">
             <div ref={copyRef}>
               <p className="hero-eyebrow intro" style={d(0)}>
                 <span className="hero-eyebrow-rule" aria-hidden="true" />
-                GTM orchestration / 001 — one motion
+                Field study / 001 — GTM orchestration
               </p>
 
               <h1 id="hero-title" className="hero-title">

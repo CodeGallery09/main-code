@@ -677,8 +677,11 @@ dependency only.
   writes straight to the DOM, so nothing re-renders per frame), `useReducedMotion`,
   `useInViewRef`, `useScrollRange`, `usePointerParallax`.
 - `components/motion/` — `Appear`/`Stagger` (entrance), `TextReveal` (per-word mask, real
-  selectable text), `Parallax` (scroll transform), `Magnetic` (pointer pull), `Marquee`,
-  `CountUp`, `Orb` (the hero object). Barrel: `components/motion/index.ts`.
+  selectable text), `Parallax` (scroll transform), `ScrollScene` (a section's rise/settle/sink,
+  driven from scroll position rather than triggered once), `Magnetic` (pointer pull), `Marquee`,
+  `CountUp`, and `BlackHoleStar` — the hero object, a canvas renderer for MoM-BH*-1, the JWST
+  black-hole-star candidate: a lensed accretion disc, an event horizon, a photon ring and the
+  hydrogen envelope the whole thing is wrapped in. Barrel: `components/motion/index.ts`.
 - `app/motion.css` — their styles, loaded app-wide next to `globals.css`. Every loop is listed
   in its `prefers-reduced-motion` block at the end; **a new loop must be added there.**
 
@@ -687,6 +690,9 @@ dependency only.
 `WorkflowLibrary.tsx` · `UntangleFlow.tsx` (rAF-driven untangle) ·
 `WhyFlightpath.tsx` · `FounderBooker.tsx` (preferred-time request, **not** availability) ·
 `SectionIntro.tsx` (the shared two-line section heading) · `Ticker.tsx` (the mono marquee band) ·
+`SiteFrame.tsx` (the `.site` wrapper that carries the dark scope) ·
+`HeroChamber.tsx` (the room the hero object hangs in: CSS planes, a column, a floor and a figure
+for scale — no photograph) ·
 `demo/DemoForm.tsx` · `Navbar.tsx` `Footer.tsx` `Reveal.tsx` `SiteGlass.tsx`.
 `SectionHeading.tsx` is the older centred heading, still used off the landing page.
 `lib/demoRequest.ts` (186L) is the shared validation contract — import-free, tested.
@@ -718,6 +724,9 @@ namespaces, no parameter properties).
 | Make another screen live | copy the Audiences pattern: `api.*` in a `useEffect`, map through `lib/app/adapt.ts`, server-side filters, optimistic writes with rollback |
 | Re-theme marketing | `:root` in `app/globals.css` + `@theme inline`. Grep `rgb(` and `pipSvg.ts` for hardcoded brand colours. |
 | Re-theme workspace | the `.ws-root` token block at the top of `app/workspace.css`, and its `@theme inline` mapping right below it. Tokens are **never** on `:root` (that would repaint the marketing pages, which share the document) and components never carry hex — see §5. |
+| Re-theme the marketing site | the `.site` token block in `app/globals.css` **and** the DARK MATERIAL block at the very end of the file (the per-surface tints the glass skin sets by hand are single-class rules, so the override has to come last) |
+| Add a marketing page | render it inside `<SiteFrame>` like `app/page.tsx` and `AuthPage.tsx` do, or it comes out on the light palette |
+| Put a section on scroll motion | wrap it in `ScrollScene` in `app/page.tsx` |
 | Add a motion primitive | `components/motion/` + its styles in `app/motion.css`, exported from `components/motion/index.ts`. Pure maths goes in `lib/motion/core.ts` (import-free, erasable, tested). Use the shared `onFrame` loop — never start another rAF. |
 | Change a section heading on the landing page | `components/SectionIntro.tsx` (all four sections share it) and the `.sec-*` block in `globals.css` |
 | Re-tune the hero object | `components/motion/Orb.tsx` (geometry) + the ORB block in `app/motion.css` (material and loops) |
@@ -927,6 +936,16 @@ namespaces, no parameter properties).
   `body::before`'s wallpaper is now **neutral**: the same five washes at the same alphas, but
   greys at different values rather than hues, so the page reads black-and-grey throughout. It is
   still load-bearing — don't flatten it to pure white or every panel reads as a plain card.
+- **The marketing site is dark; the dashboard is not.** `globals.css` is loaded app-wide, so the
+  dark palette is scoped to `.site` (`components/SiteFrame.tsx`), which every marketing page
+  renders. `.site` sets `position: relative; z-index: 0` **on purpose**: without a stacking
+  context of its own, `body::before`'s light wallpaper paints over `.site::before`'s dark ground
+  and the whole page comes back white.
+- **There is no backdrop blur on the dark site.** `.site` sets `backdrop-filter: none` on every
+  glass surface. On a near-black ground there is nothing behind a pane worth blurring, and
+  `backdrop-filter` dies inside any ancestor holding a transform — which is exactly what
+  `ScrollScene` puts on every section, so keeping it would mean every card flickering flat the
+  moment the page moved. The pointer specular is a background gradient, so it survives.
 - **The hero is the one dark scope on the marketing pages.** `.hero` overrides `--ink`,
   `--muted`, `--line` and friends **on itself**, never on `:root`, the same way
   `.lg-nav.is-dark` does for the capsule floating over it. The section carries `[data-nav-dark]`,
@@ -946,6 +965,13 @@ namespaces, no parameter properties).
 - **`Hero.tsx` writes the object's transform, so it must carry the centring with it**
   (`translate3d(x, calc(-50% - y), 0)`). An inline `transform` replaces the stylesheet's
   `translateY(-50%)` outright, which drops the object half a viewport down the page.
+- **The hero object is a canvas, and the room behind it is not a photograph.**
+  `BlackHoleStar.tsx` draws MoM-BH*-1 in four passes (far side of the disc lensed over the top,
+  the horizon and photon ring, the near side in front, the hydrogen envelope over everything) on
+  the shared frame loop. The disc is ~108 ring strokes with a horizontal gradient standing in for
+  Doppler beaming — one gradient per stroke, not one per particle, which is what keeps it to a
+  few hundred draws a frame. `HeroChamber.tsx` is CSS planes, a column, a floor and a figure for
+  scale; nothing is loaded.
 - **A `Parallax` must not wrap a glass surface.** A transform on an ancestor silently disables
   `backdrop-filter` on everything below it (see the three Chromium rules above), which is why the
   Journey card is not parallaxed.

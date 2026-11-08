@@ -10,7 +10,8 @@
 export { Appear, Stagger, type AppearFrom } from "./Appear";
 export { TextReveal } from "./TextReveal";
 export { Parallax } from "./Parallax";
+export { ScrollScene } from "./ScrollScene";
 export { Magnetic } from "./Magnetic";
 export { Marquee } from "./Marquee";
 export { CountUp } from "./CountUp";
-export { Orb } from "./Orb";
+export { BlackHoleStar } from "./BlackHoleStar";
