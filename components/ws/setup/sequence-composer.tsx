@@ -41,9 +41,9 @@ const CHANNEL_OF: Record<string, Channel> = {
 const channelOf = (kind: StepKind): Channel => CHANNEL_OF[STEPS[kind].ch ?? "li"];
 
 /**
- * Does this touch put something in front of the lead today? LinkedIn sends for real and a call
- * becomes a to-do someone can act on; email cannot be connected yet, so a sequence containing one
- * is partly a plan for later. Said here rather than discovered in the run log after launching.
+ * Does this touch put something in front of the lead today? LinkedIn and email send for real and a
+ * call becomes a to-do someone can act on; any other channel would be a plan for later. Said here
+ * rather than discovered in the run log after launching.
  */
 const canAct = (kind: StepKind) => {
   const channel = channelOf(kind);

@@ -11,7 +11,7 @@
  * strategy's sending window first — the adapter does none of that, it is the wire.
  */
 
-import type { ProviderAccountStatus } from "./events";
+import type { EmailEvent, ProviderAccountStatus } from "./events";
 
 /** A connected account as the provider describes it, in our vocabulary. */
 export type ProviderAccount = {
@@ -20,9 +20,13 @@ export type ProviderAccount = {
   status: ProviderAccountStatus;
   /** The provider's own word for the first status that was not OK, or "" when everything was OK. */
   rawStatus: string;
-  /** The member's display name, as the provider reports it. Empty when it reports none. */
+  /** Which of our channels this connection is: a LinkedIn seat or a mailbox. */
+  channel: "linkedin" | "email" | "other";
+  /** The provider's own word for the account type (`LINKEDIN`, `GOOGLE_OAUTH`, `OUTLOOK`, `MAIL`…). */
+  type: string;
+  /** The member's display name, or a mailbox's label. Empty when the provider reports none. */
   name: string;
-  /** Profile URL or public identifier. Empty when the provider reports none. */
+  /** LinkedIn: profile URL or public identifier. Email: the address. Empty when none is reported. */
   handle: string;
   /** When the provider says the connection was made, ISO, or "" when it says nothing. */
   createdAt: string;
@@ -32,6 +36,8 @@ export type ProviderAccount = {
 export type HostedAuthRequest = {
   /** `create` for a new connection, `reconnect` to repair an existing one. */
   kind: "create" | "reconnect";
+  /** What the sign-in is for: a LinkedIn seat, or a mailbox (Gmail, Outlook, IMAP). */
+  channel: "linkedin" | "email";
   /**
    * Our own connect-session id. The provider echoes it back on the notify callback, and it is the
    * only thing that maps a provider account id to a workspace — so it must be unguessable and
@@ -122,6 +128,31 @@ export type ProviderChat = {
   lastAt: string;
 };
 
+/** A first-degree connection of a connected LinkedIn account. */
+export type ProviderRelation = {
+  /** LinkedIn's member id (`ACoAA…`), the same id an invite is addressed to. */
+  providerId: string;
+  publicIdentifier: string;
+  profileUrl: string;
+  name: string;
+  /** When the connection was made, ISO, or "". */
+  createdAt: string;
+};
+
+/** One email to send from a connected mailbox. **It reaches a real person.** */
+export type OutgoingEmail = {
+  /** The provider's id for the mailbox. */
+  accountId: string;
+  to: { email: string; name: string };
+  subject: string;
+  /** HTML body. Links in it are rewritten by the provider for click tracking. */
+  html: string;
+  /** Our own id for this send; the provider echoes it on every open and click. */
+  trackingLabel: string;
+  /** The provider's id for the email this one answers, to keep it in the same thread. */
+  replyTo?: string;
+};
+
 /** A webhook registered at the provider. */
 export type ProviderWebhook = {
   id: string;
@@ -164,6 +195,18 @@ export interface LinkedInChannelAdapter {
 
   /** The messages of one chat, newest first. */
   listMessages(input: { accountId: string; chatId: string; limit?: number }): Promise<ProviderMessage[]>;
+
+  /**
+   * Sends an email from a connected mailbox with open and click tracking on, and returns the
+   * provider's tracking id. **This reaches a real person.**
+   */
+  sendEmail(input: OutgoingEmail): Promise<{ trackingId: string }>;
+
+  /** Recent emails in a mailbox's inbox, newest first. Used to pull replies in without a webhook. */
+  listEmails(input: { accountId: string; limit?: number }): Promise<EmailEvent[]>;
+
+  /** A LinkedIn account's first-degree connections, newest first. How an accepted invite is seen. */
+  listRelations(input: { accountId: string; limit?: number }): Promise<ProviderRelation[]>;
 
   listWebhooks(): Promise<ProviderWebhook[]>;
 

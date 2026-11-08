@@ -39,6 +39,7 @@ export function InboxView() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
   const [linkedInReady, setLinkedInReady] = useState(false);
+  const [emailReady, setEmailReady] = useState(false);
 
   const list = useAsync(() => api.threads({ filter: "all" }), []);
 
@@ -49,6 +50,7 @@ export function InboxView() {
     const pull = () =>
       void api.syncInbox().then((answer) => {
         setLinkedInReady(answer.configured && answer.accounts > 0);
+        setEmailReady(answer.configured && answer.mailboxes > 0);
         if (answer.stored > 0) reload();
       }, () => undefined);
     pull();
@@ -232,6 +234,7 @@ export function InboxView() {
               key={open.id}
               thread={open}
               linkedInReady={linkedInReady}
+              emailReady={emailReady}
               composing={composing}
               onCompose={() => setComposing(true)}
               onCloseComposer={() => setComposing(false)}
@@ -256,6 +259,7 @@ export function InboxView() {
 function ThreadPane({
   thread,
   linkedInReady,
+  emailReady,
   composing,
   onCompose,
   onCloseComposer,
@@ -263,6 +267,7 @@ function ThreadPane({
 }: {
   thread: Thread;
   linkedInReady: boolean;
+  emailReady: boolean;
   composing: boolean;
   onCompose: () => void;
   onCloseComposer: () => void;
@@ -316,6 +321,7 @@ function ThreadPane({
       <Footer
         thread={thread}
         linkedInReady={linkedInReady}
+        emailReady={emailReady}
         composing={composing}
         onCompose={onCompose}
         onCloseComposer={onCloseComposer}
@@ -332,6 +338,7 @@ function ThreadPane({
 function Footer({
   thread,
   linkedInReady,
+  emailReady,
   composing,
   onCompose,
   onCloseComposer,
@@ -339,6 +346,7 @@ function Footer({
 }: {
   thread: Thread;
   linkedInReady: boolean;
+  emailReady: boolean;
   composing: boolean;
   onCompose: () => void;
   onCloseComposer: () => void;
@@ -348,11 +356,17 @@ function Footer({
     <AnimatePresence initial={false} mode="wait">
       {composing ? (
         <Expand key="composer">
-          <Composer thread={thread} onSaved={onReplied} onClose={onCloseComposer} />
+          <Composer
+            thread={thread}
+            onSaved={onReplied}
+            onClose={onCloseComposer}
+            linkedInReady={linkedInReady}
+            emailReady={emailReady}
+          />
         </Expand>
       ) : thread.channel === "email" || thread.channel === "linkedin" ? (
         <Expand key="bar">
-          <ReplyBar onReply={onCompose} channel={thread.channel} linkedInReady={linkedInReady} />
+          <ReplyBar onReply={onCompose} channel={thread.channel} linkedInReady={linkedInReady} emailReady={emailReady} />
         </Expand>
       ) : (
         <Expand key="handoff">

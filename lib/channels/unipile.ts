@@ -11,22 +11,28 @@ import {
   type HostedAuthLink,
   type HostedAuthRequest,
   type LinkedInChannelAdapter,
+  type OutgoingEmail,
   type ProviderAccount,
+  type ProviderRelation,
   type ProviderChat,
   type ProviderMessage,
   type ProviderProfile,
   type ProviderWebhook,
 } from "./adapter";
-import { readAccountStatus } from "./events";
+import { parseEmailEvent, readAccountStatus, type EmailEvent } from "./events";
 import { WEBHOOK_HEADER } from "./webhookConfig";
 import {
+  emailFields,
   hostedAuthBody,
   inviteBody,
   readAccount,
   readChats,
+  readEmailRows,
+  readEmailSent,
   readHostedAuthUrl,
   readMessages,
   readProfile,
+  readRelations,
   readWebhooks,
   unipileBaseUrl,
 } from "./unipileRequests";
@@ -112,7 +118,7 @@ export class UnipileAdapter implements LinkedInChannelAdapter {
     }
   }
 
-  /** `POST /chats` is the one Unipile route that takes multipart rather than JSON. */
+  /** `POST /chats` and `POST /emails` take multipart rather than JSON. */
   private async postForm(path: string, fields: Record<string, string | string[]>): Promise<unknown> {
     const form = new FormData();
     for (const [key, value] of Object.entries(fields)) {
@@ -188,6 +194,24 @@ export class UnipileAdapter implements LinkedInChannelAdapter {
       await this.call(`/chats/${encodeURIComponent(input.chatId)}/messages?${query.toString()}`),
       input.chatId,
     );
+  }
+
+  async sendEmail(input: OutgoingEmail): Promise<{ trackingId: string }> {
+    const payload = await this.postForm("/emails", emailFields(input));
+    return { trackingId: readEmailSent(payload) };
+  }
+
+  async listEmails(input: { accountId: string; limit?: number }): Promise<EmailEvent[]> {
+    const query = new URLSearchParams({ account_id: input.accountId, role: "inbox", limit: String(input.limit ?? 25) });
+    const rows = readEmailRows(await this.call(`/emails?${query.toString()}`));
+    return rows
+      .map((row) => parseEmailEvent({ ...row, account_id: row.account_id ?? input.accountId }))
+      .filter((email): email is EmailEvent => email !== null);
+  }
+
+  async listRelations(input: { accountId: string; limit?: number }): Promise<ProviderRelation[]> {
+    const query = new URLSearchParams({ account_id: input.accountId, limit: String(input.limit ?? 50) });
+    return readRelations(await this.call(`/users/relations?${query.toString()}`));
   }
 
   async listWebhooks(): Promise<ProviderWebhook[]> {

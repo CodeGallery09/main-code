@@ -68,6 +68,8 @@ import {
   SEND_FAILED_EVENT_KIND,
   SENT_EVENT_KIND,
   runStep,
+  type Observation,
+  type SignalKey,
   type StepEffect,
 } from "@/lib/engine/steps";
 import { insideWindow, minutesLeftInWindow, nextDayOpening, nextOpening } from "@/lib/engine/window";
@@ -80,7 +82,11 @@ import { SENDING_ENABLED } from "@/lib/capabilities";
 import { journeyRows } from "@/lib/engine/journey";
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
 import { setupChecks, blockingCount } from "@/lib/data/setup";
-import { ACCOUNT_EVENT } from "@/lib/data/accountEvents";
+import { ACCOUNT_EVENT, LEAD_EVENT, SIGNAL_OF_KIND } from "@/lib/data/accountEvents";
+import { replySubject, textToHtml, looksLikeEmail } from "@/lib/channels/emailFormat";
+import { recordAlreadyConnected } from "@/lib/channels/relations";
+import { checkDomainRecords } from "@/lib/channels/dns";
+import { normaliseDomain } from "@/lib/data/dnsRecords";
 import { findInJourney, mergeAudiences, type InJourneyRow, type AudienceProfile } from "@/lib/audiences/merge";
 import { identityFill, audienceIdentity, splitFileFields } from "@/lib/audiences/profile";
 import { buildProspect } from "@/lib/audiences/prospect";
@@ -101,6 +107,7 @@ import type {
   ChannelQuota,
   ConnectSession,
   ConnectSessionState,
+  EmailAccount,
   EmailSettings,
   FunnelStage,
   Audience,
@@ -124,6 +131,8 @@ import type {
   RunSummary,
   Journeys,
   JourneyStrategy,
+  SendingDomain,
+  DomainCheck,
 } from "@/lib/data/types";
 
 /* ------------------------------------------------------------- utilities -- */
@@ -152,7 +161,25 @@ type DueJob = {
   audience_id: string;
   strategy_id: string;
   graph: WorkflowGraph;
+  /** When the lead entered the plan; a condition only counts what they did after this. */
+  started_at: Date | string;
 };
+
+/** One connected mailbox, as a tick sends from it. */
+type Mailbox = {
+  accountId: string;
+  providerAccountId: string;
+  /** The address, for the log. */
+  address: string;
+  zone: string;
+  hours: SendingHours;
+  cap: number;
+  left: number;
+  lastSentAt: number | null;
+};
+
+/** Every mailbox the workspace can send from on this tick. */
+type MailContext = { adapter: LinkedInChannelAdapter; boxes: Mailbox[] };
 
 /** What a tick needs to really send, resolved once per tick. */
 type SendingContext = {
@@ -939,6 +966,168 @@ export class PgRepository implements Repository {
   }
 
   /**
+   * Every healthy mailbox this workspace can send from, with what is left of each one's day.
+   * `null` when there is none (or no provider), and an email step then logs why it did not go out.
+   *
+   * Each mailbox has its own day, cap, warm-up and pacing, because each is its own sender
+   * reputation: one mailbox that bursts gets that mailbox filtered, not the others.
+   */
+  private async mailContext(ctx: Ctx): Promise<MailContext | null> {
+    if (!SENDING_ENABLED) return null;
+    const adapter = getLinkedInAdapter();
+    if (!adapter) return null;
+    const rows = await this.db
+      .select({
+        id: channelAccounts.id,
+        providerAccountId: channelAccounts.providerAccountId,
+        handle: channelAccounts.handle,
+        settings: channelAccounts.settings,
+        connectedAt: channelAccounts.connectedAt,
+        createdAt: channelAccounts.createdAt,
+      })
+      .from(channelAccounts)
+      .where(
+        and(
+          this.ws(channelAccounts.workspaceId, ctx),
+          eq(channelAccounts.channel, "email"),
+          eq(channelAccounts.state, "healthy"),
+          eq(channelAccounts.provider, adapter.provider),
+        ),
+      )
+      .orderBy(asc(channelAccounts.createdAt));
+    const usable = rows.filter((r) => r.providerAccountId);
+    if (!usable.length) return null;
+
+    const [zone, today] = await Promise.all([this.ownerZone(ctx), this.emailsToday(ctx)]);
+    const boxes = usable.map((row): Mailbox => {
+      const stored = this.emailSettings(row.settings);
+      const since = row.connectedAt ?? row.createdAt ?? new Date();
+      const ageDays = Math.max(0, (Date.now() - since.getTime()) / 86_400_000);
+      const cap = stored.warmup ? warmupCap(stored.cap, ageDays) : Math.floor(stored.cap);
+      const sent = today.get(row.id);
+      return {
+        accountId: row.id,
+        providerAccountId: row.providerAccountId!,
+        address: row.handle,
+        zone: stored.hours.zone || zone,
+        hours: stored.hours,
+        cap,
+        left: Math.max(0, cap - (sent?.n ?? 0)),
+        lastSentAt: sent?.lastAt ?? null,
+      };
+    });
+    return { adapter, boxes };
+  }
+
+  /** Emails each mailbox has really sent since midnight, and when it last sent. */
+  private async emailsToday(ctx: Ctx): Promise<Map<string, { n: number; lastAt: number | null }>> {
+    const rows = (
+      await this.db.execute(sql`
+        select payload ->> 'accountId' as account_id, count(*)::int as n, max(occurred_at) as last_at
+        from events
+        where workspace_id = ${ctx.workspaceId} and kind = ${SENT_EVENT_KIND} and payload ->> 'kind' = 'email'
+          and occurred_at >= date_trunc('day', now())
+        group by 1`)
+    ).rows as { account_id: string | null; n: number; last_at: Date | string | null }[];
+    const out = new Map<string, { n: number; lastAt: number | null }>();
+    for (const row of rows) {
+      if (!row.account_id) continue;
+      out.set(row.account_id, { n: row.n, lastAt: row.last_at ? new Date(row.last_at).getTime() : null });
+    }
+    return out;
+  }
+
+  /** A stored mailbox's settings, with the defaults a row written before they existed lacks. */
+  private emailSettings(raw: unknown): EmailSettings {
+    const stored = (raw ?? {}) as Partial<EmailSettings> & { hours?: unknown };
+    return {
+      provider: typeof stored.provider === "string" ? stored.provider : "",
+      cap: typeof stored.cap === "number" && stored.cap >= 0 ? stored.cap : 30,
+      hours: readHours(stored.hours),
+      // On unless turned off: the safe default is the slow one.
+      warmup: stored.warmup !== false,
+    };
+  }
+
+  /**
+   * The mailbox a lead's next email goes from, and when.
+   *
+   * A lead stays with the mailbox that first wrote to them — a follow-up from a different address
+   * is a different conversation to them, and it would not thread. A new lead goes to the mailbox
+   * with the most left today that may send now; when none may, the one that opens soonest.
+   */
+  private pickMailbox(mail: MailContext, stickyAccountId: string | null): { box: Mailbox; wait: { at: Date; note?: string } | null } {
+    const now = new Date();
+    const whenFor = (box: Mailbox): { at: Date; note?: string } | null => {
+      if (!insideWindow(now, box.zone, box.hours)) {
+        const at = nextOpening(now, box.zone, box.hours);
+        return at.getTime() > now.getTime() + 1000
+          ? { at, note: `Outside ${box.address}'s sending hours — the next email goes out ${when(at, box.zone)}.` }
+          : null;
+      }
+      if (box.left <= 0) {
+        const at = nextDayOpening(now, box.zone, box.hours);
+        return { at, note: `${box.address} has sent today's ${box.cap} emails. The rest resume ${when(at, box.zone)}.` };
+      }
+      const at = nextTouchAt({
+        now: now.getTime(),
+        lastSentAt: box.lastSentAt,
+        remaining: box.left,
+        minutesLeft: minutesLeftInWindow(now, box.zone, box.hours),
+      });
+      return at > now.getTime() + 1000 ? { at: new Date(at) } : null;
+    };
+
+    const sticky = stickyAccountId ? mail.boxes.find((b) => b.accountId === stickyAccountId) : undefined;
+    if (sticky) return { box: sticky, wait: whenFor(sticky) };
+
+    const ranked = mail.boxes
+      .map((box) => ({ box, wait: whenFor(box) }))
+      .sort((a, b) => {
+        if (!a.wait !== !b.wait) return a.wait ? 1 : -1;
+        if (a.wait && b.wait) return a.wait.at.getTime() - b.wait.at.getTime();
+        return b.box.left - a.box.left;
+      });
+    return ranked[0];
+  }
+
+  /**
+   * What this lead has done since they entered the plan, for a condition to decide on, and when
+   * they first reached the condition (the start of its window).
+   */
+  private async observe(ctx: Ctx, job: DueJob): Promise<Observation> {
+    const since = new Date(job.started_at);
+    const [signals, entry] = await Promise.all([
+      this.db.execute(sql`
+        select kind, min(occurred_at) as first_at
+        from events
+        where workspace_id = ${ctx.workspaceId} and audience_id = ${job.audience_id}
+          and occurred_at >= ${since}
+          and kind in (${LEAD_EVENT.accepted}, ${LEAD_EVENT.opened}, ${LEAD_EVENT.clicked}, ${ACCOUNT_EVENT.message})
+          and coalesce(payload ->> 'autoReply', 'false') <> 'true'
+          and (kind <> ${ACCOUNT_EVENT.message} or payload ->> 'matchedAudience' = 'true')
+        group by kind`),
+      this.db.execute(sql`
+        select min(claimed_at) as entered_at, count(*)::int as visits
+        from step_jobs
+        where workspace_id = ${ctx.workspaceId} and run_id = ${job.run_id} and step_id = ${job.step_id} and state = 'done'`),
+    ]);
+    const seen: Partial<Record<SignalKey, number>> = {};
+    for (const row of signals.rows as { kind: string; first_at: Date | string }[]) {
+      const key = SIGNAL_OF_KIND[row.kind];
+      if (key) seen[key] = new Date(row.first_at).getTime();
+    }
+    // A click is an open that went further: an email that was clicked was opened.
+    if (seen.clicked !== undefined && (seen.opened === undefined || seen.clicked < seen.opened)) seen.opened = seen.clicked;
+    const first = (entry.rows[0] ?? {}) as { entered_at: Date | string | null; visits: number };
+    return {
+      signals: seen,
+      enteredAt: first.entered_at ? new Date(first.entered_at).getTime() : Date.now(),
+      firstVisit: (first.visits ?? 1) <= 1,
+    };
+  }
+
+  /**
    * Takes up to `size` due jobs and marks them done in the same breath.
    *
    * **At most once, on purpose.** A send that goes out twice is a worse outcome than a step that is
@@ -950,7 +1139,7 @@ export class PgRepository implements Repository {
     return this.db.transaction(async (tx) => {
       const due = (
         await tx.execute(sql`
-          select j.id as job_id, j.run_id, j.step_id, r.audience_id, w.strategy_id, w.graph
+          select j.id as job_id, j.run_id, j.step_id, r.audience_id, w.strategy_id, w.graph, r.started_at
           from step_jobs j
           join workflow_runs r on r.id = j.run_id
           join workflows w on w.id = r.workflow_id
@@ -1088,6 +1277,7 @@ export class PgRepository implements Repository {
       fetchedAt: new Date().toISOString(),
       profileUrl: profile.profileUrl,
       briefing: buildBriefing(profile),
+      degree: profile.degree,
     };
     const [current] = await this.db
       .select({ extra: audiencesTable.extra, company: audiencesTable.company, title: audiencesTable.title })
@@ -1109,9 +1299,9 @@ export class PgRepository implements Repository {
   }
 
   /** Records an outbound message in the inbox, so a conversation we started is a conversation. */
-  private async recordOutbound(ctx: Ctx, job: DueJob, body: string): Promise<void> {
+  private async recordOutbound(ctx: Ctx, job: DueJob, channel: "linkedin" | "email", body: string): Promise<void> {
     const now = new Date();
-    const preview = body.slice(0, 160);
+    const preview = body.replace(/\s+/g, " ").slice(0, 160);
     const [open] = await this.db
       .select({ id: threadsTable.id })
       .from(threadsTable)
@@ -1119,7 +1309,7 @@ export class PgRepository implements Repository {
         and(
           this.ws(threadsTable.workspaceId, ctx),
           eq(threadsTable.audienceId, job.audience_id),
-          eq(threadsTable.channel, "linkedin"),
+          eq(threadsTable.channel, channel),
         ),
       )
       .limit(1);
@@ -1135,7 +1325,7 @@ export class PgRepository implements Repository {
         id: threadId,
         workspaceId: ctx.workspaceId,
         audienceId: job.audience_id,
-        channel: "linkedin",
+        channel,
         preview,
         unread: false,
         needsReply: false,
@@ -1148,7 +1338,7 @@ export class PgRepository implements Repository {
       workspaceId: ctx.workspaceId,
       threadId,
       from: "us",
-      channel: "linkedin",
+      channel,
       body,
       sentAt: now,
       read: true,
@@ -1205,10 +1395,13 @@ export class PgRepository implements Repository {
     job: DueJob,
     effect: Extract<StepEffect, { type: "send" }>,
     send: SendingContext | null,
-    person: { consent: boolean; name: string },
+    mail: { context: MailContext | null; box: Mailbox | null },
+    person: { consent: boolean; name: string; email: string | null },
   ): Promise<boolean> {
     const why = (reason: string) =>
       this.logRun(ctx, job, RUN_EVENT_KIND, effect.channel, `${effect.dryRunText} — not sent: ${reason}.`);
+
+    if (effect.channel === "email") return this.sendEmailStep(ctx, job, effect, mail, person, why);
 
     if (effect.channel !== "linkedin") {
       await why(`${effect.channel} sending isn't built yet`);
@@ -1227,6 +1420,19 @@ export class PgRepository implements Repository {
     const resolved = await this.providerIdFor(ctx, send, job.audience_id);
     if ("error" in resolved) {
       await why(resolved.error);
+      return false;
+    }
+
+    // Someone already connected cannot accept an invite. Sending one fails at LinkedIn, and a
+    // condition waiting on "accepted" would then wait out its whole window for nothing — so the
+    // invite is skipped and the plan treats them as connected, which they are.
+    if (kind === "li_invite" && (await this.alreadyConnected(ctx, job.audience_id))) {
+      await recordAlreadyConnected(ctx.workspaceId, send.accountId, {
+        id: job.audience_id,
+        name: person.name,
+        strategyId: job.strategy_id,
+      });
+      await this.logRun(ctx, job, RUN_EVENT_KIND, "linkedin", `${person.name} is already a connection, so no invite was needed.`);
       return false;
     }
 
@@ -1256,7 +1462,7 @@ export class PgRepository implements Repository {
         accountId: send.accountId,
         providerRef: ref,
       });
-      if (kind === "li_msg") await this.recordOutbound(ctx, job, effect.body);
+      if (kind === "li_msg") await this.recordOutbound(ctx, job, "linkedin", effect.body);
       await this.countReached(ctx, "linkedin");
       return true;
     } catch (caught) {
@@ -1273,17 +1479,164 @@ export class PgRepository implements Repository {
     }
   }
 
+  /** Whether the stored profile read says this lead is already a first-degree connection. */
+  private async alreadyConnected(ctx: Ctx, audienceId: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ extra: audiencesTable.extra })
+      .from(audiencesTable)
+      .where(and(eq(audiencesTable.id, audienceId), this.ws(audiencesTable.workspaceId, ctx)))
+      .limit(1);
+    return readLinkedInExtra(row?.extra).degree === 1;
+  }
+
+  /**
+   * One email step. **This reaches a real person.**
+   *
+   * Refused, with the reason in the log, when there is no mailbox, no consent, no address, or the
+   * address bounced before. A step with no subject is a follow-up: it replies in the thread of the
+   * last email this plan sent the lead, and is refused when there is none to follow.
+   */
+  private async sendEmailStep(
+    ctx: Ctx,
+    job: DueJob,
+    effect: Extract<StepEffect, { type: "send" }>,
+    mail: { context: MailContext | null; box: Mailbox | null },
+    person: { consent: boolean; name: string; email: string | null },
+    why: (reason: string) => Promise<void>,
+  ): Promise<boolean> {
+    if (!mail.context || !mail.box) {
+      await why(SENDING_ENABLED ? "no healthy mailbox is connected" : "sending is switched off");
+      return false;
+    }
+    if (!person.consent) {
+      await why("no consent is recorded for this lead");
+      return false;
+    }
+    const to = (person.email ?? "").trim().toLowerCase();
+    if (!looksLikeEmail(to)) {
+      await why("there is no email address on this lead");
+      return false;
+    }
+    if (!effect.body.trim()) {
+      await why("the email has no body written");
+      return false;
+    }
+    const [bounced] = await this.db
+      .select({ id: eventsTable.id })
+      .from(eventsTable)
+      .where(and(this.ws(eventsTable.workspaceId, ctx), eq(eventsTable.kind, LEAD_EVENT.bounced), eq(eventsTable.audienceId, job.audience_id)))
+      .limit(1);
+    if (bounced) {
+      await why(`${to} bounced before`);
+      return false;
+    }
+
+    // A follow-up — a step marked "reply in the same thread", or one with no subject of its own —
+    // answers the last email in this plan's thread, from the same mailbox (see `mailboxFor`).
+    let subject = effect.subject.trim();
+    let replyTo: string | undefined;
+    if (!subject || effect.thread) {
+      const [last] = await this.db
+        .select({ payload: eventsTable.payload })
+        .from(eventsTable)
+        .where(
+          and(
+            this.ws(eventsTable.workspaceId, ctx),
+            eq(eventsTable.kind, SENT_EVENT_KIND),
+            eq(eventsTable.audienceId, job.audience_id),
+            eq(eventsTable.strategyId, job.strategy_id),
+            sql`${eventsTable.payload} ->> 'kind' = 'email'`,
+          ),
+        )
+        .orderBy(desc(eventsTable.occurredAt))
+        .limit(1);
+      const previous = (last?.payload ?? {}) as { subject?: string; emailId?: string };
+      // The first email of a plan marked "reply in thread" has nothing to answer: it goes as written.
+      subject = replySubject(previous.subject ?? "") || subject;
+      replyTo = previous.emailId || undefined;
+      if (!subject) {
+        await why("the email has no subject, and there is no earlier email in this plan to follow up on");
+        return false;
+      }
+    }
+
+    const box = mail.box;
+    // Our own id for the send goes out as the tracking label, so an open or click is matched to
+    // this exact row without a search.
+    const sentId = newId("ev");
+    try {
+      const { trackingId } = await mail.context.adapter.sendEmail({
+        accountId: box.providerAccountId,
+        to: { email: to, name: person.name },
+        subject,
+        html: textToHtml(effect.body),
+        trackingLabel: sentId,
+        replyTo,
+      });
+      box.left -= 1;
+      box.lastSentAt = Date.now();
+      await this.db.insert(eventsTable).values({
+        id: sentId,
+        workspaceId: ctx.workspaceId,
+        kind: SENT_EVENT_KIND,
+        channel: "email",
+        audienceId: job.audience_id,
+        strategyId: job.strategy_id,
+        payload: {
+          text: `Emailed ${person.name} from ${box.address}: “${subject.slice(0, 120)}”`,
+          step: job.step_id,
+          kind: "email",
+          accountId: box.accountId,
+          trackingId,
+          subject,
+          to,
+          ...(replyTo ? { inReplyTo: replyTo } : {}),
+        },
+      });
+      await this.recordOutbound(ctx, job, "email", `${subject}\n\n${effect.body}`);
+      await this.countReached(ctx, "email");
+      return true;
+    } catch (caught) {
+      const detail = caught instanceof ProviderError ? caught.message : "the provider did not answer";
+      await this.logRun(ctx, job, SEND_FAILED_EVENT_KIND, "email", `The email to ${person.name} wasn't sent: ${detail}`, {
+        kind: "email",
+        accountId: box.accountId,
+      });
+      return false;
+    }
+  }
+
+  /** The mailbox that already wrote to this lead in this plan, so their follow-ups come from it. */
+  private async mailboxFor(ctx: Ctx, job: DueJob): Promise<string | null> {
+    const [row] = await this.db
+      .select({ accountId: sql<string | null>`${eventsTable.payload} ->> 'accountId'` })
+      .from(eventsTable)
+      .where(
+        and(
+          this.ws(eventsTable.workspaceId, ctx),
+          eq(eventsTable.kind, SENT_EVENT_KIND),
+          eq(eventsTable.audienceId, job.audience_id),
+          eq(eventsTable.strategyId, job.strategy_id),
+          sql`${eventsTable.payload} ->> 'kind' = 'email'`,
+        ),
+      )
+      .orderBy(desc(eventsTable.occurredAt))
+      .limit(1);
+    return row?.accountId ?? null;
+  }
+
   async runDueSteps(ctx: Ctx, limit = 300): Promise<{ processed: number }> {
-    const send = await this.sendingContext(ctx);
+    const [send, mail] = await Promise.all([this.sendingContext(ctx), this.mailContext(ctx)]);
+    const sending = Boolean(send || mail);
     // A real send is a network round trip, so a tick takes far fewer of them than a dry run.
-    const ceiling = send ? Math.min(limit, 12) : limit;
+    const ceiling = sending ? Math.min(limit, 12) : limit;
     let processed = 0;
     // One "limit reached" line per tick is a note; one per waiting lead is a flood.
     const toldToday = new Set<string>();
 
     // A step that follows another straight away is due in the same pass, so go round until quiet.
     for (let round = 0; round < 12 && processed < ceiling; round++) {
-      const due = await this.claimDue(ctx, Math.min(send ? 4 : 100, ceiling - processed));
+      const due = await this.claimDue(ctx, Math.min(sending ? 4 : 100, ceiling - processed));
       if (due.length === 0) break;
 
       const people = await this.db
@@ -1293,6 +1646,7 @@ export class PgRepository implements Repository {
           company: audiencesTable.company,
           score: audiencesTable.score,
           consent: audiencesTable.consent,
+          email: audiencesTable.email,
         })
         .from(audiencesTable)
         .where(and(this.ws(audiencesTable.workspaceId, ctx), inArray(audiencesTable.id, [...new Set(due.map((d) => d.audience_id))])));
@@ -1310,7 +1664,19 @@ export class PgRepository implements Repository {
 
         // A touch that cannot go out right now waits; it is never dropped and never rushed.
         const node = job.graph.nodes.find((n) => n.id === job.step_id);
-        if (send && node && TOUCH_STEPS.has(node.kind)) {
+        let box: Mailbox | null = null;
+        if (node?.kind === "email" && mail) {
+          const picked = this.pickMailbox(mail, await this.mailboxFor(ctx, job));
+          box = picked.box;
+          if (picked.wait) {
+            await this.queueStep(ctx, job.run_id, job.step_id, picked.wait.at);
+            if (picked.wait.note && !toldToday.has(picked.wait.note)) {
+              toldToday.add(picked.wait.note);
+              await this.logRun(ctx, job, RUN_EVENT_KIND, "email", picked.wait.note);
+            }
+            continue;
+          }
+        } else if (send && node && TOUCH_STEPS.has(node.kind) && node.kind !== "email") {
           const wait = this.whenCanSend(send, node.kind);
           if (wait) {
             await this.queueStep(ctx, job.run_id, job.step_id, wait.at);
@@ -1328,7 +1694,9 @@ export class PgRepository implements Repository {
           stepId: job.step_id,
           audience: { id: person.id, name: person.name, company: person.company, score: person.score },
           now: Date.now(),
-          dayMs: send ? REAL_DAY_MS : DRY_RUN_DAY_MS,
+          dayMs: sending ? REAL_DAY_MS : DRY_RUN_DAY_MS,
+          // A condition decides on what the providers reported about this lead.
+          observe: node?.kind === "cond" ? await this.observe(ctx, job) : undefined,
         });
 
         for (const effect of result.effects) {
@@ -1346,7 +1714,7 @@ export class PgRepository implements Repository {
             });
             await this.logRun(ctx, job, RUN_EVENT_KIND, "call", `Added a call to-do for ${person.name}.`);
           } else {
-            await this.performSend(ctx, job, effect, send, person);
+            await this.performSend(ctx, job, effect, send, { context: mail, box }, person);
           }
         }
 
@@ -1403,9 +1771,24 @@ export class PgRepository implements Repository {
       })
       .from(eventsTable)
       .leftJoin(audiencesTable, eq(audiencesTable.id, eventsTable.audienceId))
-      .where(and(this.ws(eventsTable.workspaceId, ctx), eq(eventsTable.strategyId, id), eq(eventsTable.kind, RUN_EVENT_KIND)))
+      .where(
+        and(
+          this.ws(eventsTable.workspaceId, ctx),
+          eq(eventsTable.strategyId, id),
+          // The plan's own lines, what really went out or was refused, and what the leads did back.
+          inArray(eventsTable.kind, [
+            RUN_EVENT_KIND,
+            SENT_EVENT_KIND,
+            SEND_FAILED_EVENT_KIND,
+            LEAD_EVENT.accepted,
+            LEAD_EVENT.opened,
+            LEAD_EVENT.clicked,
+            LEAD_EVENT.bounced,
+          ]),
+        ),
+      )
       .orderBy(desc(eventsTable.occurredAt))
-      .limit(8);
+      .limit(12);
 
     return {
       enrolled: of("active") + of("completed") + of("stopped") + of("failed"),
@@ -1574,18 +1957,12 @@ export class PgRepository implements Repository {
         pace: null,
       };
     }
-    const raw = row.settings as Partial<EmailSettings>;
     return {
       ...base,
       channel: "email",
-      state: row.state === "warming" ? "warming" : "warm",
-      settings: {
-        provider: raw.provider ?? "",
-        warmDay: raw.warmDay,
-        health: raw.health ?? 0,
-        cap: raw.cap ?? 0,
-        rotate: raw.rotate ?? false,
-      },
+      state: row.state === "signed_out" || row.state === "connecting" ? row.state : "healthy",
+      settings: this.emailSettings(row.settings),
+      pace: null,
     };
   }
 
@@ -1634,9 +2011,29 @@ export class PgRepository implements Repository {
    */
   private async attachPace(ctx: Ctx, accounts: ChannelAccount[]): Promise<void> {
     const linkedIn = accounts.filter((a): a is Extract<ChannelAccount, { channel: "linkedin" }> => a.channel === "linkedin");
-    if (!linkedIn.length) return;
-    const [today, zone] = await Promise.all([this.sentToday(ctx), this.ownerZone(ctx)]);
+    const mailboxes = accounts.filter((a): a is EmailAccount => a.channel === "email");
+    if (!linkedIn.length && !mailboxes.length) return;
+    const [today, zone, emails] = await Promise.all([this.sentToday(ctx), this.ownerZone(ctx), this.emailsToday(ctx)]);
     const now = new Date();
+
+    for (const box of mailboxes) {
+      const hours = box.settings.hours;
+      const at = hours.zone || zone;
+      const since = box.connection.connectedAt ? new Date(box.connection.connectedAt) : now;
+      const ageDays = Math.max(0, (now.getTime() - since.getTime()) / 86_400_000);
+      const cap = box.settings.warmup ? warmupCap(box.settings.cap, ageDays) : Math.floor(box.settings.cap);
+      const sentToday = emails.get(box.id)?.n ?? 0;
+      const open = insideWindow(now, at, hours);
+      const next = open ? (sentToday >= cap ? nextDayOpening(now, at, hours) : null) : nextOpening(now, at, hours);
+      box.pace = {
+        sentToday,
+        cap,
+        warming: box.settings.warmup && ageDays < WARMUP_DAYS,
+        ageDays: Math.floor(ageDays),
+        open,
+        nextOpenAt: next ? next.toISOString() : null,
+      };
+    }
 
     for (const account of linkedIn) {
       const hours = account.settings.hours;
@@ -2476,6 +2873,14 @@ export class PgRepository implements Repository {
       }
     }
 
+    // An email reply goes out from the mailbox this conversation is on, answering the last email
+    // in it so it lands in the same thread in their client. A provider refusal is raised, for the
+    // same reason as LinkedIn's.
+    if (channel === "email") {
+      const mail = await this.mailContext(ctx);
+      if (mail) await this.sendEmailReply(ctx, mail, thread, body);
+    }
+
     const sentAt = new Date();
     // One transaction: a reply that appended but left the thread still "needs reply" would put
     // the row back in the inbox queue it was just cleared from.
@@ -2509,6 +2914,111 @@ export class PgRepository implements Repository {
         read: row.read,
       };
     });
+  }
+
+  private async sendEmailReply(
+    ctx: Ctx,
+    mail: MailContext,
+    thread: { id: string; audienceId: string; strategyId: string | null },
+    body: string,
+  ): Promise<void> {
+    const [lead] = await this.db
+      .select({ name: audiencesTable.name, email: audiencesTable.email })
+      .from(audiencesTable)
+      .where(and(eq(audiencesTable.id, thread.audienceId), this.ws(audiencesTable.workspaceId, ctx)))
+      .limit(1);
+    const to = (lead?.email ?? "").trim().toLowerCase();
+    if (!lead || !looksLikeEmail(to)) throw new ProviderError(422, "That reply could not be sent: there is no email address on this lead.");
+
+    // The latest email either way in this conversation: what the reply answers, and which mailbox it is on.
+    const [last] = await this.db
+      .select({ kind: eventsTable.kind, payload: eventsTable.payload })
+      .from(eventsTable)
+      .where(
+        and(
+          this.ws(eventsTable.workspaceId, ctx),
+          eq(eventsTable.audienceId, thread.audienceId),
+          eq(eventsTable.channel, "email"),
+          inArray(eventsTable.kind, [SENT_EVENT_KIND, ACCOUNT_EVENT.message]),
+        ),
+      )
+      .orderBy(desc(eventsTable.occurredAt))
+      .limit(1);
+    const previous = (last?.payload ?? {}) as { accountId?: string; emailId?: string; subject?: string };
+    const box = mail.boxes.find((b) => b.accountId === previous.accountId) ?? mail.boxes[0];
+    const subject = replySubject(previous.subject ?? "") || "Following up";
+
+    const sentId = newId("ev");
+    const { trackingId } = await mail.adapter.sendEmail({
+      accountId: box.providerAccountId,
+      to: { email: to, name: lead.name },
+      subject,
+      html: textToHtml(body),
+      trackingLabel: sentId,
+      replyTo: previous.emailId || undefined,
+    });
+    await this.db.insert(eventsTable).values({
+      id: sentId,
+      workspaceId: ctx.workspaceId,
+      kind: SENT_EVENT_KIND,
+      channel: "email",
+      audienceId: thread.audienceId,
+      strategyId: thread.strategyId,
+      payload: {
+        text: `Replied to ${lead.name} by email from ${box.address}: “${subject.slice(0, 120)}”`,
+        kind: "email",
+        accountId: box.accountId,
+        trackingId,
+        subject,
+        to,
+      },
+    });
+  }
+
+  /* ------------------------------------------------------ sending domains -- */
+
+  private toDomain(row: typeof sendingDomains.$inferSelect): SendingDomain {
+    return { id: row.id, host: row.host, spf: row.spf, dkim: row.dkim, dmarc: row.dmarc, isSample: row.isSample };
+  }
+
+  /** Looks the records up and stores the three verdicts on the row. */
+  private async verifyDomain(ctx: Ctx, row: typeof sendingDomains.$inferSelect): Promise<DomainCheck> {
+    const records = await checkDomainRecords(row.host);
+    const [saved] = await this.db
+      .update(sendingDomains)
+      .set({ spf: records.spf.ok, dkim: records.dkim.ok, dmarc: records.dmarc.ok })
+      .where(and(eq(sendingDomains.id, row.id), this.ws(sendingDomains.workspaceId, ctx)))
+      .returning();
+    return { domain: this.toDomain(saved ?? row), records, checkedAt: new Date().toISOString() };
+  }
+
+  async addDomain(ctx: Ctx, input: string): Promise<DomainCheck | WriteError> {
+    const host = normaliseDomain(input);
+    if (!host) return { error: { field: "host", message: "That isn't a domain name. Enter it like acme.com." } };
+    const [row] = await this.db
+      .insert(sendingDomains)
+      .values({ id: newId("dom"), workspaceId: ctx.workspaceId, host })
+      .onConflictDoNothing()
+      .returning();
+    if (!row) return { error: { field: "host", message: `${host} is already added.` } };
+    return this.verifyDomain(ctx, row);
+  }
+
+  async checkDomain(ctx: Ctx, id: string): Promise<DomainCheck | null> {
+    const [row] = await this.db
+      .select()
+      .from(sendingDomains)
+      .where(and(eq(sendingDomains.id, id), this.ws(sendingDomains.workspaceId, ctx)))
+      .limit(1);
+    return row ? this.verifyDomain(ctx, row) : null;
+  }
+
+  async deleteDomain(ctx: Ctx, id: string): Promise<{ deleted: string } | null> {
+    const [row] = await this.db
+      .delete(sendingDomains)
+      .where(and(eq(sendingDomains.id, id), this.ws(sendingDomains.workspaceId, ctx)))
+      .returning({ id: sendingDomains.id });
+    return row ? { deleted: row.id } : null;
   }
 
   /* ----------------------------------------------------------- analytics -- */

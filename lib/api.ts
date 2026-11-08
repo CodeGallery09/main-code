@@ -6,6 +6,7 @@
  */
 
 import type {
+  DomainCheck,
   AccountActivity,
   AccountsSnapshot,
   Analytics,
@@ -143,11 +144,12 @@ export const api = {
       method: "POST",
     }),
 
-  /** Asks LinkedIn for new replies. The Inbox calls it while it is open. */
+  /** Asks LinkedIn and the mailboxes for new replies. The Inbox calls it while it is open. */
   syncInbox: () =>
-    request<{ checked: number; stored: number; accounts: number; configured: boolean }>("/api/inbox/sync", {
-      method: "POST",
-    }),
+    request<{ checked: number; stored: number; accounts: number; mailboxes: number; configured: boolean }>(
+      "/api/inbox/sync",
+      { method: "POST" },
+    ),
 
   /** Runs the steps that have come due; the screens call it while they are open. */
   runEngine: () => request<{ processed: number }>("/api/engine/run", { method: "POST" }),
@@ -197,6 +199,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify(accountId ? { accountId } : {}),
     }),
+
+  /** Opens a hosted mailbox sign-in (Gmail, Outlook, IMAP). The same contract as `connectLinkedIn`. */
+  connectEmail: (accountId?: string) =>
+    request<{ url: string; sessionId: string; expiresAt: string }>("/api/integrations/email/connect", {
+      method: "POST",
+      body: JSON.stringify(accountId ? { accountId } : {}),
+    }),
+
+  /** Adds a sending domain and looks its SPF, DKIM and DMARC up straight away. */
+  addDomain: (host: string) =>
+    request<DomainCheck>("/api/domains", { method: "POST", body: JSON.stringify({ host }) }),
+
+  /** Looks a domain's records up again. */
+  checkDomain: (id: string) =>
+    request<DomainCheck>(`/api/domains/${encodeURIComponent(id)}/check`, { method: "POST" }),
+
+  deleteDomain: (id: string) =>
+    request<{ deleted: string }>(`/api/domains/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   /** How a connect attempt is going. The provider's callback lands on the server, so this polls. */
   connectSession: (id: string) =>

@@ -77,7 +77,10 @@ export function accountStateFor(status: ProviderAccountStatus): string {
 
 export type AttachResult =
   | { ok: true; accountId: string; workspaceId: string }
-  | { ok: false; reason: "unknown_reference" | "expired" | "already_used" | "provider_unknown" | "taken" };
+  | {
+      ok: false;
+      reason: "unknown_reference" | "expired" | "already_used" | "provider_unknown" | "taken" | "wrong_kind";
+    };
 
 /**
  * Attaches a freshly connected provider account to the workspace that asked for it.
@@ -107,6 +110,11 @@ export async function attachConnectedAccount(
   const account = await adapter.getAccount(providerAccountId);
   if (!account) return { ok: false, reason: "provider_unknown" };
 
+  // A session opened for a mailbox must end in a mailbox, and one for LinkedIn in a LinkedIn seat:
+  // the row's channel decides which steps send from it.
+  const channel = session.channel === "email" ? "email" : "linkedin";
+  if (account.channel !== "other" && account.channel !== channel) return { ok: false, reason: "wrong_kind" };
+
   const existing = await resolveProviderAccount(adapter.provider, providerAccountId);
   if (existing && existing.workspaceId !== session.workspaceId) return { ok: false, reason: "taken" };
 
@@ -114,8 +122,9 @@ export async function attachConnectedAccount(
   const state = accountStateFor(account.status);
   // The provider reports neither name nor handle for an account still syncing; "" would wipe a
   // good value on a reconnect, so each field only overwrites when the provider gave one.
-  const name = account.name || existing?.name || "LinkedIn account";
-  const handle = account.handle || existing?.handle || "";
+  const name = account.name || existing?.name || (channel === "email" ? "Mailbox" : "LinkedIn account");
+  // `(workspace, channel, handle)` is unique, so two mailboxes still syncing must not both be "".
+  const handle = account.handle || existing?.handle || providerAccountId;
   // Name the provider's word when the account is not healthy, so the screen is not guessing.
   const detail = state === "healthy" || !account.rawStatus ? "" : `The provider reports ${account.rawStatus}.`;
 
@@ -149,9 +158,14 @@ export async function attachConnectedAccount(
         statusDetail: detail,
         connectedAt: now,
         lastEventAt: now,
-        // The daily caps a new seat starts on: the conservative end of what operators report as
-        // safe, not LinkedIn's ceiling. The user can raise them on the Configuration screen.
-        settings: { connections: 20, messages: 40, visits: 60, inmail: null },
+        settings:
+          channel === "email"
+            ? // A new mailbox starts low and warms up: 30 a day is the conservative end of what a
+              // fresh Google Workspace or Microsoft 365 mailbox can send cold without landing in spam.
+              { provider: account.type, cap: 30, warmup: true }
+            : // The daily caps a new seat starts on: the conservative end of what operators report
+              // as safe, not LinkedIn's ceiling. The user can raise them on the Setup screen.
+              { connections: 20, messages: 40, visits: 60, inmail: null },
       });
     }
 

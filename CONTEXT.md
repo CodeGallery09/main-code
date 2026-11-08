@@ -136,10 +136,28 @@ listed somewhere else under another name.
 
 The stores apply the result: `launchStrategy`, `runDueSteps`, `runSummary` and `getJourneys` on the `Repository`
 (both impls).
-- **A LinkedIn step really sends.** `PgRepository.performSend` takes a `send` effect and calls
-  `adapter.sendInvite` / `adapter.sendMessage`. Email, WhatsApp and SMS steps are written down with
-  the reason they could not go out; a call step becomes a real to-do; a condition cannot see a reply
-  yet, so it takes its No branch after waiting out its window.
+- **A LinkedIn step and an email step really send.** `PgRepository.performSend` takes a `send`
+  effect and calls `adapter.sendInvite` / `adapter.sendMessage`, or — for email — `sendEmailStep`
+  → `adapter.sendEmail`. WhatsApp and SMS steps are written down with the reason they could not go
+  out; a call step becomes a real to-do. An invite to someone the cached profile says is already a
+  1st-degree connection (`audiences.extra.linkedin.degree === 1`) is skipped and recorded as accepted.
+- **An email step**: refused (logged) with no healthy mailbox, no consent, no address, no body, or an
+  address that bounced before. A step with **no subject, or "Reply in the same thread" on**, is a
+  follow-up: `Re:` the last email this plan sent the lead, with `reply_to` set to that email's
+  provider id (learnt from the `mail_sent` webhook), so it threads. **Mailboxes rotate per lead and
+  stick**: a lead stays on the mailbox that first wrote to them (`mailboxFor`); a new lead goes to the
+  mailbox with the most left today that may send now (`pickMailbox`). Each mailbox has its own day,
+  cap, warm-up and pacing (`mailContext`, counted from `sent` events with `payload.kind = 'email'`
+  per `payload.accountId`), because each is its own sender reputation.
+- **A condition watches for the lead acting** (`runStep`'s `observe`). Accepted / replied / opened /
+  clicked are read from `events` since the lead entered the plan (`observe()`: `li_accepted`,
+  `account_message_in` that matched a lead and is not an auto-reply, `email_opened`, `email_clicked`;
+  a click counts as an open). Yes the moment one is there; otherwise the same condition is
+  re-queued every `CONDITION_RECHECK_MS` (30 min, compressed in a dry run) until its window — counted
+  from the first claim of that step (`min(step_jobs.claimed_at)`) — runs out, and only then No. The
+  waiting line is logged once. The memory store passes no `observe`, so its conditions say nothing
+  is tracked and take No after the window. **Signals are pulled before steps run** on every tick
+  (`scheduler.ts`), so a condition decides on this tick's news.
 - **Four real brakes**: the lead's recorded `consent` (a refusal, logged); the account's working
   hours; its daily cap (`channel_accounts.settings.connections` / `.messages`, counted against
   today's `events` of kind `sent`, after the warm-up ramp); and pacing. See "A touch is deferred"
@@ -235,26 +253,34 @@ Tables, grouped:
 `workspace_id` is on every tenant-scoped table. `step_jobs.run_at` + `FOR UPDATE SKIP LOCKED`
 is the job queue — no Redis or SQS needed.
 
-### Connecting LinkedIn — `lib/channels/` + `app/api/integrations|webhooks/`
+### Connecting LinkedIn and mailboxes — `lib/channels/` + `app/api/integrations|webhooks/`
 
 Driving LinkedIn means holding a member session and replaying actions against LinkedIn's own
-internal endpoints. **We rent that, we do not build it** — and every call goes through one
-interface so the vendor can be replaced without touching a route, a screen or a table.
+internal endpoints; sending email means holding a mailbox's OAuth grant or IMAP login. **We rent
+both, we do not build them** — Unipile serves LinkedIn seats and mailboxes (Gmail / Google
+Workspace, Outlook / Microsoft 365, IMAP) through one API key, and every call goes through one
+interface (still named `LinkedInChannelAdapter`) so the vendor can be replaced without touching a
+route, a screen or a table.
 
 | File | Purpose |
 |---|---|
-| `adapter.ts` | `LinkedInChannelAdapter`: `createHostedAuth`, `getAccount`, `deleteAccount`, `listWebhooks`, `createWebhook`, and the acting half — `getProfile`, `sendInvite`, `sendMessage`, `listChats`, `listMessages`. Plus `ProviderAccount`, `ProviderProfile`, `ProviderChat`, `ProviderMessage` and `ProviderError`. The seam, and nothing more: no caps, consent or window logic lives here. |
-| `unipile.ts` | The one implementation. `https://{DSN}/api/v1`, `X-API-KEY`, 15 s timeout (30 s for a profile read). `postForm()` sends multipart **without** a content-type header, so fetch picks the boundary — `/chats` refuses JSON. Server-only: the key can read every connected account. |
-| `unipileRequests.ts` | The **pure** half — `unipileBaseUrl`, `hostedAuthBody`, `readHostedAuthUrl`, `readAccount`, `readWebhooks`, plus `linkedInIdentifier` (full URL, bare slug or `ACo…` id), `inviteBody` (note clipped to `INVITE_NOTE_LIMIT` = 300), `readProfile`, `readChats`, `readMessages`. Import-free, so `tests/unipile.test.mjs` and `tests/leadBriefing.test.mjs` pin the request contract with no network and no key. |
-| `events.ts` | Normalises the webhook payloads. Import-free, tested. |
+| `adapter.ts` | `LinkedInChannelAdapter`: `createHostedAuth` (for a `channel`: LinkedIn or email), `getAccount`, `deleteAccount`, `listWebhooks`, `createWebhook`, and the acting half — `getProfile`, `sendInvite`, `sendMessage`, `listChats`, `listMessages`, **`sendEmail`** (tracking on, our label echoed back), **`listEmails`** (a mailbox's inbox), **`listRelations`** (a seat's connections). Plus `ProviderAccount` (now with `channel` + `type`), `ProviderProfile`, `ProviderChat`, `ProviderMessage`, `ProviderRelation`, `OutgoingEmail` and `ProviderError`. The seam, and nothing more: no caps, consent or window logic lives here. |
+| `unipile.ts` | The one implementation. `https://{DSN}/api/v1`, `X-API-KEY`, 15 s timeout (30 s for a profile read). `postForm()` sends multipart **without** a content-type header, so fetch picks the boundary — `/chats` and `/emails` refuse JSON. Server-only: the key can read every connected account. |
+| `unipileRequests.ts` | The **pure** half — `unipileBaseUrl`, `hostedAuthBody` (`providers: "*:MAILING"` for a mailbox, `["LINKEDIN"]` otherwise), `readHostedAuthUrl`, `readAccount` (a mailbox's handle is its address, from `connection_params.mail.username`), `accountChannel`, `readWebhooks`, `linkedInIdentifier`, `inviteBody` (note clipped to `INVITE_NOTE_LIMIT` = 300), `readProfile`, `readChats`, `readMessages`, `emailFields` (the multipart fields of `POST /emails`, with `to` and `tracking_options` as JSON strings — the shape Unipile's own Node SDK sends), `readEmailSent`, `readEmailRows`, `readRelations`. Import-free, so `tests/unipile.test.mjs` and `tests/leadBriefing.test.mjs` pin the request contract with no network and no key. The email and relation shapes were read from `unipile-node-sdk`'s published types, because developer.unipile.com is not reachable from the build sessions. |
+| `events.ts` | Normalises the webhook payloads: account status, message, **`parseRelationEvent`** (`users` → `new_relation`), **`parseEmailEvent`** (`email` webhook and `GET /emails` rows share one reader), **`parseTrackingEvent`** (`mail_opened` / `mail_link_clicked`), plus `isBounce`, `isAutoReply`, `addressesIn`, `htmlToText`, `slugOf`. Import-free, tested. |
+| `emailFormat.ts` | `textToHtml` (copy is escaped, never trusted as HTML; bare URLs become links so clicks can be tracked; deliberately plain — no template), `replySubject`, `stripQuoted` (the reply above the quoted thread), `looksLikeEmail`. Import-free, `tests/emailFormat.test.mjs`. |
+| `email.ts` | The mailbox writers, without a `Ctx` like `inbound.ts`: `applyEmailEvent` (a lead's reply → Inbox thread + `account_message_in` that counts as replied; an out-of-office goes on the thread with `autoReply: true` and does **not** count; a delivery failure → `email_bounced` on every emailed lead named in it; our own `mail_sent` → the provider's `emailId` written onto the send for threading), `applyEmailTracking` (matched by our label = the send's own event id, falling back to `trackingId`; one open per send, every distinct click), `pullRecentEmails` (each healthy mailbox's inbox, every 2 min at most, nothing dated before the mailbox connected). |
+| `relations.ts` | Accepted invites → `li_accepted`, once per lead per strategy: `applyNewRelation` (the `users` webhook), `pullAcceptances` (the relation list, every 15 min at most, and **only** when somebody has an invite out and no acceptance — zero provider calls otherwise), `recordAlreadyConnected` (an invite to an existing 1st-degree connection is skipped and counts as accepted). Matches on the cached provider id, then the profile slug; never invents a lead. |
+| `dns.ts` | `checkDomainRecords(host)`: SPF, DMARC and DKIM (under `DKIM_SELECTORS`) looked up in public DNS with 4 s timeouts, and whether the domain exists at all. The reading is `lib/data/dnsRecords.ts` (pure, `tests/dnsRecords.test.mjs`). Server-only. |
+| `webhookGuard.ts` | `guardWebhook(request)`: secret configured, secret carried, database present, provider configured — the four checks every authenticated webhook route makes, in one place. |
 | `webhookConfig.ts` | The webhook contract: `WEBHOOK_HEADER`, `WEBHOOK_QUERY_PARAM`, `WEBHOOK_SOURCES`, and the pure, tested `authorizeFromCarriers()` match. No value imports but `node:crypto`, so the registration **script** and `tests/webhookConfig.test.mjs` can both load it directly. |
 | `webhookAuth.ts` | Untested glue: pulls the header and query-param candidates out of a `Request` and `UNIPILE_WEBHOOK_SECRET` out of the environment, then calls `authorizeFromCarriers()`. |
 | `inbound.ts` | The one place that writes workspace rows **without a `Ctx`** — a webhook has no session. The workspace is derived from `channel_accounts.provider_account_id`. Also the only writer of an inbound message, so the webhook and the pull share it. Read its header before changing it. |
 | `pull.ts` | `pullRecentMessages(adapter, workspaceId)`: 25 chats per healthy account, 10 messages each, anything outbound or empty skipped, each handed to `applyInboundMessage`. Read-only at the provider; it exists because a webhook needs `UNIPILE_WEBHOOK_SECRET` set and registered. |
-| `connect.ts` | Opens a connect session, asks for a hosted link, returns the URL. Shared by connect and reconnect. |
+| `connect.ts` | `startConnect(ctx, channel, accountId?, returnOrigin?)`: opens a connect session, asks for a hosted link, returns the URL — for a LinkedIn seat or a mailbox, new or repaired. `startLinkedInConnect` is the old name, kept as a wrapper. |
 | `index.ts` | `getLinkedInAdapter()` → `null` until `UNIPILE_DSN` + `UNIPILE_API_KEY` are set, and `appOrigin()`. |
-| `components/ws/setup/setup-config-view.tsx` + `setup-overview-view.tsx` | starting a hosted sign-in (`api.connectLinkedIn()`, a full-page redirect) and `ConnectResult`, which reads the `?connected=`/`?failed=` reference the provider sends back and polls the session for the real outcome. |
-| `scripts/register-unipile-webhooks.ts` | `npm run unipile:webhooks`. Idempotent; never deletes. |
+| `components/ws/setup/setup-integrations-view.tsx` + `setup-overview-view.tsx` | starting a hosted sign-in (`api.connectLinkedIn()` / `api.connectEmail()`, a full-page redirect — from Integrations' Connect/Add, or the Add button on each Overview card) and `ConnectResult`, which reads the `?connected=`/`?failed=` reference the provider sends back, polls the session for the real outcome, and names the channel it was for. |
+| `scripts/register-unipile-webhooks.ts` | `npm run unipile:webhooks`: registers every source in `WEBHOOK_SOURCES` (account status, messaging, users, email, email tracking). Idempotent; never deletes. |
 
 Five things about this that are not obvious:
 
@@ -274,8 +300,9 @@ Five things about this that are not obvious:
 - **The notify callback cannot carry a secret** (`notify_url` takes no headers), so it proves
   nothing on its own: the reference must be an unexpired pending session, and the account's
   identity is read back from the provider with our own key rather than taken from the body.
-  The other two webhooks *are* authenticated, by `UNIPILE_WEBHOOK_SECRET` sent back on every
-  delivery — Unipile does not sign bodies. Two carriers, either sufficient: a header (registered
+  The other webhooks (account status, messaging, users, email, email tracking) *are*
+  authenticated, by `UNIPILE_WEBHOOK_SECRET` sent back on every delivery — Unipile does not sign
+  bodies. Two carriers, either sufficient: a header (registered
   via the API by `npm run unipile:webhooks`) or a `?token=` query param on the callback URL
   (needed because Unipile's dashboard UI has no header field when an "Account" webhook is created
   by hand). The comparison is the pure half in `webhookConfig.ts` (`authorizeFromCarriers`,
@@ -309,6 +336,15 @@ idempotent writer the webhook uses. The Inbox calls it (`POST /api/inbox/sync`) 
 `/chats` as **multipart/form-data**, `/users/{identifier}?linkedin_sections=*`). A launched plan
 sends through them, and so does an Inbox reply on a LinkedIn thread.
 
+**Email is live too.** A mailbox connects through the same hosted sign-in (`providers: "*:MAILING"`),
+and the notify callback attaches it as a `channel_accounts` row with `channel = 'email'`, the
+address as its handle, and `settings = { provider, cap: 30, warmup: true }` (hours default to
+`DEFAULT_HOURS`). `attachConnectedAccount` refuses (`wrong_kind`) a callback whose account type
+does not match the session's channel. An email step sends with `POST /emails`, open + click tracking
+on, and the label set to **the id of the `sent` event it is about to write** — so a tracking
+delivery is matched by primary key, not a jsonb search. Five webhook sources, five routes under
+`app/api/webhooks/unipile/` — see the HTTP table.
+
 ### HTTP — `app/api/` + `lib/http.ts` + `lib/api.ts`
 `lib/http.ts` (56L) holds `withUser`, `json`, `fail`, param parsers — so auth, caching and error
 shapes are identical everywhere. `lib/api.ts` (304L) is the typed browser client; client
@@ -327,19 +363,25 @@ directly.
 | `/api/strategies/[id]/runs` | GET | run counts + activity log for the builder's run card |
 | `/api/journeys` | GET | `?range=` — every launched strategy's journey (per-step reach, who is waiting where) plus touchpoints by channel and day. Read live from `workflow_runs` and the run log; `dryRun` is true only when the deployment cannot send |
 | `/api/engine/run` | POST | runs every due step in the caller's workspace, **sending for real**; polled by open screens. Returns `{ processed }` |
-| `/api/jobs/tick` | GET, POST | **the scheduler's door, and the only route with no session.** Authorised by `CRON_SECRET` (Bearer header or `?token=`); 503 when unset, 401 when wrong. Returns `{ workspaces, processed, pulled, failed }` |
-| `/api/inbox/sync` | POST | pulls recent LinkedIn chats into the Inbox through the idempotent webhook writer. Returns `{ checked, stored, accounts, configured }`; the Inbox polls it every 30 s |
+| `/api/jobs/tick` | GET, POST | **the scheduler's door, and the only route with no session.** Authorised by `CRON_SECRET` (Bearer header or `?token=`); 503 when unset, 401 when wrong. Returns `{ workspaces, processed, pulled, accepted, briefed, failed }` |
+| `/api/inbox/sync` | POST | pulls recent LinkedIn chats **and each mailbox's inbox** into the Inbox through the idempotent webhook writers. Returns `{ checked, stored, accounts, mailboxes, configured }`; the Inbox polls it every 30 s and uses `accounts`/`mailboxes` to say whether a reply really goes out |
 | `/api/audiences/[id]/enrich` | GET, POST | GET the briefing stored on a lead (free; no provider call). POST reads their LinkedIn profile now through a healthy account and stores it; 503 when no provider is configured, 422 with the reason when there is no URL, no account or no profile |
 | `/api/workflows` | GET | every workflow in the workspace, newest edit first |
 | `/api/accounts` | GET | the workspace's LinkedIn accounts, mailboxes and sending domains, each with the strategies that use it |
-| `/api/accounts/[id]` | PATCH DELETE | PATCH is the dials only (LinkedIn daily caps, working hours and the warm-up toggle; mailbox cap + rotate) — identity/state/health are never accepted. DELETE disconnects at the provider first, then removes the row |
+| `/api/accounts/[id]` | PATCH DELETE | PATCH is the dials only (LinkedIn daily caps; a mailbox's daily cap; working hours and the warm-up toggle on both) — identity/state are never accepted. DELETE disconnects at the provider first, then removes the row |
 | `/api/accounts/[id]/strategies` | PUT | `{ strategyIds }` replaces the strategies sending from an account; a foreign strategy id is a 422 |
 | `/api/accounts/activity` | GET | `?days=` — real per-account counts from `events` (inbound messages, status changes). Zero means zero, never an estimate |
 | `/api/integrations/linkedin/connect` | POST | opens a Unipile hosted sign-in; `{ accountId }` repairs one instead. 503 `not_configured` with no API key, 502 when the provider refuses. **GET is a 405** — a link prefetch must not open a sign-in |
-| `/api/integrations/linkedin/connect/[id]` | GET | how one connect attempt of *this workspace's* is going; the screen polls it |
+| `/api/integrations/email/connect` | POST | the same, for a mailbox (Gmail, Outlook, IMAP). GET is a 405 |
+| `/api/integrations/linkedin/connect/[id]` | GET | how one connect attempt of *this workspace's* is going — either channel; the screen polls it |
+| `/api/domains` | POST | `{ host }` adds a sending domain and looks up SPF/DKIM/DMARC straight away; returns `DomainCheck` (the row + what each lookup found). 422 for a non-domain or a duplicate |
+| `/api/domains/[id]`, `/api/domains/[id]/check` | DELETE, POST | stop tracking a domain; look its records up again |
 | `/api/webhooks/unipile/notify` | POST | hosted sign-in finished. See "Connecting LinkedIn" below for why this one has no secret and is still safe |
-| `/api/webhooks/unipile/accounts` | POST | account status changed. Shared-secret header; writes `channel_accounts.state` |
-| `/api/webhooks/unipile/messages` | POST | inbound message. Shared-secret header; idempotent on the provider's message id |
+| `/api/webhooks/unipile/accounts` | POST | Unipile **Account** webhook (`account_status`): status changed. Shared secret; writes `channel_accounts.state` |
+| `/api/webhooks/unipile/messages` | POST | **Messaging** (`messaging`): inbound LinkedIn message. Shared secret; idempotent on the provider's message id |
+| `/api/webhooks/unipile/users` | POST | **Users** (`users`): `new_relation` → an invite accepted (`relations.ts`). Shared secret |
+| `/api/webhooks/unipile/emails` | POST | **Mailing** (`email`): `mail_received` / `mail_sent` / `mail_moved` (`email.ts`). Shared secret; idempotent on the email id |
+| `/api/webhooks/unipile/email-tracking` | POST | **Mail Tracking** (`email_tracking`): `mail_opened` / `mail_link_clicked`. Shared secret |
 | `/api/badges` | GET | `{ tasks, inbox, config }`: the rail counts, fetched on every navigation |
 | `/api/settings` | GET, PATCH | the (removed) rules screen: Variables/Sending rules/Compliance (`workspace_settings`); no screen calls it now. PATCH body carries only the section(s) changed (`{ variableFallbacks? \| sendingRules? \| compliance? }`); shape/range checked in `validate.ts`, merged into the stored row by the repository. Always real for the signed-in workspace, but nothing acts on it — the sender holds to the plan's window and the account's caps instead. See Configuration below |
 | `/api/audiences/uploads`, `…/[id]/validate`, `/api/audiences/segments` | POST, GET | parked file → review (per-channel reach, **in-journey warning**, import plan) → saved segment. Segments carry a live `audienceCount`. Max 4 MB (Vercel's body cap) |
@@ -635,16 +677,23 @@ channel steps and lists the actual subject/body/note per touch, per strategy (`b
 `li_invite → note`, `call → notes`, else `body`). Nothing is invented: a strategy with no copy
 written says so. Editing copy in place is open work (§7).
 
-**The setup score only counts what the user can change.** "No mailbox connected" is `tone: "info"`,
-not a blocker: connecting a mailbox is not built, so scoring it left every workspace permanently
-short of full marks with no action available.
+**The setup score only counts what the user can change.** "No mailbox connected" is `tone: "info"`
+with a Connect action, not a blocker: email is optional and a LinkedIn-only workspace is complete.
+A mailbox that needs signing in again *is* a blocker (`mailboxNeedsAction`), like a signed-out seat.
 
 **LinkedIn accounts and mailboxes belong to the workspace, not to a strategy.** No strategy scope
 on this screen. Each account's "Used by strategies" control (real strategies, many-to-many for
-**both** channels) saves through `PUT /api/accounts/:id/strategies`; its daily caps and mailbox
-rotation save (debounced) through `PATCH /api/accounts/:id`. Domains show their SPF/DKIM/DMARC
-state. The Overview's checks come from `lib/data/setup.ts` (real state), never a constant.
-**Connecting a mailbox is not built** and the screen says so instead of offering a button.
+**both** channels) saves through `PUT /api/accounts/:id/strategies`; its daily cap, working hours
+and warm-up save through `PATCH /api/accounts/:id` — **a mailbox has the same hours and warm-up as a
+LinkedIn seat**, and its row shows today's pace (`EmailPace`). The old mailbox "rotate" toggle is
+gone: nothing ever read it, and mailboxes now share the load on their own (see Execution engine).
+Each Overview card's **Add** opens the hosted sign-in for that channel (it used to link to a page
+that did not exist). **Sending domains are added and verified here**: `Domains` in
+`setup-overview-view.tsx` adds a host (`POST /api/domains`), looks SPF / DKIM / DMARC up in public
+DNS on the spot, shows what each lookup found or exactly what to add, and offers Check again and
+Remove. A domain DNS has never heard of says so, rather than "3 records missing". The last lookup
+per domain is held above the card, because saving reloads the snapshot and the card re-mounts.
+The Overview's checks come from `lib/data/setup.ts` (real state), never a constant.
 
 **WhatsApp, Calls and SMS** are a Planned row on Integrations — no account or number concept exists, so
 there is nothing to configure and nothing was scaffolded. A tab whose whole content would be
@@ -680,8 +729,10 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 `adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `setup.test.mjs` · `workflowPersist.test.mjs` · `audiencesValidation` `audiencesMerge` `audiencesJourney` `audiencesProfile` `audiencesImportPlan` `prospect` `workflowSegment` ·
 `unipile.test.mjs` (the Unipile request contract + response readers) · `unipileEvents.test.mjs`
 (both documented webhook envelopes) · `webhookConfig.test.mjs` (the header/query-param match) —
-`engineSteps.test.mjs` (the pure step runner) —
-**245 tests** (`journey.test.mjs` is the newest)
+`engineSteps.test.mjs` (the pure step runner, incl. conditions that watch for a lead acting) —
+`emailFormat.test.mjs` (copy → email HTML, threading subjects, quote stripping) ·
+`dnsRecords.test.mjs` (SPF / DKIM / DMARC reading) —
+**318 tests**
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).
@@ -709,7 +760,9 @@ namespaces, no parameter properties).
 | Change what a connected account can do | `lib/data/types.ts` (`LinkedInSettings`/`EmailSettings`) → `validateAccountPatch` in `validate.ts` → `pg.ts` + `memory.ts` → `components/ws/setup/account-settings.tsx` |
 | Add a setup check | `lib/data/setup.ts` (and its test). It is derived from `AccountsSnapshot`; do not hardcode |
 | Swap the LinkedIn vendor | implement `LinkedInChannelAdapter` (`lib/channels/adapter.ts`) and return it from `getLinkedInAdapter()`. Nothing else — that is what the interface is for. |
-| Handle another provider webhook | a reader in `lib/channels/events.ts` (+ a case in `tests/unipileEvents.test.mjs`), a writer in `inbound.ts`, a route under `app/api/webhooks/unipile/`, and the `source` in `webhookConfig.ts` so the registration script picks it up |
+| Handle another provider webhook | a reader in `lib/channels/events.ts` (+ a case in `tests/unipileEvents.test.mjs`), a writer (`inbound.ts`, `email.ts` or `relations.ts`, or a new file beside them), a route under `app/api/webhooks/unipile/` that starts with `guardWebhook`, and the `source` in `webhookConfig.ts` so the registration script picks it up |
+| Add a condition a plan can wait on | an `events.kind` in `LEAD_EVENT` + `SIGNAL_OF_KIND` (`lib/data/accountEvents.ts`), something that writes it (a webhook writer or a pull), its words in `SIGNAL_PHRASE` / `CHECK_LABEL` (`lib/engine/steps.ts`), the `observe()` query in `pg.ts`, `OFFERED_CHECKS` in `lib/app/workflow.ts`, and `CONDITION_HINT` in the builder inspector |
+| Change how an email is sent or threaded | `sendEmailStep` / `pickMailbox` / `mailboxFor` in `pg.ts`, the body in `lib/channels/emailFormat.ts`, the form fields in `emailFields` (`unipileRequests.ts`, tested) |
 | Add a per-account figure | `AccountActivity` in `lib/data/types.ts` → `accountActivity()` in **both** repository impls → `SeatActivity` in `ChannelTabs.tsx`. Count real `events` rows; never estimate |
 | Move a lead into or out of an uploaded audience | `segmentIds` on `AudienceInput` (`lib/data/validate.ts`) → `setSegments`/`segmentsOf` in `pg.ts` and their equivalents in `memory.ts` → the checkbox list in `components/ws/audiences/lead-form.tsx`. Sending the list replaces the whole membership; leaving the key out leaves it alone |
 | Change what a new strategy starts with | `components/ws/strategies/new-strategy-view.tsx` (shape, audience, play) + `graphFromTemplate`/`graphForChannel` in `lib/app/workflow.ts`, which take the audience id. Never let the Audience step default to one that is empty by definition — see §5 |
@@ -936,6 +989,16 @@ namespaces, no parameter properties).
   micro-labels, 30–38px controls. Re-tune by changing the primitive (`button`'s `size` variants,
   `.label-mono`), not by scattering size overrides through screens — and never with CSS `zoom`.
 
+- **developer.unipile.com does not resolve from a build session**, so its docs cannot be fetched
+  there. Unipile's own Node SDK is on npm (`npm pack unipile-node-sdk`, read
+  `dist/types/**.d.ts` and `dist/esm/resources/*.js`) and is the source the email, relation and
+  hosted-auth shapes were taken from. The SDK does not type webhook bodies, so `events.ts` reads
+  every plausible spelling.
+- **The build session also has no public DNS** (`resolveTxt` → `ENOTFOUND` for everything), so the
+  domain check reports every domain as "couldn't be found" there. That is the sandbox, not the
+  code; on Vercel it resolves. Check `node -e "require('dns').promises.resolveTxt('google.com')"`
+  before debugging `lib/channels/dns.ts`.
+
 ## 6. Content rules (from the product brief — these are commitments, not preferences)
 
 - No invented testimonials, customer logos, metrics, integrations or certification claims.
@@ -967,14 +1030,24 @@ Roughly in the order they should be closed.
    which needs a cursor once there are more. The send path was verified end to end against a local
    Postgres — enrolment, the cap-reached deferral rolling to the next working morning, the tick's
    auth — but **not against a live LinkedIn account from here**.
-3. **LinkedIn connects and sends; email does not.** LinkedIn accounts connect through Unipile's
-   hosted sign-in (see "Connecting LinkedIn" in §3) wherever `UNIPILE_DSN` + `UNIPILE_API_KEY` are
-   set; without them the screens say so rather than offering a button that 503s. Caps are now
-   enforced in the runner and profiles are read (`getProfile` → the briefing on
-   `audiences.extra.linkedin`). Still open: **`UNIPILE_WEBHOOK_SECRET` is not set in production**,
-   so every webhook delivery is refused and replies arrive only through the Inbox's 30 s pull —
-   setting it and running `npm run unipile:webhooks` makes them instant. Mailbox connection is not
-   built at all: `sending_domains` is read-only and "Connect mailbox" is still disabled.
+3. **LinkedIn and email both connect and send** through Unipile's hosted sign-in wherever
+   `UNIPILE_DSN` + `UNIPILE_API_KEY` are set; without them the screens say so rather than offering
+   a button that 503s. `UNIPILE_WEBHOOK_SECRET` is now set in production; the five webhooks are
+   created in Unipile's dashboard with `?token=` URLs (or by `npm run unipile:webhooks`). Still
+   open, honestly:
+   - **The email path has not been run against a live mailbox from here** (developer.unipile.com
+     is unreachable from the build session; request shapes come from Unipile's own SDK types, and
+     the webhook readers accept every plausible spelling). The first real send is the test.
+   - **Spam placement cannot be seen.** Nothing tells a sender whether their email landed in the
+     recipient's spam folder; there is no such event to record. Bounces are detected from the
+     delivery-failure notice that arrives in the mailbox (`isBounce`), not from an SMTP status.
+   - **No unsubscribe link or suppression list** beyond bounces. Cold email to some regions needs one.
+   - **Opens are a weak signal**: Apple Mail preloads tracking images, so "If they opened" reads high.
+   - **Custom tracking domains** (sending the open pixel and click redirects through your own
+     domain, which helps deliverability) are not set up: Unipile's SDK exposes no field for it.
+   - **No stop-on-reply rule.** A plan only reacts to a reply where a condition asks about it; a
+     linear sequence keeps sending after someone replies. Add a condition, or build a global rule.
+   - DKIM is found only under the common selectors (`DKIM_SELECTORS`).
 4. **Configuration rules are stored but not enforced, and no screen edits them.** Variables,
    sending rules and compliance persist in `workspace_settings` (`/api/settings`), but the sender
    reads the plan's own sending window and the account's caps instead, so that table is dead
@@ -1005,7 +1078,8 @@ Roughly in the order they should be closed.
 11. **Two simultaneous uploads containing the same new person can create two audiences** (there is no
     unique key on an audience's email, by design: contacts without one exist). The second upload would
     merge into the first.
-12. **The Inbox cannot mark a thread read/handled** (no endpoint) and cannot reply (nothing sends).
+12. **The Inbox cannot mark a thread read/handled** (no endpoint). Replies on LinkedIn and email
+    threads really send; WhatsApp and SMS replies are saved to the thread only.
 13. **Deferred.** A lead still has two detail surfaces: the read-only `lead-drawer.tsx` and the
     `lead-form.tsx` modal its Edit button opens. Making the drawer editable in place (and deleting
     the modal) is a real refactor and was left out. There is also no global search: the top bar has

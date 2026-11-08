@@ -10,9 +10,11 @@ import { Switch } from "@/components/ws/ui/misc";
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 /**
- * The dials on one account: daily ceilings, and for a mailbox whether it joins
- * the rotation. Identity, health and connection state are facts the provider
- * reports, so they are read-only here and the server refuses them anyway.
+ * The dials on one account: its daily ceiling, its working hours and whether a
+ * new account eases in. LinkedIn seats and mailboxes have the same shape, because
+ * each is what gets restricted (or filtered) when it sends too much too soon.
+ * Identity and connection state are facts the provider reports, so they are
+ * read-only here and the server refuses them anyway.
  */
 export function AccountSettings({ account, onSaved }: { account: ChannelAccount; onSaved: () => void }) {
   const [values, setValues] = useState<AccountSettingsPatch>(() =>
@@ -24,7 +26,11 @@ export function AccountSettings({ account, onSaved }: { account: ChannelAccount;
           hours: { ...account.settings.hours, days: [...account.settings.hours.days] },
           warmup: account.settings.warmup,
         }
-      : { cap: account.settings.cap, rotate: account.settings.rotate },
+      : {
+          cap: account.settings.cap,
+          hours: { ...account.settings.hours, days: [...account.settings.hours.days] },
+          warmup: account.settings.warmup,
+        },
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -68,22 +74,12 @@ export function AccountSettings({ account, onSaved }: { account: ChannelAccount;
             />
           </>
         ) : (
-          <>
-            <Number
-              id={`${account.id}-cap`}
-              label="Emails per day"
-              value={values.cap ?? 0}
-              onChange={(v) => setValues((s) => ({ ...s, cap: v }))}
-            />
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-input bg-card px-[11px] py-[7px]">
-              <span className="text-[11.5px] font-medium">Share the load with other mailboxes</span>
-              <Switch
-                checked={values.rotate ?? false}
-                onChange={(v) => setValues((s) => ({ ...s, rotate: v }))}
-                label="Share the load with other mailboxes"
-              />
-            </div>
-          </>
+          <Number
+            id={`${account.id}-cap`}
+            label="Emails per day"
+            value={values.cap ?? 0}
+            onChange={(v) => setValues((s) => ({ ...s, cap: v }))}
+          />
         )}
       </div>
 
@@ -92,7 +88,7 @@ export function AccountSettings({ account, onSaved }: { account: ChannelAccount;
         the queue waits for the next working morning.
       </p>
 
-      {account.channel === "linkedin" && values.hours ? (
+      {values.hours ? (
         <>
           <span className="label-mono">Working hours</span>
           <div className="flex flex-wrap gap-[5px]">
@@ -138,7 +134,9 @@ export function AccountSettings({ account, onSaved }: { account: ChannelAccount;
             <span className="min-w-0 text-[11.5px] font-medium">
               Ease a new account in over two weeks
               <span className="block text-[11px] font-normal text-muted-foreground">
-                Starts at a fifth of these limits and climbs. A fresh account sending its ceiling on day one is what gets a seat restricted.
+                {account.channel === "email"
+                  ? "Starts at a fifth of the daily cap and climbs. A new mailbox or domain sending its full cap on day one is how mail ends up in spam."
+                  : "Starts at a fifth of these limits and climbs. A fresh account sending its ceiling on day one is what gets a seat restricted."}
               </span>
             </span>
             <Switch

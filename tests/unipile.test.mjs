@@ -101,3 +101,83 @@ test("webhooks are read from a list or a bare array, and rows without an id are 
   assert.equal(readWebhooks([{ id: "w2", source: "account_status", url: "https://a/b" }])[0].source, "account_status");
   assert.deepEqual(readWebhooks(null), []);
 });
+
+/* ---------- mailboxes, email and relations --------------------------------- */
+
+import { accountChannel, emailFields, readEmailRows, readEmailSent, readRelations } from "../lib/channels/unipileRequests.ts";
+
+test("a mailbox sign-in offers every mail provider; a LinkedIn one only LinkedIn", () => {
+  const base = {
+    kind: "create",
+    reference: "cx_1",
+    successUrl: "https://app.example/ok",
+    failureUrl: "https://app.example/no",
+    notifyUrl: "https://app.example/n",
+    expiresAt: new Date("2026-11-08T10:15:00Z"),
+  };
+  assert.equal(hostedAuthBody({ ...base, channel: "email" }, "https://api.example/api/v1").providers, "*:MAILING");
+  assert.deepEqual(hostedAuthBody({ ...base, channel: "linkedin" }, "https://api.example/api/v1").providers, ["LINKEDIN"]);
+});
+
+test("a mailbox account is read as an address, not a LinkedIn URL", () => {
+  const box = readAccount(
+    {
+      object: "Account",
+      id: "acc_mail",
+      type: "GOOGLE_OAUTH",
+      name: "sam@getacme.example",
+      created_at: "2026-11-08T10:00:00Z",
+      connection_params: { mail: { id: "x", username: "Sam@GetAcme.example" } },
+      sources: [{ id: "s", status: "OK" }],
+    },
+    readAccountStatus,
+  );
+  assert.equal(box.channel, "email");
+  assert.equal(box.handle, "sam@getacme.example");
+  assert.equal(box.status, "ok");
+  assert.equal(accountChannel("OUTLOOK"), "email");
+  assert.equal(accountChannel("MAIL"), "email");
+  assert.equal(accountChannel("LINKEDIN"), "linkedin");
+  assert.equal(accountChannel(""), "linkedin", "an untyped account is what the LinkedIn flow always saw");
+});
+
+test("an email is sent as form fields, with JSON inside, the way Unipile's SDK sends it", () => {
+  const fields = emailFields({
+    accountId: "acc_mail",
+    to: { email: "maya@northwind.example", name: "Maya Ortiz" },
+    subject: "Quick question",
+    html: "<p>Hi</p>",
+    trackingLabel: "ev_send1",
+  });
+  assert.deepEqual(JSON.parse(fields.to), [{ identifier: "maya@northwind.example", display_name: "Maya Ortiz" }]);
+  assert.deepEqual(JSON.parse(fields.tracking_options), { opens: true, links: true, label: "ev_send1" });
+  assert.equal(fields.account_id, "acc_mail");
+  assert.equal(fields.body, "<p>Hi</p>");
+  assert.equal("reply_to" in fields, false, "a first email answers nothing");
+  assert.equal(emailFields({ ...{ accountId: "a", to: { email: "x@y.example", name: "" }, subject: "Re: Q", html: "", trackingLabel: "l" }, replyTo: "em_0" }).reply_to, "em_0");
+});
+
+test("the send's tracking id is read back", () => {
+  assert.equal(readEmailSent({ object: "EmailSent", tracking_id: "tr_9" }), "tr_9");
+  assert.equal(readEmailSent(null), "");
+});
+
+test("the relation list reads each connection by member id and slug", () => {
+  const rows = readRelations({
+    object: "UserRelationsList",
+    items: [
+      { object: "UserRelation", member_id: "ACoAAB123", public_identifier: "maya-ortiz", public_profile_url: "https://www.linkedin.com/in/maya-ortiz", first_name: "Maya", last_name: "Ortiz", created_at: 1 },
+      { object: "UserRelation" },
+    ],
+    cursor: null,
+  });
+  assert.equal(rows.length, 1, "a row naming nobody is skipped");
+  assert.deepEqual(rows[0], {
+    providerId: "ACoAAB123",
+    publicIdentifier: "maya-ortiz",
+    profileUrl: "https://www.linkedin.com/in/maya-ortiz",
+    name: "Maya Ortiz",
+    createdAt: "",
+  });
+  assert.equal(readEmailRows({ items: [{ id: "em_1" }, "junk"] }).length, 1);
+});

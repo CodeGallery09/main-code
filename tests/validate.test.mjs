@@ -263,6 +263,13 @@ test("an account's working day is checked, not trusted", async () => {
     assert.equal(validateAccountPatch("linkedin", { hours: bad }).ok, false, JSON.stringify(bad));
   }
 
-  // Hours are a LinkedIn dial; a mailbox has none.
-  assert.equal(validateAccountPatch("email", { hours: { days: ["Mon"], from: "09:00", to: "17:00", zone: "" } }).ok, false);
+  // A mailbox has a working day and a warm-up too — it is a sender reputation of its own — and
+  // the same rules hold for it.
+  const mailbox = validateAccountPatch("email", { cap: 40, hours: { days: ["Mon"], from: "09:00", to: "17:00", zone: "" }, warmup: true });
+  assert.equal(mailbox.ok, true);
+  assert.equal(mailbox.data.cap, 40);
+  assert.equal(validateAccountPatch("email", { hours: { days: ["Mon"], from: "18:00", to: "09:00", zone: "" } }).ok, false);
+  // LinkedIn's dials are not a mailbox's, and the old rotate toggle is gone.
+  assert.equal(validateAccountPatch("email", { connections: 10 }).ok, false);
+  assert.equal(validateAccountPatch("email", { rotate: true }).ok, false);
 });

@@ -270,6 +270,11 @@ export type LinkedInExtra = {
   fetchedAt: string;
   profileUrl: string;
   briefing: LeadBriefing | null;
+  /**
+   * LinkedIn's connection degree to the account that read the profile (1 = already connected),
+   * when it was read. Absent on a block written before it was stored.
+   */
+  degree?: number;
 };
 
 const EMPTY_EXTRA: LinkedInExtra = { providerId: "", fetchedAt: "", profileUrl: "", briefing: null };
@@ -286,5 +291,6 @@ export function readLinkedInExtra(extra: unknown): LinkedInExtra {
     fetchedAt: text(row.fetchedAt),
     profileUrl: text(row.profileUrl),
     briefing: (row.briefing as LeadBriefing | undefined) ?? null,
+    ...(typeof row.degree === "number" ? { degree: row.degree } : {}),
   };
 }

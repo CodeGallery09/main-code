@@ -9,6 +9,7 @@
  */
 
 import type { WorkflowGraph } from "@/lib/app/workflow";
+import type { DomainRecords } from "@/lib/data/dnsRecords";
 
 export type Channel = "linkedin" | "email" | "whatsapp" | "call" | "sms";
 export type StrategyStatus = "live" | "scheduled" | "paused" | "draft" | "completed";
@@ -349,15 +350,25 @@ export type AccountPace = {
 };
 
 export type EmailSettings = {
+  /** The provider's word for the mailbox (`GOOGLE_OAUTH`, `OUTLOOK`, `MAIL`), or "" for a manual row. */
   provider: string;
-  /** Day of the warm-up while the mailbox is still warming. */
-  warmDay?: number;
-  /** 0–100 sender reputation, as the provider reports it. */
-  health: number;
-  /** Emails per day. */
+  /** Emails per day from this mailbox, before the warm-up ramp. */
   cap: number;
-  /** Rotate this mailbox with the others on the same strategy. */
-  rotate: boolean;
+  /** The working day this mailbox sends inside, like a LinkedIn seat's. `zone` empty = the owner's. */
+  hours: { days: string[]; from: string; to: string; zone: string };
+  /** Ramp a new mailbox up to its cap over a fortnight. A fresh domain sending its ceiling lands in spam. */
+  warmup: boolean;
+};
+
+/** What a mailbox has sent today, and when it may send next. */
+export type EmailPace = {
+  sentToday: number;
+  /** Today's ceiling after the warm-up ramp. */
+  cap: number;
+  warming: boolean;
+  ageDays: number;
+  open: boolean;
+  nextOpenAt: string | null;
 };
 
 /**
@@ -406,8 +417,14 @@ export type LinkedInAccount = AccountBase & {
 
 export type EmailAccount = AccountBase & {
   channel: "email";
-  state: "warm" | "warming";
+  /**
+   * The same vocabulary as a LinkedIn seat, minus a restriction: `healthy` sends, `signed_out`
+   * needs the mailbox signed in again (a revoked OAuth grant or a changed password), and
+   * `connecting` is still syncing.
+   */
+  state: "healthy" | "signed_out" | "connecting";
   settings: EmailSettings;
+  pace: EmailPace | null;
 };
 
 export type ChannelAccount = LinkedInAccount | EmailAccount;
@@ -419,6 +436,13 @@ export type SendingDomain = {
   dkim: boolean;
   dmarc: boolean;
   isSample: boolean;
+};
+
+/** A domain as it stands after a live DNS lookup: the stored row, and what each record said. */
+export type DomainCheck = {
+  domain: SendingDomain;
+  records: DomainRecords;
+  checkedAt: string;
 };
 
 export type AccountsSnapshot = {

@@ -11,25 +11,24 @@ import { Button } from "@/components/ws/ui/button";
  * textarea invites typing before reading.
  *
  * The line above it says what pressing Reply will actually do on this channel, which differs:
- * a LinkedIn reply goes out through the connected account, and everything else is written onto
- * the thread because no mailbox or number can be connected yet.
+ * a LinkedIn reply goes out through the connected account, an email reply goes out from the
+ * mailbox the conversation is on, and anything else is written onto the thread because no number
+ * can be connected yet.
  */
 export function ReplyBar({
   onReply,
   channel,
   linkedInReady,
+  emailReady,
 }: {
   onReply: () => void;
   channel: Channel;
   /** A healthy LinkedIn account exists, so a LinkedIn reply can genuinely be delivered. */
   linkedInReady: boolean;
+  /** A healthy mailbox exists, so an email reply can genuinely be delivered. */
+  emailReady: boolean;
 }) {
-  const note =
-    channel === "linkedin"
-      ? linkedInReady
-        ? "Goes out as a LinkedIn message from your connected account · counts toward today's message limit."
-        : "Saved to the thread. Connect a LinkedIn account under Setup and replies go out from here."
-      : "Replies are saved to the thread. Nothing leaves Flightpath until a mailbox is connected.";
+  const note = replyNote(channel, linkedInReady, emailReady);
   return (
     <div className="flex flex-wrap items-center justify-between gap-[10px] border-t border-divider bg-quiet px-4 py-3">
       <span className="min-w-0 flex-1 basis-[260px] text-[11.5px] leading-[1.5] text-muted-foreground">{note}</span>
@@ -41,15 +40,42 @@ export function ReplyBar({
   );
 }
 
+/** What a reply on this channel will really do — said before it is written, and again beside Send. */
+function replyNote(channel: Channel, linkedInReady: boolean, emailReady: boolean): string {
+  if (channel === "linkedin") {
+    return linkedInReady
+      ? "Goes out as a LinkedIn message from your connected account · counts toward today's message limit."
+      : "Saved to the thread. Connect a LinkedIn account under Setup and replies go out from here.";
+  }
+  if (channel === "email") {
+    return emailReady
+      ? "Goes out as an email from the mailbox this conversation is on, in the same thread."
+      : "Saved to the thread. Connect a mailbox under Setup and replies go out from here.";
+  }
+  return "Saved to the thread. Nothing leaves Flightpath on this channel yet.";
+}
+
 /**
  * The reply composer.
  *
- * A LinkedIn reply is delivered by the repository through the workspace's connected account; on
- * every other channel the reply is written onto the thread, because no mailbox or number can be
- * connected yet. Either way the thread is the record, and a provider refusal comes back as the
- * reason rather than a silent save.
+ * A LinkedIn or email reply is delivered by the repository through the workspace's connected
+ * account; on any other channel it is written onto the thread. Either way the thread is the
+ * record, and a provider refusal comes back as the reason rather than a silent save.
  */
-export function Composer({ thread, onSaved, onClose }: { thread: Thread; onSaved: () => void; onClose: () => void }) {
+export function Composer({
+  thread,
+  onSaved,
+  onClose,
+  linkedInReady,
+  emailReady,
+}: {
+  thread: Thread;
+  onSaved: () => void;
+  onClose: () => void;
+  linkedInReady: boolean;
+  emailReady: boolean;
+}) {
+  const sends = (thread.channel === "linkedin" && linkedInReady) || (thread.channel === "email" && emailReady);
   const first = thread.audienceName.split(" ")[0];
   const [body, setBody] = useState(`Hi ${first},\n\n`);
   const [busy, setBusy] = useState(false);
@@ -103,7 +129,7 @@ export function Composer({ thread, onSaved, onClose }: { thread: Thread; onSaved
 
       <div className="flex flex-wrap items-center justify-between gap-[10px] border-t border-divider pt-[11px]">
         <span className="text-[11.5px] leading-[1.5] text-muted-foreground">
-          Saved to this thread and to the lead&apos;s history. Nothing is sent: no mailbox is connected yet.
+          {replyNote(thread.channel, linkedInReady, emailReady)}
         </span>
         <span className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>
@@ -111,7 +137,7 @@ export function Composer({ thread, onSaved, onClose }: { thread: Thread; onSaved
           </Button>
           <Button onClick={() => void save()} disabled={busy}>
             <Save aria-hidden strokeWidth={1.9} />
-            {busy ? "Saving…" : "Save the reply"}
+            {busy ? (sends ? "Sending…" : "Saving…") : sends ? "Send the reply" : "Save the reply"}
           </Button>
         </span>
       </div>

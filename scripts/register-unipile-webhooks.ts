@@ -1,5 +1,6 @@
 /**
- * Registers (or re-points) the two Unipile webhooks this app serves.
+ * Registers (or re-points) every Unipile webhook this app serves — account status, messaging,
+ * users (accepted invites), email and email tracking — from `WEBHOOK_SOURCES`.
  *
  *   UNIPILE_DSN=... UNIPILE_API_KEY=... UNIPILE_WEBHOOK_SECRET=... APP_URL=https://… \
  *     npm run unipile:webhooks

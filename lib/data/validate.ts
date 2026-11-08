@@ -381,7 +381,6 @@ export type AccountSettingsPatch = {
   messages?: number;
   visits?: number;
   cap?: number;
-  rotate?: boolean;
   hours?: { days: string[]; from: string; to: string; zone: string };
   warmup?: boolean;
 };
@@ -460,25 +459,22 @@ export function validateAccountPatch(
     numeric("connections", LINKEDIN_LIMITS.connections, "Connection requests");
     numeric("messages", LINKEDIN_LIMITS.messages, "Messages");
     numeric("visits", LINKEDIN_LIMITS.visits, "Profile visits");
-    if (input.hours !== undefined) {
-      const hours = validateHours(input.hours, errors);
-      if (hours) out.hours = hours;
-    }
-    if (input.warmup !== undefined) {
-      if (typeof input.warmup !== "boolean") errors.warmup = "Warm-up must be on or off.";
-      else out.warmup = input.warmup;
-    }
   } else {
     numeric("cap", EMAIL_CAP_MAX, "The daily cap");
-    if (input.rotate !== undefined) {
-      if (typeof input.rotate !== "boolean") errors.rotate = "Rotate must be on or off.";
-      else out.rotate = input.rotate;
-    }
+  }
+  // Both kinds of account have a working day and a warm-up: each is what gets restricted.
+  if (input.hours !== undefined) {
+    const hours = validateHours(input.hours, errors);
+    if (hours) out.hours = hours;
+  }
+  if (input.warmup !== undefined) {
+    if (typeof input.warmup !== "boolean") errors.warmup = "Warm-up must be on or off.";
+    else out.warmup = input.warmup;
   }
 
   // Keys that belong to the other channel are mistakes, not no-ops.
   const allowed =
-    channel === "linkedin" ? ["connections", "messages", "visits", "hours", "warmup"] : ["cap", "rotate"];
+    channel === "linkedin" ? ["connections", "messages", "visits", "hours", "warmup"] : ["cap", "hours", "warmup"];
   for (const key of Object.keys(input)) {
     if (!allowed.includes(key)) errors[key] = "That setting can't be changed here.";
   }

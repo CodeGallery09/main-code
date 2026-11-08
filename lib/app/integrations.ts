@@ -10,17 +10,16 @@
  * This file is the static catalogue only. A provider's *state* (connected, needs
  * attention, not connected) is worked out from the workspace's own accounts and
  * domains by `providerView()`, so nothing here describes any particular
- * workspace. **LinkedIn can now actually connect**, through the hosted sign-in in
- * `lib/channels/` — but only where the deployment has a provider configured, which
- * `providerView()` takes as an argument rather than assuming. Connecting a mailbox
- * is still not built.
+ * workspace. **LinkedIn and mailboxes really connect**, through the provider's
+ * hosted sign-in in `lib/channels/` — but only where the deployment has a provider
+ * configured, which `providerView()` takes as an argument rather than assuming.
  *
  * Import-free apart from types, so it can be read from server components,
  * client components and tests alike.
  */
 
 import type { ChannelKey } from "@/lib/app/channels";
-import { linkedInNeedsAction, linkedInStateNote } from "@/lib/data/setup";
+import { linkedInNeedsAction, linkedInStateNote, mailboxNeedsAction, mailboxStateNote } from "@/lib/data/setup";
 import type { AccountsSnapshot } from "@/lib/data/types";
 
 export type ProviderState = "connected" | "attention" | "disconnected" | "planned";
@@ -78,14 +77,14 @@ export const PROVIDERS: Provider[] = [
     k: "email",
     planned: false,
     name: "Email",
-    blurb: "Send from your own domains, with deliverability checks before the first send.",
+    blurb: "Send from your own Gmail, Outlook or IMAP mailboxes, with opens, clicks, replies and bounces tracked.",
     ch: "mail",
     group: "Channels",
-    how: "Add a sending domain, publish the three DNS records, then connect each mailbox over OAuth. New mailboxes warm up for two weeks before they carry full volume.",
+    how: "Sign in to each mailbox once (Google and Microsoft over OAuth, anything else over IMAP). Add your sending domains on Setup so their SPF, DKIM and DMARC are checked. New mailboxes ease in over two weeks before they carry their full daily cap.",
     scopes: [
-      "Send on behalf of connected mailboxes",
-      "Read replies to threads Flightpath started",
-      "Never reads the rest of the inbox",
+      "Send email on behalf of connected mailboxes, with open and click tracking",
+      "Read new mail so replies and bounces reach the Inbox",
+      "Only mail from people in your audiences is kept; everything else is ignored",
     ],
   },
   {
@@ -165,14 +164,14 @@ export type ProviderView = {
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /**
- * The state of one provider, from the workspace's accounts. Connecting is not built yet, so a
- * provider with nothing connected has no action; one that is connected offers "Manage", which goes
- * to Configuration where its accounts and limits live.
+ * The state of one provider, from the workspace's accounts. A channel that can connect offers
+ * "Connect" where the deployment has a provider; one that is connected offers "Manage", which goes
+ * to Setup where its accounts and limits live.
  */
 export function providerView(
   provider: Provider,
   snapshot: AccountsSnapshot,
-  /** Whether this deployment has a LinkedIn provider configured. Unset means "no". */
+  /** Whether this deployment has a provider configured (the same one connects LinkedIn and mail). */
   linkedInConfigured = false,
 ): ProviderView {
   if (provider.planned) {
@@ -204,16 +203,24 @@ export function providerView(
   }
 
   const boxes = snapshot.accounts.filter((a) => a.channel === "email");
-  const pending = snapshot.domains.filter((d) => !(d.spf && d.dkim && d.dmarc)).length;
-  if (!boxes.length && !snapshot.domains.length) {
-    return { provider, state: "disconnected", detail: "No mailbox connected", action: null };
+  if (!boxes.length) {
+    return {
+      provider,
+      state: "disconnected",
+      detail: linkedInConfigured ? "No mailbox connected" : "Not configured on this deployment",
+      action: linkedInConfigured ? "Connect" : null,
+    };
   }
+  const blocked = boxes.filter((a) => mailboxNeedsAction(a.state));
+  const pending = snapshot.domains.filter((d) => !(d.spf && d.dkim && d.dmarc)).length;
   return {
     provider,
-    state: pending ? "attention" : "connected",
-    detail: pending
-      ? `${count(snapshot.domains.length, "domain")} · ${pending} pending DNS`
-      : `${count(boxes.length, "mailbox", "mailboxes")} · ${count(snapshot.domains.length, "domain")} verified`,
+    state: blocked.length || pending ? "attention" : "connected",
+    detail: blocked.length
+      ? `${count(boxes.length, "mailbox", "mailboxes")} · ${blocked.length === 1 ? `${blocked[0].handle}: ${mailboxStateNote(blocked[0].state)}` : `${blocked.length} need attention`}`
+      : pending
+        ? `${count(boxes.length, "mailbox", "mailboxes")} · ${pending} ${pending === 1 ? "domain" : "domains"} missing DNS records`
+        : `${count(boxes.length, "mailbox", "mailboxes")} connected${snapshot.domains.length ? ` · ${count(snapshot.domains.length, "domain")} verified` : ""}`,
     action: "Manage",
   };
 }

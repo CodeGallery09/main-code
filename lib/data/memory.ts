@@ -46,6 +46,8 @@ import type {
 } from "@/lib/data/repository";
 import { AUDIENCE_CAMPAIGN, AUDIENCE_WORKSPACE, graphFromTemplate, type WorkflowGraph } from "@/lib/app/workflow";
 import { runStep } from "@/lib/engine/steps";
+import { checkDomainRecords } from "@/lib/channels/dns";
+import { normaliseDomain } from "@/lib/data/dnsRecords";
 import { buildBriefing, readLinkedInExtra, type LinkedInExtra } from "@/lib/audiences/summary";
 import type { ProviderProfile } from "@/lib/channels/adapter";
 import { journeyRows } from "@/lib/engine/journey";
@@ -60,6 +62,8 @@ import type { MappingReport, Segment, UploadPreview } from "@/lib/audiences/segm
 import { suggestMapping, type Mapping, type ParsedAudience } from "@/lib/audiences/validation";
 import type { Table } from "@/lib/audiences/table";
 import type {
+  DomainCheck,
+  SendingDomain,
   AccountActivity,
   AccountsSnapshot,
   Analytics,
@@ -675,6 +679,36 @@ export class MemoryRepository implements Repository {
     if (at < 0) return null;
     accounts.splice(at, 1);
     return { deleted: id };
+  }
+
+  /** A domain's DNS is public, so the demo store looks it up for real like the database store. */
+  async addDomain(_ctx: Ctx, input: string): Promise<DomainCheck | WriteError> {
+    const host = normaliseDomain(input);
+    if (!host) return { error: { field: "host", message: "That isn't a domain name. Enter it like acme.com." } };
+    if (domains.some((d) => d.host === host)) return { error: { field: "host", message: `${host} is already added.` } };
+    const row: SendingDomain = { id: `dom_${nextId("domain")}`, host, spf: false, dkim: false, dmarc: false, isSample: false };
+    domains.push(row);
+    return this.verifyDomain(row);
+  }
+
+  async checkDomain(_ctx: Ctx, id: string): Promise<DomainCheck | null> {
+    const row = domains.find((d) => d.id === id);
+    return row ? this.verifyDomain(row) : null;
+  }
+
+  async deleteDomain(_ctx: Ctx, id: string): Promise<{ deleted: string } | null> {
+    const at = domains.findIndex((d) => d.id === id);
+    if (at < 0) return null;
+    domains.splice(at, 1);
+    return { deleted: id };
+  }
+
+  private async verifyDomain(row: SendingDomain): Promise<DomainCheck> {
+    const records = await checkDomainRecords(row.host);
+    row.spf = records.spf.ok;
+    row.dkim = records.dkim.ok;
+    row.dmarc = records.dmarc.ok;
+    return { domain: { ...row }, records, checkedAt: new Date().toISOString() };
   }
 
   /**

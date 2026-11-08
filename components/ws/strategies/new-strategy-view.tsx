@@ -55,10 +55,10 @@ const SINGLE: Channel[] = ["linkedin", "email", "call"];
 /**
  * Does a channel put something in front of the lead today?
  *
- * LinkedIn sends for real and a call step becomes a to-do a person can act on. Email cannot be
- * connected at all yet, so a play that contains it is partly decorative — and a user who finds
- * that out from the activity log after launching has already spent their first impression on it.
- * The play cards say so before the plan is created.
+ * LinkedIn and email send for real (from a connected account or mailbox) and a call step becomes a
+ * to-do a person can act on. A play containing a channel that cannot act is partly decorative — and
+ * a user who finds that out from the activity log after launching has already spent their first
+ * impression on it. The play cards say so before the plan is created.
  */
 const canAct = (channel: Channel) => channel === "call" || (SENDING_CHANNELS as readonly string[]).includes(channel);
 
@@ -344,10 +344,10 @@ export function NewStrategyView() {
           </section>
 
           <p className="border-t border-border pt-[14px] text-[11.5px] leading-[1.55] text-muted-foreground">
-            <strong className="font-semibold text-body">LinkedIn is the only channel that sends today.</strong> A call
-            step becomes a to-do for a person; an email step is written down with the reason it could not go out,
-            because no mailbox can be connected yet. Working hours and daily limits come from the account the plan
-            sends from, in{" "}
+            <strong className="font-semibold text-body">LinkedIn and email send for real.</strong> LinkedIn steps go
+            out from your connected LinkedIn account, email steps from your connected mailboxes, with opens, clicks,
+            replies and bounces tracked; a call step becomes a to-do for a person. Working hours and daily limits come
+            from the account each step sends from, in{" "}
             <Link href={SETUP_HREF} className="font-medium text-foreground hover:underline">
               Setup
             </Link>

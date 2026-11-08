@@ -6,9 +6,11 @@ const li = (over = {}) => ({
   id: "a1", channel: "linkedin", name: "Maya Reyes", handle: "linkedin.com/in/maya", state: "healthy",
   settings: { connections: 20, messages: 50, visits: 60, inmail: null }, strategyIds: [], isSample: false, ...over,
 });
+const HOURS = { days: ["Mon", "Tue", "Wed", "Thu", "Fri"], from: "09:00", to: "17:00", zone: "" };
 const mb = (over = {}) => ({
-  id: "m1", channel: "email", name: "Sales", handle: "sales@acme.example", state: "warm",
-  settings: { provider: "Google", health: 90, cap: 40, rotate: true }, strategyIds: [], isSample: false, ...over,
+  id: "m1", channel: "email", name: "Sales", handle: "sales@acme.example", state: "healthy",
+  settings: { provider: "GOOGLE_OAUTH", cap: 40, hours: HOURS, warmup: true }, pace: null,
+  strategyIds: [], isSample: false, ...over,
 });
 const dom = (over = {}) => ({ id: "d1", host: "acme.example", spf: true, dkim: true, dmarc: true, isSample: false, ...over });
 const byId = (checks, id) => checks.find((c) => c.id === id);
@@ -16,9 +18,10 @@ const byId = (checks, id) => checks.find((c) => c.id === id);
 test("an empty workspace is told what is true: nothing is connected — and nothing invented", () => {
   const checks = setupChecks({ accounts: [], domains: [] });
   assert.equal(byId(checks, "li-accounts").tone, "bad");
-  // Connecting a mailbox is not built, so it is information rather than a blocker the user
-  // cannot clear. Only LinkedIn blocks.
+  // Email is optional — a LinkedIn-only workspace is complete — so no mailbox is information with
+  // a way to act on it, not a blocker. Only LinkedIn blocks.
   assert.equal(byId(checks, "mail-accounts").tone, "info");
+  assert.equal(byId(checks, "mail-accounts").action, "Connect");
   assert.equal(byId(checks, "mail-dns"), undefined, "no domain, so nothing to authenticate");
   assert.equal(blockingCount(checks), 1);
   for (const check of checks) assert.doesNotMatch(check.detail, /Neha|getacme|acmehq/);
@@ -44,12 +47,20 @@ test("an unauthenticated domain blocks and says which records are missing", () =
   assert.deepEqual(missingRecords({ spf: false, dkim: true, dmarc: true }), ["SPF"]);
 });
 
-test("a warming mailbox is information, not a blocker", () => {
-  const checks = setupChecks({ accounts: [li(), mb({ state: "warming", settings: { provider: "G", warmDay: 9, health: 70, cap: 20, rotate: false } })], domains: [] });
+test("a warming mailbox is information, not a blocker, and reads its real pace", () => {
+  const pace = { sentToday: 3, cap: 12, warming: true, ageDays: 8, open: true, nextOpenAt: null };
+  const checks = setupChecks({ accounts: [li(), mb({ pace })], domains: [] });
   const warm = checks.find((c) => c.id.startsWith("warmup"));
   assert.equal(warm.tone, "info");
-  assert.match(warm.detail, /day 9 of 14/);
+  assert.match(warm.detail, /day 9 of 14 — 12 emails today, climbing to 40/);
   assert.equal(blockingCount(checks), 0);
+});
+
+test("a mailbox that needs signing in again blocks, and names the address", () => {
+  const check = byId(setupChecks({ accounts: [li(), mb({ state: "signed_out" })], domains: [] }), "mail-accounts");
+  assert.equal(check.tone, "bad");
+  assert.match(check.detail, /sales@acme\.example \(needs to sign in again\)/);
+  assert.equal(check.goes, "mail");
 });
 
 test("planned channels are mentioned once, as information", () => {

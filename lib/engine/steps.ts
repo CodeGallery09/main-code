@@ -8,8 +8,15 @@
  * A channel step returns a `send` effect carrying the exact words. **Whether anything leaves the
  * building is the runner's decision, not this file's**: it checks consent, the account, the daily
  * cap and the sending window, and falls back to logging what it would have sent when it cannot
- * send. A call step becomes a real to-do for a person (a call has always been one). A condition
- * cannot yet see a reply, so it takes its No branch after waiting out its window.
+ * send. A call step becomes a real to-do for a person (a call has always been one).
+ *
+ * **A condition watches for the lead acting.** "Accepted the invite", "replied", "opened" and
+ * "clicked" are read from what the providers reported (`observe.signals`), and the condition waits
+ * for one: it takes Yes the moment the signal is there, and No only once its window has run out
+ * with nothing seen. While it waits it re-checks on a short beat (`CONDITION_RECHECK_MS`), so an
+ * acceptance on day one moves the lead on day one rather than on day five. A store that cannot
+ * observe anything passes no `observe`, and the condition then says so and takes No after the
+ * window, which is all it can honestly do.
  *
  * Import-free and erasable, so `node --test` can load it directly (see CLAUDE.md).
  */
@@ -23,6 +30,28 @@ export const REAL_DAY_MS = 86_400_000;
 export type EngineNode = { id: string; kind: string; data: Record<string, unknown> };
 export type EngineEdge = { source: string; target: string; port: string };
 export type EngineAudience = { id: string; name: string; company: string; score: number };
+
+/** The behaviours a condition can wait for. */
+export type SignalKey = "accepted" | "replied" | "opened" | "clicked";
+
+/**
+ * What the runner can see about this lead, for a condition to decide on.
+ *
+ * `signals` holds the time each behaviour was first seen since the lead entered the plan.
+ * `enteredAt` is when the lead first reached this condition — the start of its window — and
+ * `firstVisit` is true on that first visit only, so the waiting line is logged once.
+ */
+export type Observation = {
+  signals: Partial<Record<SignalKey, number>>;
+  enteredAt: number;
+  firstVisit: boolean;
+};
+
+/**
+ * How often a waiting condition looks again, in real time. A tick is ten minutes apart, so
+ * anything shorter is wasted; much longer and an acceptance waits needlessly to be acted on.
+ */
+export const CONDITION_RECHECK_MS = 30 * 60_000;
 
 export type SendKind = "li_invite" | "li_msg" | "email" | "wa" | "sms";
 
@@ -45,6 +74,8 @@ export type StepEffect =
       body: string;
       /** Email only. */
       subject: string;
+      /** Email only: send as a reply in the thread of the last email this plan sent the lead. */
+      thread?: boolean;
       /**
        * What the log says when nothing can actually be sent. Both stores append the reason
        * (" — not sent: …"), so it never ends in punctuation of its own.
@@ -114,8 +145,10 @@ export function runStep(input: {
   now: number;
   /** How long one "wait N days" day lasts. Real days when sending; a minute in a dry run. */
   dayMs?: number;
+  /** What the store can see about the lead. Absent where nothing can be observed. */
+  observe?: Observation;
 }): StepResult {
-  const { nodes, edges, stepId, audience, now } = input;
+  const { nodes, edges, stepId, audience, now, observe } = input;
   const dayMs = input.dayMs ?? DRY_RUN_DAY_MS;
   const node = nodes.find((n) => n.id === stepId);
   if (!node) return { effects: [], next: null, finish: "completed" };
@@ -176,6 +209,7 @@ export function runStep(input: {
           step: node.id,
           body: fillMergeFields(str(node.data.body), audience),
           subject,
+          thread: node.data.thread === true,
           dryRunText: `Would email ${label}${subject ? ` — “${clip(subject, 80)}”` : ""}`,
         },
       ]);
@@ -208,21 +242,26 @@ export function runStep(input: {
     case "cond": {
       const check = str(node.data.check) || "replied";
       const within = Math.max(1, num(node.data.within, 3));
-      let yes = false;
-      let why: string;
+      const what = CHECK_LABEL[check] ?? check;
+
+      // A score is known now; there is nothing to wait for.
       if (check === "score") {
         const need = num(node.data.score, 70);
-        yes = audience.score >= need;
-        why = `${label}'s score is ${audience.score}, ${yes ? "at or above" : "below"} ${need}`;
-      } else {
-        why = `no ${CHECK_LABEL[check] ?? check} is tracked yet, so ${label} takes No`;
+        const yes = audience.score >= need;
+        return onward(
+          [
+            {
+              type: "log",
+              channel: null,
+              step: node.id,
+              text: `Condition: ${label}'s score is ${audience.score}, ${yes ? "at or above" : "below"} ${need}.`,
+            },
+          ],
+          yes ? "yes" : "no",
+        );
       }
-      return onward(
-        [{ type: "log", channel: null, step: node.id, text: `Condition: ${why}.` }],
-        yes ? "yes" : "no",
-        // A score is known now; anything that depends on the lead acting waits out its window.
-        check === "score" ? 0 : Math.round(within * dayMs),
-      );
+
+      return condition({ node, check, within, what, label, dayMs, now, observe }, onward);
     }
 
     case "split": {
@@ -251,6 +290,65 @@ export function runStep(input: {
     default:
       return { effects: [], next: null, finish: "completed" };
   }
+}
+
+/** The words a condition logs for each behaviour, in a sentence about the lead. */
+const SIGNAL_PHRASE: Record<string, string> = {
+  accepted: "accepted the invite",
+  replied: "replied",
+  opened: "opened the email",
+  clicked: "clicked a link",
+};
+
+/**
+ * A condition about the lead acting: Yes as soon as it is seen, No once the window is out, and
+ * otherwise the same step again a little later.
+ */
+function condition(
+  c: {
+    node: EngineNode;
+    check: string;
+    within: number;
+    what: string;
+    label: string;
+    dayMs: number;
+    now: number;
+    observe: Observation | undefined;
+  },
+  onward: (effects: StepEffect[], port?: string, delayMs?: number) => StepResult,
+): StepResult {
+  const { node, check, within, what, label, dayMs, now, observe } = c;
+  const days = `${within} ${within === 1 ? "day" : "days"}`;
+  const log = (text: string): StepEffect => ({ type: "log", channel: null, step: node.id, text });
+
+  // Nothing can be observed here (the demo store): say so, wait out the window, take No.
+  if (!observe) {
+    return onward(
+      [log(`Condition: no ${what} is tracked in this workspace, so ${label} takes No.`)],
+      "no",
+      Math.round(within * dayMs),
+    );
+  }
+
+  const phrase = SIGNAL_PHRASE[check] ?? `shows a ${what}`;
+  const seenAt = (observe.signals as Record<string, number | undefined>)[check];
+  if (typeof seenAt === "number") {
+    return onward([log(`Condition: ${label} ${phrase} — takes Yes.`)], "yes");
+  }
+
+  const deadline = observe.enteredAt + Math.round(within * dayMs);
+  if (now >= deadline) {
+    return onward([log(`Condition: ${label} hasn't ${phrase} within ${days} — takes No.`)], "no");
+  }
+
+  // Still inside the window: look again soon, never past the deadline.
+  const recheck = Math.max(5_000, Math.min(CONDITION_RECHECK_MS, Math.round(dayMs / 48)));
+  const runAt = Math.min(deadline, now + recheck);
+  return {
+    effects: observe.firstVisit ? [log(`Waiting up to ${days} to see whether ${label} ${phrase}.`)] : [],
+    next: { stepId: node.id, runAt },
+    finish: null,
+  };
 }
 
 /**

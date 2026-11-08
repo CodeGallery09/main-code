@@ -111,3 +111,92 @@ test("a split is stable for a lead and covers both sides across leads", () => {
 test("merge fields", () => {
   assert.equal(fillMergeFields("{first_name}|{last_name}|{company}", audience), "Maya|Ortiz|Northwind");
 });
+
+/* ---------- conditions that watch for the lead acting ---------------------- */
+
+/** audience → invite → cond(accepted within 5) → yes: message / no: exit */
+const watching = {
+  nodes: [
+    { id: "w0", kind: "audience", data: {} },
+    { id: "w1", kind: "li_invite", data: { note: "" } },
+    { id: "w2", kind: "cond", data: { check: "accepted", within: 5 } },
+    { id: "w3", kind: "li_msg", data: { body: "Thanks for connecting, {first_name}" } },
+    { id: "w4", kind: "exit", data: {} },
+  ],
+  edges: [
+    { source: "w0", target: "w1", port: "out" },
+    { source: "w1", target: "w2", port: "out" },
+    { source: "w2", target: "w3", port: "yes" },
+    { source: "w2", target: "w4", port: "no" },
+  ],
+};
+const at = (now, observe) =>
+  runStep({ ...watching, stepId: "w2", audience, now, dayMs: REAL_DAY_MS, observe });
+
+test("the invite → if accepted → message sequence: an acceptance takes Yes straight away", () => {
+  const r = at(NOW, { signals: { accepted: NOW - 1000 }, enteredAt: NOW - 3600_000, firstVisit: false });
+  assert.equal(r.next.stepId, "w3", "the message step comes next");
+  assert.equal(r.next.runAt, NOW, "with no waiting out the rest of the window");
+  assert.match(r.effects[0].text, /Maya Ortiz accepted the invite — takes Yes/);
+});
+
+test("with nothing seen yet, a condition looks again soon instead of deciding", () => {
+  const first = at(NOW, { signals: {}, enteredAt: NOW, firstVisit: true });
+  assert.equal(first.next.stepId, "w2", "the same condition, again");
+  assert.equal(first.finish, null);
+  assert.equal(first.next.runAt, NOW + 30 * 60_000, "half an hour later");
+  assert.match(first.effects[0].text, /Waiting up to 5 days to see whether Maya Ortiz accepted the invite/);
+
+  // Later visits are silent: one waiting line, not one every half hour.
+  const later = at(NOW + 3600_000, { signals: {}, enteredAt: NOW, firstVisit: false });
+  assert.equal(later.effects.length, 0);
+  assert.equal(later.next.stepId, "w2");
+});
+
+test("a re-check never lands past the end of the window", () => {
+  const deadline = NOW + 5 * REAL_DAY_MS;
+  const r = at(deadline - 60_000, { signals: {}, enteredAt: NOW, firstVisit: false });
+  assert.equal(r.next.runAt, deadline);
+});
+
+test("once the window is out with nothing seen, the lead takes No — and only then", () => {
+  const r = at(NOW + 5 * REAL_DAY_MS, { signals: {}, enteredAt: NOW, firstVisit: false });
+  assert.equal(r.next.stepId, "w4");
+  assert.match(r.effects[0].text, /hasn't accepted the invite within 5 days — takes No/);
+});
+
+test("a signal for a different behaviour does not satisfy the condition", () => {
+  const r = at(NOW, { signals: { opened: NOW, replied: NOW }, enteredAt: NOW, firstVisit: true });
+  assert.equal(r.next.stepId, "w2", "a reply is not an acceptance");
+});
+
+test("in a dry run the re-check is compressed with the days", () => {
+  const r = runStep({ ...watching, stepId: "w2", audience, now: NOW, observe: { signals: {}, enteredAt: NOW, firstVisit: true } });
+  assert.ok(r.next.runAt - NOW < 60_000, "well inside a compressed day");
+  assert.ok(r.next.runAt - NOW >= 5_000);
+});
+
+test("replied, opened and clicked are each their own signal", () => {
+  for (const check of ["replied", "opened", "clicked"]) {
+    const graph = {
+      nodes: watching.nodes.map((n) => (n.id === "w2" ? { ...n, data: { check, within: 3 } } : n)),
+      edges: watching.edges,
+    };
+    const r = runStep({ ...graph, stepId: "w2", audience, now: NOW, dayMs: REAL_DAY_MS, observe: { signals: { [check]: NOW }, enteredAt: NOW, firstVisit: false } });
+    assert.equal(r.next.stepId, "w3", check);
+  }
+});
+
+test("an email step carries its thread setting to the sender", () => {
+  const r = runStep({
+    nodes: [{ id: "e1", kind: "email", data: { subject: "", body: "Hi {first_name}", thread: true } }],
+    edges: [],
+    stepId: "e1",
+    audience,
+    now: NOW,
+  });
+  const send = r.effects.find((e) => e.type === "send");
+  assert.equal(send.channel, "email");
+  assert.equal(send.thread, true);
+  assert.equal(send.body, "Hi Maya");
+});

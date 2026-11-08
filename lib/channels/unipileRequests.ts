@@ -15,12 +15,21 @@
  *   invite    `POST /users/invite`   `{ account_id, provider_id, message? }`, note ≤ 300 chars
  *   message   `POST /chats`          multipart/form-data, `attendees_ids[]` + `text`
  *   inbox     `GET /chats?account_id=…`, `GET /chats/{id}/messages`
+ *   email     `POST /emails` multipart: `account_id`, `subject`, `body` (HTML), `to` (JSON array of
+ *             `{ identifier, display_name }`), `tracking_options` (JSON `{ opens, links, label }`),
+ *             `reply_to` (the Unipile id of the email answered) → `{ object: "EmailSent", tracking_id }`
+ *             `GET /emails?account_id=…&role=inbox&limit=…` → `{ items: Email[] }`
+ *   relations `GET /users/relations?account_id=…&limit=…` → `{ items: [{ member_id,
+ *             public_identifier, public_profile_url, first_name, last_name, created_at }] }`
+ * The email and relation shapes are taken from Unipile's own Node SDK (`unipile-node-sdk`), which
+ * types them.
  * The docs' own examples disagree between v1 and v2 on some field names, so the readers below
  * accept either spelling and the bodies send the v1 spelling, which is what `/api/v1` documents.
  */
 
 import type {
   HostedAuthRequest,
+  ProviderRelation,
   ProviderAccount,
   ProviderChat,
   ProviderMessage,
@@ -33,6 +42,9 @@ import type { ProviderAccountStatus } from "./events";
 
 /** Unipile's provider key for LinkedIn. */
 export const LINKEDIN_PROVIDER = "LINKEDIN";
+
+/** Every mail provider Unipile hosts a sign-in for: Gmail, Outlook / Microsoft 365, IMAP. */
+export const MAILING_PROVIDERS = "*:MAILING";
 
 /** `https://{dsn}/api/v1`, whether the DSN was given bare, with a scheme or with a trailing slash. */
 export function unipileBaseUrl(dsn: string): string {
@@ -62,7 +74,7 @@ export function hostedAuthBody(request: HostedAuthRequest, apiUrl: string) {
     if (!request.providerAccountId) throw new Error("reconnect needs a providerAccountId");
     body.reconnect_account = request.providerAccountId;
   } else {
-    body.providers = [LINKEDIN_PROVIDER];
+    body.providers = request.channel === "email" ? MAILING_PROVIDERS : [LINKEDIN_PROVIDER];
   }
   return body;
 }
@@ -115,16 +127,50 @@ export function readAccount(body: unknown, readStatus: (raw: string) => Provider
 
   const connection = isRecord(root.connection_params) ? root.connection_params : null;
   const im = connection && isRecord(connection.im) ? connection.im : null;
-  const publicId = first([im, root], ["public_identifier", "username", "email"]);
+  const mail = connection && isRecord(connection.mail) ? connection.mail : null;
+  const type = first([root], ["type", "provider"]).toUpperCase();
+  const channel = accountChannel(type, Boolean(mail));
 
+  if (channel === "email") {
+    // A mailbox is its address. Unipile names it under `connection_params.mail.username`, and on
+    // some responses only as the account's `name`.
+    const named = first([root], ["name", "display_name"]);
+    const email = first([mail, root], ["username", "email", "address"]) || (named.includes("@") ? named : "");
+    return {
+      id,
+      status,
+      rawStatus,
+      channel,
+      type,
+      name: named || email,
+      handle: email.toLowerCase(),
+      createdAt: first([root], ["created_at", "createdAt"]),
+    };
+  }
+
+  const publicId = first([im, root], ["public_identifier", "username", "email"]);
   return {
     id,
     status,
     rawStatus,
+    channel,
+    type,
     name: first([root, im], ["name", "display_name", "account_name"]),
     handle: publicId ? (publicId.includes("/") ? publicId : `linkedin.com/in/${publicId}`) : "",
     createdAt: first([root], ["created_at", "createdAt"]),
   };
+}
+
+/**
+ * Which of our channels a Unipile account type is. Unipile names mail accounts by provider
+ * (`GOOGLE_OAUTH`, `GOOGLE`, `OUTLOOK`, `EXCHANGE`, `ICLOUD`, `MAIL`, `IMAP`).
+ */
+export function accountChannel(type: string, hasMailParams = false): "linkedin" | "email" | "other" {
+  const word = type.toUpperCase();
+  if (word === LINKEDIN_PROVIDER) return "linkedin";
+  if (/^(GOOGLE|GOOGLE_OAUTH|GMAIL|OUTLOOK|EXCHANGE|MICROSOFT|ICLOUD|MAIL|IMAP)$/.test(word) || hasMailParams) return "email";
+  // An account with no type at all is what the LinkedIn flow has always seen.
+  return word ? "other" : "linkedin";
 }
 
 /** The webhook list, tolerating both `{ items: [] }` and a bare array. */
@@ -319,3 +365,62 @@ export function readMessages(body: unknown, chatId: string): ProviderMessage[] {
   }
   return out;
 }
+
+/* ---------- email -------------------------------------------------------- */
+
+/**
+ * The multipart fields of `POST /emails`, as strings: Unipile reads `to` and `tracking_options`
+ * as JSON inside the form, which is how its own SDK sends them.
+ */
+export function emailFields(input: {
+  accountId: string;
+  to: { email: string; name: string };
+  subject: string;
+  html: string;
+  trackingLabel: string;
+  replyTo?: string;
+}): Record<string, string> {
+  const fields: Record<string, string> = {
+    account_id: input.accountId,
+    subject: input.subject,
+    body: input.html,
+    to: JSON.stringify([{ identifier: input.to.email, ...(input.to.name ? { display_name: input.to.name } : {}) }]),
+    tracking_options: JSON.stringify({ opens: true, links: true, label: input.trackingLabel }),
+  };
+  if (input.replyTo) fields.reply_to = input.replyTo;
+  return fields;
+}
+
+/** The tracking id `POST /emails` answers with, or "". */
+export function readEmailSent(body: unknown): string {
+  return first([isRecord(body) ? body : null], ["tracking_id", "trackingId", "id"]);
+}
+
+const rowsOf = (body: unknown): unknown[] =>
+  Array.isArray(body) ? body : isRecord(body) && Array.isArray(body.items) ? body.items : [];
+
+/** The email list, as raw rows for `parseEmailEvent` (the webhook and the listing share one shape). */
+export function readEmailRows(body: unknown): Record<string, unknown>[] {
+  return rowsOf(body).filter(isRecord);
+}
+
+/** The relation list: who is a first-degree connection of the account, newest first. */
+export function readRelations(body: unknown): ProviderRelation[] {
+  const out: ProviderRelation[] = [];
+  for (const row of rowsOf(body)) {
+    if (!isRecord(row)) continue;
+    const providerId = first([row], ["member_id", "provider_id", "id"]);
+    const publicIdentifier = first([row], ["public_identifier", "publicIdentifier"]);
+    const profileUrl = first([row], ["public_profile_url", "profile_url"]);
+    if (!providerId && !publicIdentifier && !profileUrl) continue;
+    out.push({
+      providerId,
+      publicIdentifier,
+      profileUrl,
+      name: [first([row], ["first_name"]), first([row], ["last_name"])].filter(Boolean).join(" "),
+      createdAt: first([row], ["created_at", "createdAt"]),
+    });
+  }
+  return out;
+}
+

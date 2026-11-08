@@ -24,10 +24,16 @@ export const WEBHOOK_HEADER = "x-flightpath-webhook-secret";
  */
 export const WEBHOOK_QUERY_PARAM = "token";
 
-/** Unipile's `source` values for the two events this phase handles, and where each is served. */
+/**
+ * Unipile's `source` values for every webhook this app serves, and where each is served. In
+ * Unipile's dashboard these are the Account, Messaging, Users, Mailing and Mail Tracking types.
+ */
 export const WEBHOOK_SOURCES = {
   accountStatus: { source: "account_status", path: "/api/webhooks/unipile/accounts" },
   messaging: { source: "messaging", path: "/api/webhooks/unipile/messages" },
+  users: { source: "users", path: "/api/webhooks/unipile/users" },
+  email: { source: "email", path: "/api/webhooks/unipile/emails" },
+  emailTracking: { source: "email_tracking", path: "/api/webhooks/unipile/email-tracking" },
 } as const;
 
 /** Constant-time compare; never throws on a length mismatch, which `timingSafeEqual` does. */

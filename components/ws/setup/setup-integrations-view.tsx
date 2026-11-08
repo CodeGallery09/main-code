@@ -43,7 +43,7 @@ export function SetupIntegrationsView({ linkedInConfigured }: { linkedInConfigur
   const snapshot = useAsync(() => api.accounts(), []);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState("");
-  const [connecting, setConnecting] = useState(false);
+  const [connecting, setConnecting] = useState<ProviderKey | null>(null);
 
   const views = useMemo(
     () =>
@@ -57,14 +57,15 @@ export function SetupIntegrationsView({ linkedInConfigured }: { linkedInConfigur
   const matches = (v: ProviderView) =>
     !needle || v.provider.name.toLowerCase().includes(needle) || v.provider.blurb.toLowerCase().includes(needle);
 
+  /** LinkedIn and mailboxes connect through the provider's hosted sign-in; nothing else can. */
   async function connect(key: ProviderKey) {
-    if (key !== "linkedin") return;
-    setConnecting(true);
+    if (key !== "linkedin" && key !== "email") return;
+    setConnecting(key);
     try {
-      const { url } = await api.connectLinkedIn();
+      const { url } = key === "email" ? await api.connectEmail() : await api.connectLinkedIn();
       window.location.assign(url);
     } catch {
-      setConnecting(false);
+      setConnecting(null);
     }
   }
 
@@ -127,7 +128,8 @@ export function SetupIntegrationsView({ linkedInConfigured }: { linkedInConfigur
                             <ProviderRow
                               key={v.provider.k}
                               view={v}
-                              connecting={connecting && v.provider.k === "linkedin"}
+                              connecting={connecting === v.provider.k}
+                              canAdd={linkedInConfigured && (v.provider.k === "linkedin" || v.provider.k === "email")}
                               onConnect={() => void connect(v.provider.k)}
                             />
                           ))}
@@ -141,7 +143,8 @@ export function SetupIntegrationsView({ linkedInConfigured }: { linkedInConfigur
 
             <p className="rounded-[10px] bg-accent px-[13px] py-[8px] text-[11.5px] leading-[1.55] text-muted-foreground">
               Everything connected here belongs to the workspace, so any strategy can use it. Add as many LinkedIn
-              accounts or mailboxes as you need. Connecting is not sending: nothing goes out until a sender exists.
+              accounts or mailboxes as you need. Connecting is not sending: nothing goes out until you launch a
+              strategy.
             </p>
           </div>
         )}
@@ -199,10 +202,13 @@ function ChannelStrip({ snapshot }: { snapshot: AccountsSnapshot }) {
 function ProviderRow({
   view,
   connecting,
+  canAdd,
   onConnect,
 }: {
   view: ProviderView;
   connecting: boolean;
+  /** Another account of this kind can be connected from here (LinkedIn seats, mailboxes). */
+  canAdd: boolean;
   onConnect: () => void;
 }) {
   const { provider, state, detail, action } = view;
@@ -219,6 +225,18 @@ function ProviderRow({
         <span className="truncate text-[11.5px] text-muted-foreground">{detail || provider.blurb}</span>
       </span>
 
+      {(state === "connected" || state === "attention") && canAdd && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={connecting}
+          aria-label={`Connect another ${provider.k === "email" ? "mailbox" : "LinkedIn account"}`}
+          onClick={onConnect}
+        >
+          <Plus aria-hidden strokeWidth={2.2} />
+          {connecting ? "Opening…" : "Add"}
+        </Button>
+      )}
       {state === "connected" && (
         <span className="flex shrink-0 items-center gap-2">
           <StatusPill tone="success">Connected</StatusPill>
@@ -242,7 +260,7 @@ function ProviderRow({
             {connecting ? "Opening…" : "Connect"}
           </Button>
         ) : (
-          <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">Not built yet</span>
+          <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">Not configured</span>
         ))}
       {state === "planned" && <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">Roadmap</span>}
     </div>

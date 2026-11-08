@@ -41,7 +41,9 @@ export async function POST(request: Request) {
   const result = await attachConnectedAccount(adapter, reference, event.accountId);
   if (!result.ok) {
     if (result.reason === "taken") {
-      await failConnectSession(reference, "That LinkedIn account is already connected to another workspace.");
+      await failConnectSession(reference, "That account is already connected to another workspace.");
+    } else if (result.reason === "wrong_kind") {
+      await failConnectSession(reference, "That sign-in connected a different kind of account than the one asked for.");
     } else if (result.reason === "provider_unknown") {
       await failConnectSession(reference, "The provider didn't recognise the account afterwards.");
     }

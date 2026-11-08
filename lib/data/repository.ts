@@ -24,6 +24,7 @@ import type { Mapping, ParsedAudience } from "@/lib/audiences/validation";
 import type { Table } from "@/lib/audiences/table";
 
 import type {
+  DomainCheck,
   AccountActivity,
   AccountsSnapshot,
   Analytics,
@@ -256,6 +257,17 @@ export interface Repository {
    * over `windowDays`. Real counts only — an account that has done nothing reads zero.
    */
   accountActivity(ctx: Ctx, windowDays: number): Promise<AccountActivity[]>;
+
+  /* -------------------------------------------------------- sending domains -- */
+
+  /**
+   * Adds a domain the workspace sends email from and looks its SPF, DKIM and DMARC up in public
+   * DNS straight away. A host that is not a domain name, or one already added, is a `WriteError`.
+   */
+  addDomain(ctx: Ctx, host: string): Promise<DomainCheck | WriteError>;
+  /** Looks a domain's records up again and stores what was found. `null` when it is not yours. */
+  checkDomain(ctx: Ctx, id: string): Promise<DomainCheck | null>;
+  deleteDomain(ctx: Ctx, id: string): Promise<{ deleted: string } | null>;
 
   /* --------------------------------------------- connecting a channel account -- */
 

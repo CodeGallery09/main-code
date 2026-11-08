@@ -55,6 +55,13 @@ export function linkedInStateNote(state: string): string {
   return "needs to log in again";
 }
 
+/** A mailbox that cannot send until someone acts: its sign-in lapsed, or it is still syncing. */
+export const mailboxNeedsAction = (state: string): boolean => state === "signed_out" || state === "connecting";
+
+export function mailboxStateNote(state: string): string {
+  return state === "connecting" ? "still syncing" : "needs to sign in again";
+}
+
 export function setupChecks(snapshot: AccountsSnapshot): SetupCheck[] {
   const checks: SetupCheck[] = [];
   const linkedin = snapshot.accounts.filter((a) => a.channel === "linkedin");
@@ -110,22 +117,34 @@ export function setupChecks(snapshot: AccountsSnapshot): SetupCheck[] {
 
   /* Email */
   if (!mailboxes.length) {
-    // Information, not a failure: connecting a mailbox is not built, so there is nothing the user
-    // can do about it. Scoring it would leave every workspace permanently short of full marks
-    // with a red row and no action — a score nobody can complete is not a score.
+    // Information, not a failure: email is optional, and a LinkedIn-only workspace is complete.
     checks.push({
       id: "mail-accounts",
       tone: "info",
-      title: "Connecting a mailbox isn't available yet",
-      detail: "Email steps will have no mailbox to send from until it is. Nothing to do here today.",
+      title: "No mailbox connected",
+      detail: "Email steps have no mailbox to send from. Connect Gmail, Outlook or any IMAP mailbox under Integrations.",
+      action: "Connect",
+      goes: "mail",
     });
   } else {
-    checks.push({
-      id: "mail-accounts",
-      tone: "ok",
-      title: "Mailboxes connected",
-      detail: `${mailboxes.length} ${mailboxes.length === 1 ? "mailbox" : "mailboxes"} ready to send.`,
-    });
+    const out = mailboxes.filter((a) => mailboxNeedsAction(a.state));
+    checks.push(
+      out.length
+        ? {
+            id: "mail-accounts",
+            tone: "bad",
+            title: "Mailboxes connected",
+            detail: `${list(out.map((a) => `${a.handle} (${mailboxStateNote(a.state)})`))}. Email steps that use ${out.length === 1 ? "it" : "them"} are paused.`,
+            action: "Reconnect",
+            goes: "mail",
+          }
+        : {
+            id: "mail-accounts",
+            tone: "ok",
+            title: "Mailboxes connected",
+            detail: `${mailboxes.length} ${mailboxes.length === 1 ? "mailbox" : "mailboxes"} ready to send.`,
+          },
+    );
   }
 
   if (snapshot.domains.length) {
@@ -150,12 +169,12 @@ export function setupChecks(snapshot: AccountsSnapshot): SetupCheck[] {
   }
 
   for (const box of mailboxes) {
-    if (box.channel === "email" && box.state === "warming") {
+    if (box.channel === "email" && box.pace?.warming) {
       checks.push({
         id: `warmup-${box.id}`,
         tone: "info",
         title: "Mailbox warm-up",
-        detail: `${box.handle} is on day ${box.settings.warmDay ?? 1} of 14.`,
+        detail: `${box.handle} is on day ${box.pace.ageDays + 1} of 14 — ${box.pace.cap} emails today, climbing to ${box.settings.cap}.`,
         action: "View",
         goes: "mail",
       });

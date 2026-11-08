@@ -1,9 +1,10 @@
 /**
- * Opening and finishing a LinkedIn connection, in one place.
+ * Opening a connection — a LinkedIn seat or a mailbox — in one place.
  *
- * Both the connect route and the reconnect route do the same three things — open a connect
- * session, ask the provider for a hosted sign-in link, hand back the URL — so they do it here
- * rather than twice.
+ * Every connect route does the same three things — open a connect session, ask the provider for a
+ * hosted sign-in link, hand back the URL — so they do it here rather than once per channel. The
+ * channel decides only which providers the hosted wizard offers (LinkedIn, or Gmail / Outlook /
+ * IMAP) and which kind of account the callback must come back with.
  *
  * Server-only.
  */
@@ -26,8 +27,9 @@ export type StartConnectResult =
  * maps the resulting account to this workspace, which is why it is created before the link and
  * never derived from the workspace id.
  */
-export async function startLinkedInConnect(
+export async function startConnect(
   ctx: Ctx,
+  channel: "linkedin" | "email",
   accountId?: string,
   /**
    * The origin the member is browsing on. The hosted sign-in sends them back here, and the session
@@ -41,7 +43,7 @@ export async function startLinkedInConnect(
     return {
       ok: false,
       code: "not_configured",
-      message: "LinkedIn connecting isn't configured on this deployment yet.",
+      message: `Connecting ${channel === "email" ? "a mailbox" : "LinkedIn"} isn't configured on this deployment yet.`,
     };
   }
   const origin = appOrigin();
@@ -58,7 +60,7 @@ export async function startLinkedInConnect(
   const back = returnOrigin ?? origin;
 
   const session = await getRepository().createConnectSession(ctx, {
-    channel: "linkedin",
+    channel,
     provider: adapter.provider,
     kind: accountId ? "reconnect" : "create",
     accountId,
@@ -80,7 +82,8 @@ export async function startLinkedInConnect(
   let providerAccountId: string | undefined;
   if (accountId) {
     const { accounts } = await getRepository().listAccounts(ctx);
-    providerAccountId = accounts.find((a) => a.id === accountId)?.connection.providerAccountId ?? undefined;
+    providerAccountId =
+      accounts.find((a) => a.id === accountId && a.channel === channel)?.connection.providerAccountId ?? undefined;
     if (!providerAccountId) {
       return {
         ok: false,
@@ -93,6 +96,7 @@ export async function startLinkedInConnect(
   try {
     const link = await adapter.createHostedAuth({
       kind: accountId ? "reconnect" : "create",
+      channel,
       reference: session.id,
       providerAccountId,
       successUrl: `${back}${SETUP_HREF}?connected=${encodeURIComponent(session.id)}`,
@@ -102,7 +106,7 @@ export async function startLinkedInConnect(
     });
     return { ok: true, url: link.url, sessionId: session.id, expiresAt: session.expiresAt };
   } catch (caught) {
-    console.error("[linkedin-connect]", caught);
+    console.error(`[${channel}-connect]`, caught);
     return {
       ok: false,
       code: "provider",
@@ -110,3 +114,7 @@ export async function startLinkedInConnect(
     };
   }
 }
+
+/** The LinkedIn connect, kept under its old name for the routes that already call it. */
+export const startLinkedInConnect = (ctx: Ctx, accountId?: string, returnOrigin?: string) =>
+  startConnect(ctx, "linkedin", accountId, returnOrigin);

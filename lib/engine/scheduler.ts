@@ -21,6 +21,8 @@ import { getDb } from "@/lib/db/client";
 import { memberships, strategies } from "@/lib/db/schema";
 import { getLinkedInAdapter } from "@/lib/channels";
 import { pullRecentMessages } from "@/lib/channels/pull";
+import { pullRecentEmails } from "@/lib/channels/email";
+import { pullAcceptances } from "@/lib/channels/relations";
 import { fillBriefings } from "@/lib/engine/enrich";
 
 /**
@@ -44,6 +46,8 @@ export type TickResult = {
   workspaces: number;
   processed: number;
   pulled: number;
+  /** Invites seen accepted on this tick, from the relation list. */
+  accepted: number;
   /** LinkedIn profiles read into briefings on this tick. */
   briefed: number;
   /** Workspaces whose tick threw, by id. One bad tenant must not stop the rest. */
@@ -60,7 +64,7 @@ const WORKSPACES_PER_TICK = 40;
  * the point: the cost of the schedule should be close to zero when nobody is running anything.
  */
 export async function runScheduledTick(): Promise<TickResult> {
-  const result: TickResult = { workspaces: 0, processed: 0, pulled: 0, briefed: 0, failed: [] };
+  const result: TickResult = { workspaces: 0, processed: 0, pulled: 0, accepted: 0, briefed: 0, failed: [] };
   // No database means the memory store, whose writes do not outlive the server — there is nothing
   // for a schedule to advance, and asking for a connection would only throw.
   if (!process.env.DATABASE_URL) return result;
@@ -121,6 +125,28 @@ async function tick(db: ReturnType<typeof getDb>, result: TickResult): Promise<T
 
     const ctx = { workspaceId, userId: owner.userId };
     result.workspaces += 1;
+
+    // What the leads did comes in first — replies on both channels and accepted invites — so a
+    // condition that comes due on this tick decides on today's news, not the last tick's. A
+    // provider that is unreachable is not a failed tick: the steps still run on what we have.
+    if (adapter) {
+      try {
+        result.pulled += (await pullRecentMessages(adapter, workspaceId)).stored;
+      } catch (caught) {
+        console.error("[scheduler] pull", workspaceId, caught);
+      }
+      try {
+        result.pulled += (await pullRecentEmails(adapter, workspaceId)).stored;
+      } catch (caught) {
+        console.error("[scheduler] email pull", workspaceId, caught);
+      }
+      try {
+        result.accepted += (await pullAcceptances(adapter, workspaceId)).accepted;
+      } catch (caught) {
+        console.error("[scheduler] acceptances", workspaceId, caught);
+      }
+    }
+
     try {
       const { processed } = await repo.runDueSteps(ctx);
       result.processed += processed;
@@ -129,14 +155,7 @@ async function tick(db: ReturnType<typeof getDb>, result: TickResult): Promise<T
       result.failed.push(workspaceId);
     }
 
-    // A reply has to stop the sequence, so replies are read on the same beat as the sends — but a
-    // provider that is unreachable is not a failed tick: the steps already ran.
     if (!adapter) continue;
-    try {
-      result.pulled += (await pullRecentMessages(adapter, workspaceId)).stored;
-    } catch (caught) {
-      console.error("[scheduler] pull", workspaceId, caught);
-    }
 
     // Uploaded leads get their LinkedIn briefing here too, so a file imported overnight is ready
     // to work from in the morning rather than waiting for someone to open each profile.
