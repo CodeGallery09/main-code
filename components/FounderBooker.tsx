@@ -18,6 +18,7 @@ import {
 import { pipSay } from "@/lib/pip";
 import { FOUNDER_CALENDLY_URL } from "@/lib/site";
 import { Reveal } from "./Reveal";
+import { SectionIntro } from "./SectionIntro";
 
 /** Months ahead the visitor can browse. */
 const MAX_MONTHS = 3;
@@ -193,16 +194,14 @@ export function FounderBooker() {
   return (
     <section id="founders" data-pip-section="demo" aria-labelledby="founders-title" className="py-24 md:py-32">
       <div className="container-page">
-        <Reveal className="mx-auto max-w-2xl text-center">
-          <p className="eyebrow">Book time</p>
-          <h2 id="founders-title" className="display mt-4 text-[2.6rem] text-ink sm:text-6xl md:text-[3.6rem]">
-            Speak with our <em>founders.</em>
-          </h2>
-          <p className="mx-auto mt-5 max-w-lg text-[18px] leading-relaxed text-ink-2">
-            Thirty minutes, no slide deck. Pick a time on our calendar, or suggest one and tell us what&rsquo;s
-            slowing your outbound down.
-          </p>
-        </Reveal>
+        <SectionIntro
+          id="founders-title"
+          align="center"
+          eyebrow="Book time"
+          lead="Speak with our"
+          accent="founders."
+          lede="Thirty minutes, no slide deck. Pick a time on our calendar, or suggest one and tell us what’s slowing your outbound down."
+        />
 
         <Reveal delay={100} className="mt-12">
           <div data-pip="cta" className="glass-lg mx-auto grid max-w-[1020px] grid-cols-1 overflow-hidden md:grid-cols-[272px_minmax(0,1fr)]">

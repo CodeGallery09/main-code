@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowRight, Phone } from "lucide-react";
+import { ArrowUpRight, Phone } from "lucide-react";
 import { DEMO_HREF } from "@/lib/site";
 import { pipSay } from "@/lib/pip";
 import { ChannelIcon } from "./ChannelIcon";
+import { Magnetic, Orb, TextReveal } from "./motion";
 
 const d = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -40,7 +41,7 @@ const CARDS: HeroCard[] = [
     label: "Audiences in motion",
     scatter: [0.11, 0.21, -4],
     value: <Num to={1284} />,
-    viz: <Spark path="M0,24 L11,21 L22,22 L33,16 L44,15 L55,16 L66,10 L77,8 L88,9 L100,4" color="var(--accent)" />,
+    viz: <Spark path="M0,24 L11,21 L22,22 L33,16 L44,15 L55,16 L66,10 L77,8 L88,9 L100,4" color="currentColor" />,
     note: "across 3 workflows",
   },
   {
@@ -48,9 +49,9 @@ const CARDS: HeroCard[] = [
     scatter: [0.89, 0.19, 3.5],
     value: <Num to={6.4} dec={1} suffix="%" />,
     viz: (
-      <div className="relative mt-4 h-1.5 rounded-full bg-surface-2" aria-hidden="true">
-        <span className="absolute inset-y-0 left-[40%] w-[30%] rounded-full bg-sky" />
-        <span className="absolute top-1/2 left-[64%] h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface bg-accent shadow" />
+      <div className="relative mt-4 h-1.5 rounded-full bg-white/10" aria-hidden="true">
+        <span className="absolute inset-y-0 left-[40%] w-[30%] rounded-full bg-white/35" />
+        <span className="absolute top-1/2 left-[64%] h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-black/60 bg-white" />
       </div>
     ),
     note: "inside the sample benchmark range",
@@ -59,7 +60,7 @@ const CARDS: HeroCard[] = [
     label: "Meetings booked",
     scatter: [0.09, 0.6, 3],
     value: <Num to={38} />,
-    viz: <Spark path="M0,26 L12,24 L24,24 L36,18 L48,20 L60,13 L72,10 L84,12 L100,5" color="var(--success)" />,
+    viz: <Spark path="M0,26 L12,24 L24,24 L36,18 L48,20 L60,13 L72,10 L84,12 L100,5" color="currentColor" />,
     note: "last 30 days",
   },
   {
@@ -67,9 +68,9 @@ const CARDS: HeroCard[] = [
     scatter: [0.91, 0.58, -3],
     value: <Num to={76} />,
     viz: (
-      <div className="relative mt-4 h-1.5 rounded-full bg-surface-2" aria-hidden="true">
-        <span className="absolute inset-y-0 left-0 w-[76%] rounded-full bg-accent" />
-        <span className="absolute -top-1 left-[70%] h-3.5 w-px bg-ink/50" />
+      <div className="relative mt-4 h-1.5 rounded-full bg-white/10" aria-hidden="true">
+        <span className="absolute inset-y-0 left-0 w-[76%] rounded-full bg-white/70" />
+        <span className="absolute -top-1 left-[70%] h-3.5 w-px bg-white/50" />
       </div>
     ),
     note: "70+ routes the audience to a call",
@@ -78,7 +79,7 @@ const CARDS: HeroCard[] = [
     label: "Next action",
     scatter: [0.2, 0.87, -2],
     viz: (
-      <span className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-success-soft px-3 py-1.5 font-mono text-[12px] text-success">
+      <span className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 font-mono text-[12px] text-white/80">
         <Phone size={13} aria-hidden="true" />
         Call task → owner
       </span>
@@ -91,7 +92,7 @@ const CARDS: HeroCard[] = [
     value: (
       <span className="flex items-baseline gap-3">
         <Num to={0} />
-        <span className="flex items-center gap-1.5 text-muted" aria-hidden="true">
+        <span className="flex items-center gap-1.5 opacity-60" aria-hidden="true">
           <ChannelIcon channel="linkedin" size={14} />
           <ChannelIcon channel="email" size={15} />
         </span>
@@ -101,25 +102,11 @@ const CARDS: HeroCard[] = [
   },
 ];
 
-function Words({ text, start, step = 70 }: { text: string; start: number; step?: number }) {
-  return (
-    <>
-      {text.split(" ").map((w, i, arr) => (
-        <span key={i}>
-          <span className="intro-word" style={d(start + i * step)}>
-            {w}
-          </span>
-          {i < arr.length - 1 ? " " : null}
-        </span>
-      ))}
-    </>
-  );
-}
-
 export function Hero() {
   const sectionRef = useRef<HTMLElement>(null);
   const stickyRef = useRef<HTMLDivElement>(null);
   const copyRef = useRef<HTMLDivElement>(null);
+  const orbRef = useRef<HTMLDivElement>(null);
   const bgRef = useRef<HTMLDivElement>(null);
   const headRef = useRef<HTMLDivElement>(null);
   const footRef = useRef<HTMLParagraphElement>(null);
@@ -144,10 +131,12 @@ export function Hero() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Scroll-driven assembly (desktop only). Cards live in their final grid slots; at progress 0 they are
-  // translated out to their scattered spots, and they glide home as you scroll through the pinned hero.
+  // Scroll-driven second act (desktop only). The editorial stage — headline, call to action and the
+  // object — lifts away, and the six cards glide out of the dark into their grid slots and merge
+  // into one overview pane.
   useEffect(() => {
     const section = sectionRef.current!, stage = stickyRef.current!, copy = copyRef.current!;
+    const orb = orbRef.current!;
     const chrome = [bgRef.current!, headRef.current!, footRef.current!];
     const cue = cueRef.current!;
     const cards = Array.from(section.querySelectorAll<HTMLElement>("[data-hcard]"));
@@ -158,6 +147,7 @@ export function Hero() {
     const clear = () => {
       cards.forEach((c) => { c.style.transform = ""; c.style.removeProperty("--float"); });
       copy.removeAttribute("style");
+      orb.removeAttribute("style");
       section.style.removeProperty("--m");
       chrome.forEach((e) => e.removeAttribute("style"));
       cue.removeAttribute("style");
@@ -184,14 +174,23 @@ export function Hero() {
         const g = geo[i], t = easeInOut(clamp((p - 0.03 - i * 0.03) / 0.56, 0, 1)), k = 1 - t;
         c.style.transform = `translate3d(${(g.dx * k).toFixed(1)}px,${(g.dy * k).toFixed(1)}px,0) rotate(${(g.r * k).toFixed(2)}deg) scale(${(S0 + (1 - S0) * t).toFixed(3)})`;
         c.style.setProperty("--float", k.toFixed(3));
+        // The cards are not in the room for act one: they surface out of the dark,
+        // one after another, as the headline is lifting away.
+        c.style.opacity = clamp((p - 0.06 - i * 0.022) / 0.16, 0, 1).toFixed(3);
       });
       // Cards finish gliding home by p~0.74; then their outlines dissolve into the single card behind them.
       const m = easeInOut(clamp((p - 0.72) / 0.24, 0, 1));
       section.style.setProperty("--m", m.toFixed(3));
-      const co = clamp((p - 0.08) / 0.3, 0, 1);
+      const co = clamp((p - 0.04) / 0.26, 0, 1);
       copy.style.opacity = (1 - co).toFixed(3);
-      copy.style.transform = `translateY(${(-60 * co).toFixed(1)}px) scale(${(1 - 0.04 * co).toFixed(3)})`;
+      copy.style.transform = `translateY(${(-70 * co).toFixed(1)}px)`;
       copy.style.visibility = co >= 1 ? "hidden" : "";
+      // The object recedes rather than fading out flat: it is meant to read as having moved away.
+      const oo = clamp((p - 0.02) / 0.34, 0, 1);
+      orb.style.opacity = (1 - oo).toFixed(3);
+      // The -50% keeps the centring the stylesheet gives it: this transform replaces that one.
+      orb.style.transform = `translate3d(${(70 * oo).toFixed(1)}px, calc(-50% - ${(26 * oo).toFixed(1)}px), 0) scale(${(1 - 0.22 * oo).toFixed(3)})`;
+      orb.style.visibility = oo >= 1 ? "hidden" : "";
       const fo = clamp((p - 0.26) / 0.34, 0, 1);
       chrome.forEach((e) => { e.style.opacity = fo.toFixed(3); });
       chrome[0].style.transform = `scale(${(0.96 + 0.04 * fo).toFixed(3)})`;
@@ -237,48 +236,52 @@ export function Hero() {
       ref={sectionRef}
       id="top"
       data-pip-section="hero"
+      data-nav-dark
       aria-labelledby="hero-title"
       className="hero"
     >
       <div ref={stickyRef} className="hero-sticky">
-        <div className="hero-wrap container-page relative pt-14 pb-20 md:pt-20">
-          <div className="hero-copy text-center">
+        {/* The room the object sits in: a near-black ground with one soft wash of light. */}
+        <div className="hero-night" aria-hidden="true" />
+
+        <div className="hero-wrap container-page relative pt-16 pb-20 md:pt-24">
+          <div ref={orbRef} className="hero-orb">
+            <Orb />
+          </div>
+
+          <div className="hero-copy">
             <div ref={copyRef}>
-              <p className="eyebrow intro mb-4" style={d(0)}>
-                GTM workflow orchestration
+              <p className="hero-eyebrow intro" style={d(0)}>
+                <span className="hero-eyebrow-rule" aria-hidden="true" />
+                GTM orchestration / 001 — one motion
               </p>
-              <h1 id="hero-title" className="display text-[3rem] text-ink sm:text-6xl lg:text-[clamp(3.6rem,5.4vw,5.6rem)]">
-                <Words text="Your GTM motion," start={80} />
-                <br />
-                <em className="relative inline-block">
-                  <Words text="on autopilot." start={310} step={90} />
-                  <svg
-                    aria-hidden="true"
-                    className="intro-swoosh pointer-events-none absolute -bottom-[0.14em] left-0 h-[0.26em] w-full overflow-visible"
-                    viewBox="0 0 300 24"
-                    preserveAspectRatio="none"
-                    style={d(820)}
-                  >
-                    <path d="M2 18 C 60 8, 110 4, 160 12 S 250 24, 296 6" pathLength={1} fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" opacity="1" style={{ color: "var(--accent)" }} />
-                  </svg>
-                </em>
+
+              <h1 id="hero-title" className="hero-title">
+                <TextReveal text="Your GTM motion," as="span" className="hero-title-caps" immediate delay={220} step={70} />
+                <TextReveal text="on autopilot." as="em" className="hero-title-script" immediate delay={520} step={90} />
               </h1>
-              <p className="intro mx-auto mt-6 max-w-[34rem] text-[19px] font-medium leading-relaxed text-ink-2" style={d(560)}>
-                Flightpath runs LinkedIn and email as one workflow, reads how every audience engages, and routes the next step.
-                Every workflow is benchmarked.
+
+              <p className="hero-lede intro" style={d(900)}>
+                LinkedIn and email run as one workflow. Flightpath reads how every audience engages and
+                routes the next step itself.
               </p>
-              <div
-                className="hero-cta-bar intro mx-auto mt-8 flex w-fit flex-col gap-2 sm:flex-row"
-                style={d(680)}
-              >
-                <Link href={DEMO_HREF} className="btn btn-primary">
-                  Book a demo
-                  <ArrowRight size={16} className="btn-arrow" aria-hidden="true" />
-                </Link>
-                <a href="#journey" className="btn btn-secondary">
+
+              <div className="hero-actions intro" style={d(1040)}>
+                <Magnetic strength={9}>
+                  <Link href={DEMO_HREF} className="hero-cta">
+                    Book a demo
+                    <ArrowUpRight size={17} aria-hidden="true" />
+                  </Link>
+                </Magnetic>
+                <a href="#journey" className="hero-link">
                   See how it works
                 </a>
               </div>
+
+              <p className="hero-meta intro" style={d(1200)}>
+                <span className="hero-meta-rule" aria-hidden="true" />
+                LinkedIn + email / one clock / every workflow benchmarked
+              </p>
             </div>
           </div>
 
@@ -286,11 +289,11 @@ export function Hero() {
             <div ref={bgRef} className="hero-frame-bg" aria-hidden="true" />
             <div className="hero-frame-in">
               <div ref={headRef} className="hero-frame-head flex items-center justify-between gap-3 px-1 pb-3.5">
-                <span className="text-[15px] font-bold text-ink">Overview</span>
-                <p className="hero-status font-mono text-[11px] uppercase tracking-[0.1em] text-muted">
+                <span className="font-mono text-[12px] uppercase tracking-[0.14em] text-white/70">Overview</span>
+                <p className="hero-status font-mono text-[11px] uppercase tracking-[0.1em] text-white/45">
                   <span className="when-busy">Assembling…</span>
                   <span className="when-done items-center gap-2">
-                    <span className="live-dot text-success" aria-hidden="true" />
+                    <span className="live-dot" aria-hidden="true" />
                     In sync
                   </span>
                 </p>
@@ -298,23 +301,24 @@ export function Hero() {
               <ul className="hero-grid grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4" aria-label="Sample workflow metrics">
                 {CARDS.map((c, i) => (
                   <li key={c.label} data-hcard className="hcard" style={{ "--i": i } as CSSProperties}>
-                    <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-muted">{c.label}</span>
-                    {c.value && <div className="mt-2 font-serif text-[2.6rem] leading-none text-ink">{c.value}</div>}
+                    <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-white/45">{c.label}</span>
+                    {c.value && <div className="hcard-value">{c.value}</div>}
                     {c.viz}
-                    <p className="mt-auto pt-3 text-[13px] text-muted">{c.note}</p>
+                    <p className="mt-auto pt-3 text-[13px] text-white/45">{c.note}</p>
                   </li>
                 ))}
               </ul>
-              <p ref={footRef} className="hero-frame-foot mt-3 px-1 text-[12px] text-muted">
+              <p ref={footRef} className="hero-frame-foot mt-3 px-1 text-[12px] text-white/40">
                 Illustrative sample data, not customer results.
               </p>
             </div>
           </div>
         </div>
+
         <div
           ref={cueRef}
           aria-hidden="true"
-          className="hero-cue absolute bottom-5 left-1/2 -translate-x-1/2 flex-col items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted"
+          className="hero-cue absolute bottom-5 left-1/2 -translate-x-1/2 flex-col items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-white/40"
         >
           <span className="cue-mouse" />
           Scroll

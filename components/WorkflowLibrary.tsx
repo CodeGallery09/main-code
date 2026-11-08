@@ -4,6 +4,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 import { BarChart3, Check, Gauge, Hourglass, Inbox, Mail, Pause, Phone, Play, Repeat, Split, Zap } from "lucide-react";
 import { ChannelIcon } from "./ChannelIcon";
 import { Reveal } from "./Reveal";
+import { SectionIntro } from "./SectionIntro";
+import { Appear } from "./motion";
 import { useInView, usePrefersReducedMotion } from "@/lib/useInView";
 import { pipSay, setPipBusy } from "@/lib/pip";
 
@@ -266,17 +268,17 @@ export function WorkflowLibrary() {
   return (
     <section id="how-it-works" data-pip-section="how" aria-labelledby="how-title" className="border-t border-line py-24 md:py-32">
       <div className="container-page">
-        <Reveal className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
-          <div className="max-w-2xl">
-            <p className="eyebrow">How it works · Workflow library</p>
-            <h2 id="how-title" className="display mt-4 text-[2.4rem] text-ink sm:text-5xl lg:text-[3.2rem]">
-              Pick a workflow. <em>Watch it run.</em>
-            </h2>
-          </div>
-          <p className="max-w-sm text-[16px] leading-relaxed text-ink-2">
+        <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
+          <SectionIntro
+            id="how-title"
+            eyebrow="How it works · Workflow library"
+            lead="Pick a workflow."
+            accent="Watch it run."
+          />
+          <Appear from="up" delay={280} as="p" className="max-w-sm text-[16px] leading-relaxed text-ink-2">
             Every template is a few nodes: touches, a score and a routing rule. Here&rsquo;s one executing, step by step.
-          </p>
-        </Reveal>
+          </Appear>
+        </div>
 
         <Reveal delay={100} className="mt-10">
           <div ref={canvasRef} id="wf-canvas" className="card overflow-hidden">

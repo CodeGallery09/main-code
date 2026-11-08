@@ -666,17 +666,35 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 **Nothing in here is workspace data.** (`workflow.ts` still carries the five demo workflows and
 `LISTS` — used only by `MemoryRepository` for demo mode and by the tests that pin their figures.)
 
+### Motion primitives — `components/motion/` + `lib/motion/` + `app/motion.css`
+The reusable animation layer the marketing pages compose. **No animation library**: the
+primitives share one rAF loop and one stylesheet, and `framer-motion` stays a workspace
+dependency only.
+- `lib/motion/core.ts` — the maths (`clamp`, `lerp`, `mapRange`, `damp`, easings,
+  `scrollProgress`, `splitWords`). Import-free and erasable, so `tests/motionCore.test.mjs`
+  loads it directly.
+- `lib/motion/useMotion.ts` — `onFrame` (**one** rAF loop for the whole page; every subscriber
+  writes straight to the DOM, so nothing re-renders per frame), `useReducedMotion`,
+  `useInViewRef`, `useScrollRange`, `usePointerParallax`.
+- `components/motion/` — `Appear`/`Stagger` (entrance), `TextReveal` (per-word mask, real
+  selectable text), `Parallax` (scroll transform), `Magnetic` (pointer pull), `Marquee`,
+  `CountUp`, `Orb` (the hero object). Barrel: `components/motion/index.ts`.
+- `app/motion.css` — their styles, loaded app-wide next to `globals.css`. Every loop is listed
+  in its `prefers-reduced-motion` block at the end; **a new loop must be added there.**
+
 ### Marketing — `components/` + `app/`
-`Hero.tsx` (321L, pinned scroll-driven card merge) · `Journey.tsx` (383L) ·
-`WorkflowLibrary.tsx` (440L) · `UntangleFlow.tsx` (212L, rAF-driven untangle) ·
-`WhyFlightpath.tsx` · `FounderBooker.tsx` (468L, preferred-time request, **not** availability) ·
-`demo/DemoForm.tsx` (304L) · `Navbar.tsx` `Footer.tsx` `Reveal.tsx` `SiteGlass.tsx`.
+`Hero.tsx` (dark editorial stage + the pinned card merge) · `Journey.tsx` ·
+`WorkflowLibrary.tsx` · `UntangleFlow.tsx` (rAF-driven untangle) ·
+`WhyFlightpath.tsx` · `FounderBooker.tsx` (preferred-time request, **not** availability) ·
+`SectionIntro.tsx` (the shared two-line section heading) · `Ticker.tsx` (the mono marquee band) ·
+`demo/DemoForm.tsx` · `Navbar.tsx` `Footer.tsx` `Reveal.tsx` `SiteGlass.tsx`.
+`SectionHeading.tsx` is the older centred heading, still used off the landing page.
 `lib/demoRequest.ts` (186L) is the shared validation contract — import-free, tested.
 `components/pip/` (677L) is the site mascot: one rAF engine, perches keyed by
 `data-pip-section`, hidden on `/dashboard`.
 
 ### Tests — `tests/` (Node's built-in runner, not Jest/Vitest)
-`dataQuery.test.mjs` · `graphEdit.test.mjs` · `demoRequest.test.mjs` · `workflow.test.mjs` · `validate.test.mjs` ·
+`dataQuery.test.mjs` · `motionCore.test.mjs` · `graphEdit.test.mjs` · `demoRequest.test.mjs` · `workflow.test.mjs` · `validate.test.mjs` ·
 `adapt.test.mjs` · `signup.test.mjs` · `sample.test.mjs` · `setup.test.mjs` · `workflowPersist.test.mjs` · `audiencesValidation` `audiencesMerge` `audiencesJourney` `audiencesProfile` `audiencesImportPlan` `prospect` `workflowSegment` ·
 `unipile.test.mjs` (the Unipile request contract + response readers) · `unipileEvents.test.mjs`
 (both documented webhook envelopes) · `webhookConfig.test.mjs` (the header/query-param match) —
@@ -700,6 +718,9 @@ namespaces, no parameter properties).
 | Make another screen live | copy the Audiences pattern: `api.*` in a `useEffect`, map through `lib/app/adapt.ts`, server-side filters, optimistic writes with rollback |
 | Re-theme marketing | `:root` in `app/globals.css` + `@theme inline`. Grep `rgb(` and `pipSvg.ts` for hardcoded brand colours. |
 | Re-theme workspace | the `.ws-root` token block at the top of `app/workspace.css`, and its `@theme inline` mapping right below it. Tokens are **never** on `:root` (that would repaint the marketing pages, which share the document) and components never carry hex — see §5. |
+| Add a motion primitive | `components/motion/` + its styles in `app/motion.css`, exported from `components/motion/index.ts`. Pure maths goes in `lib/motion/core.ts` (import-free, erasable, tested). Use the shared `onFrame` loop — never start another rAF. |
+| Change a section heading on the landing page | `components/SectionIntro.tsx` (all four sections share it) and the `.sec-*` block in `globals.css` |
+| Re-tune the hero object | `components/motion/Orb.tsx` (geometry) + the ORB block in `app/motion.css` (material and loops) |
 | Add a glass surface (marketing only) | selector list in `globals.css`'s glass-skin block **AND** `SiteGlass.tsx`'s lens/specular lists. Miss one → renders flat. The workspace has no glass surfaces any more — see §5. |
 | Add a nav item | `lib/nav.ts` (workspace) or `lib/site.ts` (marketing). For the workspace, read §2d first: the rail and the phone sheet render the same six entries |
 | Add a Setup tab | `SetupTabs` in `components/ws/shell/page.tsx` + a route under `app/dashboard/configuration/`. There are three (Overview · Integrations · Messages) and a tab whose content would be "nothing to configure yet" belongs on Config as a Planned row instead |
@@ -903,16 +924,31 @@ namespaces, no parameter properties).
   `FounderBooker`, `DemoForm`, `AuthPage`, `SectionHeading`) now render mono at weight 500 with
   near-zero letter-spacing, not bold serif. `--font-display` (Instrument Serif) stays loaded but
   unused on the marketing site. `.eyebrow` and `.btn-primary` also use the mono face, uppercase.
-  `body::before`'s wallpaper is toned down further toward a near-flat cream (akkari's own
-  background is close to flat) — it still carries a little colour, so glass still has something
-  to bend; don't flatten it to pure white or every panel reads as a plain card.
-- **`.hero-cta-bar`** (`Hero.tsx`, wraps the two hero CTA buttons) is the one deliberately
-  concentrated glass moment on the landing page, added alongside the existing per-surface glass.
-  It is in the glass-skin selector list and `SiteGlass.tsx`'s `LENS_TARGETS`/`SPECULAR_TARGETS`
-  like any other surface (add new glass controls to all three together). Its border-radius is
-  `var(--radius-lg)` below the `sm:` breakpoint and `999px` above it — stacked on mobile, two
-  full-pill buttons inside a 999px capsule pinch at the waist, so the full pill only applies once
-  the row goes horizontal (must track the markup's own `sm:flex-row`).
+  `body::before`'s wallpaper is now **neutral**: the same five washes at the same alphas, but
+  greys at different values rather than hues, so the page reads black-and-grey throughout. It is
+  still load-bearing — don't flatten it to pure white or every panel reads as a plain card.
+- **The hero is the one dark scope on the marketing pages.** `.hero` overrides `--ink`,
+  `--muted`, `--line` and friends **on itself**, never on `:root`, the same way
+  `.lg-nav.is-dark` does for the capsule floating over it. The section carries `[data-nav-dark]`,
+  which is what flips the navbar; that toggle was dormant after the hero photograph trial was
+  removed and is live again. `.hero { margin-top: -56px }` pulls the dark ground up under the
+  sticky navbar's own strip of normal flow — without it the page opens on a band of light
+  wallpaper above the black.
+- **The hero pane and tiles are no longer glass-skin surfaces.** `.hero-frame-bg` and `.hcard`
+  carry their own dark material in the HERO block and were removed from the glass-skin selector
+  list and from `SiteGlass.tsx`'s `LENS_TARGETS`/`SPECULAR_TARGETS` (all three together, as the
+  rule says). `.hero-cta-bar` is gone — the dark hero has one solid square CTA instead of a
+  glass capsule holding two.
+- **The hero's two acts must not overlap.** The six cards are at `opacity: 0` in CSS and are
+  faded in from scroll progress in `Hero.tsx`, not by an entrance transition: they surface out of
+  the dark as the headline lifts away. An entrance keyed off `is-ready` put them on top of the
+  headline at rest.
+- **`Hero.tsx` writes the object's transform, so it must carry the centring with it**
+  (`translate3d(x, calc(-50% - y), 0)`). An inline `transform` replaces the stylesheet's
+  `translateY(-50%)` outright, which drops the object half a viewport down the page.
+- **A `Parallax` must not wrap a glass surface.** A transform on an ancestor silently disables
+  `backdrop-filter` on everything below it (see the three Chromium rules above), which is why the
+  Journey card is not parallaxed.
 
 **Animation**
 - Animate `transform`/`opacity` only. New looping decorations must be added to the
@@ -922,6 +958,8 @@ namespaces, no parameter properties).
 - Chromium: SVG `pathLength` + `stroke-dasharray` + `vector-effect: non-scaling-stroke` draws
   only part of the path. Drop `vectorEffect` or use a `clip-path` wipe.
 - `Hero`'s `DESKTOP_MQ` media query must match the CSS block in `globals.css`.
+- The motion primitives share **one** rAF loop (`onFrame` in `lib/motion/useMotion.ts`). Don't
+  start another; subscribe to it, and write to the DOM in the callback rather than to state.
 
 ---
 

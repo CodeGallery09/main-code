@@ -3,7 +3,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Check, Gauge, Mail, MessageSquare, Pause, Phone, RotateCcw, Zap } from "lucide-react";
 import { ChannelIcon } from "./ChannelIcon";
-import { Reveal } from "./Reveal";
+import { SectionIntro } from "./SectionIntro";
+import { Appear } from "./motion";
 import { useInView, usePrefersReducedMotion } from "@/lib/useInView";
 import { pipSay, setPipBusy } from "@/lib/pip";
 
@@ -184,19 +185,18 @@ export function Journey() {
   return (
     <section id="journey" data-pip-section="journey" aria-labelledby="journey-title" className="border-t border-line py-24 md:py-32">
       <div className="container-page grid grid-cols-1 items-center gap-12 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
-        <Reveal>
-          <p className="eyebrow">The customer journey</p>
-          <h2 id="journey-title" className="display mt-4 text-[2.4rem] text-ink sm:text-5xl lg:text-[3.2rem]">
-            An audience&rsquo;s whole journey, <em>on one clock.</em>
-          </h2>
-          <p className="mt-5 max-w-md text-[18px] leading-relaxed text-ink-2">
-            Pick how Maya responds. Flightpath reads every signal, skips what&rsquo;s no longer needed and routes her next
-            step.
-          </p>
+        <div>
+          <SectionIntro
+            id="journey-title"
+            eyebrow="The customer journey"
+            lead="An audience’s whole journey,"
+            accent="on one clock."
+            lede="Pick how Maya responds. Flightpath reads every signal, skips what’s no longer needed and routes her next step."
+          />
 
-          <p className="mt-9 font-mono text-[11px] uppercase tracking-[0.12em] text-muted" id="journey-pick">
+          <Appear from="up" delay={340} as="p" className="mt-9 font-mono text-[11px] uppercase tracking-[0.12em] text-muted" id="journey-pick">
             How does Maya respond?
-          </p>
+          </Appear>
           <div role="radiogroup" aria-labelledby="journey-pick" onKeyDown={onKey} className="jr-pick mt-3 grid gap-2.5 sm:max-w-md">
             {SCENARIOS.map((s, i) => {
               const on = i === scenario;
@@ -229,7 +229,7 @@ export function Journey() {
           <p className="mt-6 max-w-md text-[12.5px] text-muted">
             Sample audience: Maya Reyes, Head of RevOps at Example Co. Illustrative data and example routing rules.
           </p>
-        </Reveal>
+        </div>
 
         <div ref={cardRef} id="journey-card" className={`jr-card card relative overflow-hidden ${inView ? "is-in" : ""}`}>
           <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4 sm:px-6">

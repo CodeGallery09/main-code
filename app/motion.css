@@ -1,0 +1,232 @@
+/* =====================================================================
+   MOTION LAYER — styles for the primitives in components/motion/.
+   Loaded app-wide from app/layout.tsx, next to globals.css.
+
+   Rules of this layer:
+     - transform and opacity only, nothing that forces layout;
+     - one easing curve (--mo-ease) and one set of durations;
+     - every loop is listed in the prefers-reduced-motion block at the end,
+       and every entrance resolves to its finished state there;
+     - nothing here is hidden without `.js`, so the page reads with JS off.
+   ===================================================================== */
+:root {
+  --mo-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --mo-ease-soft: cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+/* --- Appear ---------------------------------------------------------- */
+.js .mo-appear {
+  opacity: 0;
+  transition:
+    opacity var(--mo-duration, 720ms) var(--mo-ease) var(--mo-delay, 0ms),
+    transform var(--mo-duration, 720ms) var(--mo-ease) var(--mo-delay, 0ms);
+  will-change: transform, opacity;
+}
+.js .mo-appear[data-from="up"] { transform: translate3d(0, var(--mo-distance, 22px), 0); }
+.js .mo-appear[data-from="down"] { transform: translate3d(0, calc(-1 * var(--mo-distance, 22px)), 0); }
+.js .mo-appear[data-from="left"] { transform: translate3d(calc(-1 * var(--mo-distance, 22px)), 0, 0); }
+.js .mo-appear[data-from="right"] { transform: translate3d(var(--mo-distance, 22px), 0, 0); }
+.js .mo-appear[data-from="scale"] { transform: scale(0.94); }
+.js .mo-appear.is-in {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+/* --- TextReveal ------------------------------------------------------ */
+/* Each word sits in its own clipped box and rises out of it. */
+.mo-text-mask {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  /* Room for descenders and for the italic display face's overhang. */
+  padding: 0 0.06em 0.12em;
+  margin: 0 -0.06em -0.12em;
+}
+.js .mo-text .mo-text-word {
+  display: inline-block;
+  transform: translate3d(0, 108%, 0) rotate(2.5deg);
+  opacity: 0;
+  transition:
+    transform var(--mo-duration, 900ms) var(--mo-ease) var(--mo-delay, 0ms),
+    opacity calc(var(--mo-duration, 900ms) * 0.6) linear var(--mo-delay, 0ms);
+}
+.js .mo-text.is-in .mo-text-word {
+  transform: none;
+  opacity: 1;
+}
+
+/* --- Parallax -------------------------------------------------------- */
+.mo-parallax { will-change: transform; }
+
+/* --- Magnetic -------------------------------------------------------- */
+.mo-magnetic {
+  display: inline-flex;
+  will-change: transform;
+}
+
+/* --- Marquee --------------------------------------------------------- */
+.mo-marquee {
+  overflow: hidden;
+  /* Fades the line out at both ends so it has no hard edge. */
+  mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
+}
+.mo-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: mo-marquee var(--mo-duration, 42s) linear infinite;
+}
+.mo-marquee[data-reverse="true"] .mo-marquee-track { animation-direction: reverse; }
+.mo-marquee-part {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+@keyframes mo-marquee {
+  to { transform: translate3d(-50%, 0, 0); }
+}
+
+/* =====================================================================
+   ORB — the hero object. A dark sphere under a creased membrane, lit from
+   the upper left, with one bright point where the creases converge.
+   Greyscale throughout: the form is carried entirely by the light.
+   ===================================================================== */
+.mo-orb {
+  --orb-rx: 0deg;
+  --orb-ry: 0deg;
+  --orb-lx: 38%;
+  --orb-ly: 28%;
+  --orb-y: 0px;
+  --orb-scale: 1;
+  position: relative;
+  aspect-ratio: 1;
+  isolation: isolate;
+  transform: translate3d(0, var(--orb-y), 0) scale(var(--orb-scale));
+  color: rgb(255 255 255 / 0.35);
+}
+
+/* The light the object throws onto the room behind it. */
+.mo-orb-halo {
+  position: absolute;
+  inset: -22%;
+  border-radius: 50%;
+  background: radial-gradient(circle at var(--orb-lx) var(--orb-ly), rgb(255 255 255 / 0.1), transparent 62%);
+  filter: blur(26px);
+  animation: mo-orb-breathe 11s ease-in-out infinite;
+}
+
+.mo-orb-tilt {
+  position: absolute;
+  inset: 0;
+  perspective: 1200px;
+}
+
+.mo-orb-body {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  transform: rotateX(var(--orb-rx)) rotateY(var(--orb-ry));
+  transition: transform 120ms linear;
+  background:
+    radial-gradient(circle at var(--orb-lx) var(--orb-ly), #4a4a50 0%, #26262a 28%, #121214 60%, #060607 100%);
+  box-shadow:
+    inset 0 0 90px 10px rgb(0 0 0 / 0.9),
+    0 60px 140px -50px rgb(0 0 0 / 0.95);
+}
+
+/* The membrane. Two sets of creases turn against each other, slowly. */
+.mo-orb-skin {
+  position: absolute;
+  inset: -2%;
+  width: 104%;
+  height: 104%;
+  mix-blend-mode: screen;
+  opacity: 0.5;
+}
+.mo-orb-spin {
+  /* Against the view box, not the group's own bounds, so both layers turn
+     about the point the creases converge on. */
+  transform-box: view-box;
+  transform-origin: 16px -6px;
+  animation: mo-orb-turn 120s linear infinite;
+}
+.mo-orb-spin-back { animation-duration: 190s; animation-direction: reverse; }
+
+/* Darkens the lower right so the sphere turns away from the light. */
+.mo-orb-shade {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at var(--orb-lx) var(--orb-ly), transparent 30%, rgb(0 0 0 / 0.55) 72%, rgb(0 0 0 / 0.9) 100%);
+}
+
+/* The thin lit edge along the top left. */
+.mo-orb-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 210deg,
+    transparent 0deg,
+    rgb(255 255 255 / 0.5) 42deg,
+    rgb(255 255 255 / 0.06) 96deg,
+    transparent 150deg
+  );
+  mask: radial-gradient(circle, transparent 96.2%, #000 96.6%);
+  -webkit-mask: radial-gradient(circle, transparent 96.2%, #000 96.6%);
+  opacity: 0.8;
+}
+
+/* The point everything converges on. */
+.mo-orb-core {
+  position: absolute;
+  left: calc(50% + 8%);
+  top: calc(50% - 3%);
+  width: 4.2%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 0 14px 3px rgb(255 255 255 / 0.9),
+    0 0 48px 14px rgb(255 255 255 / 0.4),
+    0 0 130px 50px rgb(255 255 255 / 0.14);
+  animation: mo-orb-pulse 5.5s ease-in-out infinite;
+}
+
+/* A hairline orbit, the only thing that reads as an instrument. */
+.mo-orb-ring {
+  position: absolute;
+  inset: -7%;
+  animation: mo-orb-turn 240s linear infinite reverse;
+}
+
+@keyframes mo-orb-turn { to { transform: rotate(360deg); } }
+@keyframes mo-orb-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+@keyframes mo-orb-pulse {
+  0%, 100% { opacity: 0.92; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.12); }
+}
+
+/* =====================================================================
+   Reduced motion: every loop stops, every entrance resolves. Nothing here
+   is decorative-only content, so nothing disappears — it just stands still.
+   ===================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .js .mo-appear,
+  .js .mo-text .mo-text-word {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .mo-marquee-track { animation: none; }
+  .mo-orb-halo,
+  .mo-orb-spin,
+  .mo-orb-core,
+  .mo-orb-ring { animation: none; }
+  .mo-orb-body { transition: none; }
+}

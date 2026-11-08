@@ -5,6 +5,7 @@ import { WhyFlightpath } from "@/components/WhyFlightpath";
 import { WorkflowLibrary } from "@/components/WorkflowLibrary";
 import { FounderBooker } from "@/components/FounderBooker";
 import { Footer } from "@/components/Footer";
+import { Ticker } from "@/components/Ticker";
 
 export default function Home() {
   return (
@@ -12,6 +13,7 @@ export default function Home() {
       <Navbar />
       <main id="main">
         <Hero />
+        <Ticker />
         <Journey />
         <WhyFlightpath />
         <WorkflowLibrary />

@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { Reveal } from "./Reveal";
+import { SectionIntro } from "./SectionIntro";
 import { LINKS, TOOLS, UntangleFlow, bow } from "./UntangleFlow";
 
 const PAINS = [
@@ -14,15 +15,14 @@ export function WhyFlightpath() {
   return (
     <section id="why" data-pip-section="why" aria-labelledby="why-title" className="border-t border-line py-24 md:py-32">
       <div className="container-page">
-        <Reveal className="mx-auto max-w-2xl text-center">
-          <p className="eyebrow">Why Flightpath</p>
-          <h2 id="why-title" className="display mt-4 text-[2.4rem] text-ink sm:text-5xl lg:text-[3.2rem]">
-            Outbound is fragmented, manual and <em>broken.</em>
-          </h2>
-          <p className="mx-auto mt-5 max-w-lg text-[18px] leading-relaxed text-ink-2">
-            Five tools, five clocks. Flightpath turns them into one workflow that listens before it acts.
-          </p>
-        </Reveal>
+        <SectionIntro
+          id="why-title"
+          align="center"
+          eyebrow="Why Flightpath"
+          lead="Outbound is fragmented, manual and"
+          accent="broken."
+          lede="Five tools, five clocks. Flightpath turns them into one workflow that listens before it acts."
+        />
 
         <Reveal delay={100} className="mt-14">
           <div className="card grid grid-cols-1 overflow-hidden md:grid-cols-2">

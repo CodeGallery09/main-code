@@ -101,13 +101,17 @@ body {
    the same light. */
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  /* The wallpaper is load-bearing — glass only reads as glass when there is
+     something behind it to bend — so the pastel washes stay, but they are now
+     neutral: five greys at different values rather than five hues. Flatten
+     this to one colour and every panel becomes a plain white card. */
   background:
-    radial-gradient(1000px 760px at 6% -8%, rgb(150 182 255 / 0.16), transparent 68%),
-    radial-gradient(880px 700px at 96% 2%, rgb(206 172 255 / 0.13), transparent 70%),
-    radial-gradient(900px 720px at 84% 70%, rgb(140 224 203 / 0.11), transparent 70%),
-    radial-gradient(820px 680px at 0% 78%, rgb(255 198 160 / 0.15), transparent 70%),
-    radial-gradient(700px 560px at 50% 112%, rgb(168 196 255 / 0.13), transparent 70%),
-    linear-gradient(180deg, #f8f7f3, #f3f1e9);
+    radial-gradient(1000px 760px at 6% -8%, rgb(24 24 27 / 0.1), transparent 68%),
+    radial-gradient(880px 700px at 96% 2%, rgb(63 63 70 / 0.085), transparent 70%),
+    radial-gradient(900px 720px at 84% 70%, rgb(39 39 42 / 0.07), transparent 70%),
+    radial-gradient(820px 680px at 0% 78%, rgb(82 82 91 / 0.09), transparent 70%),
+    radial-gradient(700px 560px at 50% 112%, rgb(24 24 27 / 0.08), transparent 70%),
+    linear-gradient(180deg, #f7f7f8, #ebebee);
 }
 
 ::selection {
@@ -310,86 +314,323 @@ body::before {
 @keyframes intro-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 
 /* =====================================================================
-   HERO: cards scattered around the headline assemble into one overview
-   card as you scroll (desktop). Elsewhere it is a simple static stack.
-   Sits in the normal light scope, on the same colour wash as the rest of
-   the page — the dark photograph trial that used to live here (and the
-   light-on-dark token flip it required) was removed at the user's request.
+   HERO — a dark editorial stage in two acts.
+
+   Act one is the room: a near-black ground, the headline set large and flush
+   left, one solid call to action, and the object (components/motion/Orb.tsx)
+   holding the right of the frame. Act two is the one that was already here —
+   six cards glide out of the dark into a grid and merge into one overview
+   pane as you scroll through the pinned section.
+
+   The hero is the only dark scope on the marketing pages, so it overrides the
+   light tokens on itself rather than on :root, the same way .lg-nav.is-dark
+   does for the capsule floating over it (the section carries [data-nav-dark],
+   which is what flips the navbar). Nothing below the hero is affected.
+
+   Greyscale on purpose: the object is lit, not coloured, and the single
+   accent is the white CTA block.
    ===================================================================== */
 .hero {
   position: relative;
+  /* The room runs up under the floating navbar capsule, which is sticky and so
+     occupies its own strip of normal flow above us. Without this the page opens
+     on a band of the light wallpaper above the black. */
+  margin-top: -56px;
+  /* The object is deliberately bled off the right edge below `lg`. `clip`, not
+     `hidden` or `auto`: those make a scroll container, and a scroll container
+     here would stop .hero-sticky sticking. */
+  overflow-x: clip;
+  --ink: #fafafa;
+  --ink-2: rgb(255 255 255 / 0.74);
+  --muted: rgb(255 255 255 / 0.45);
+  --line: rgb(255 255 255 / 0.1);
+  --line-strong: rgb(255 255 255 / 0.2);
+  --surface-2: rgb(255 255 255 / 0.08);
+  color: var(--ink);
+  isolation: auto;
 }
 
-.hero-sticky { position: relative; }
+/* The room. One wash of light from the upper right, where the object hangs,
+   and a fade into the page's own background at the bottom edge so the cut
+   back to the light sections is a horizon rather than a seam. */
+.hero-night {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(90% 70% at 76% 30%, rgb(72 72 78 / 0.55), transparent 62%),
+    radial-gradient(60% 50% at 10% 85%, rgb(60 60 66 / 0.3), transparent 70%),
+    linear-gradient(180deg, #08080a 0%, #0b0b0d 62%, #0e0e11 100%);
+}
+
+/* The horizon: the last stretch of the section fades back to the light page
+   below it, so leaving the dark scope is a dissolve rather than a cut. Sits on
+   the section, not the pinned stage, so it only arrives at the very end. */
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 22vh;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, var(--bg) 88%);
+}
+
+.hero-sticky { position: relative; padding-top: 56px; }
+@media (min-width: 1100px) and (min-height: 640px) {
+  .js .hero-sticky { padding-top: 0; }
+}
+
+/* --- Act one: the editorial stage ------------------------------------ */
+.hero-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: rgb(255 255 255 / 0.5);
+}
+.hero-eyebrow-rule {
+  display: block;
+  width: 46px;
+  height: 1px;
+  background: rgb(255 255 255 / 0.3);
+}
+
+.hero-title {
+  margin-top: 26px;
+  display: flex;
+  flex-direction: column;
+  line-height: 0.92;
+}
+/* Line one: condensed, upper case, tight. Line two: the display italic, a step
+   larger and dropped to grey, so the pair reads as a headline and its answer. */
+.hero-title-caps {
+  display: block;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: -0.028em;
+  font-size: clamp(2.6rem, 7.4vw, 5.6rem);
+  color: #fff;
+}
+.hero-title-script {
+  display: block;
+  font-family: var(--font-display), Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.012em;
+  font-size: clamp(2.7rem, 7.8vw, 5.9rem);
+  margin-top: 0.06em;
+  background: linear-gradient(96deg, #ffffff 4%, #b9b9bf 46%, #6f6f77 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero-lede {
+  margin-top: 28px;
+  max-width: 30rem;
+  font-size: 17px;
+  line-height: 1.6;
+  color: rgb(255 255 255 / 0.62);
+}
+
+.hero-actions {
+  margin-top: 34px;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  flex-wrap: wrap;
+}
+/* The one solid block on the page. Square, not a capsule — it is the single
+   piece of weight in an otherwise unlit frame. */
+.hero-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 26px;
+  background: #fafafa;
+  color: #0a0a0a;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  border-radius: 2px;
+  transition: background-color 220ms var(--ease-out), color 220ms var(--ease-out);
+}
+.hero-cta svg { transition: transform 260ms var(--ease-out); }
+.hero-cta:hover { background: #ffffff; }
+.hero-cta:hover svg { transform: translate(3px, -3px); }
+
+.hero-link {
+  position: relative;
+  font-size: 15px;
+  color: rgb(255 255 255 / 0.66);
+  padding-bottom: 3px;
+  transition: color 220ms var(--ease-out);
+}
+.hero-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 320ms var(--ease-out);
+}
+.hero-link:hover { color: #fff; }
+.hero-link:hover::after { transform: scaleX(1); }
+
+.hero-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 54px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.17em;
+  color: rgb(255 255 255 / 0.34);
+}
+.hero-meta-rule {
+  display: block;
+  width: 62px;
+  height: 1px;
+  background: rgb(255 255 255 / 0.22);
+}
+
+/* --- The object ------------------------------------------------------ */
+.hero-orb {
+  position: relative;
+  width: min(520px, 86vw);
+  margin: 0 auto 8px;
+  pointer-events: none;
+}
+
+/* --- Act two: the overview pane -------------------------------------- */
 .hero-frame { position: relative; margin-top: 56px; }
 .hero-frame-bg {
   position: absolute; inset: 0; border-radius: 28px;
   background:
-    radial-gradient(120% 70% at 0% 0%, rgb(255 255 255 / 0.6), transparent 55%),
-    linear-gradient(135deg, rgb(255 255 255 / 0.62), rgb(255 255 255 / 0.36));
-  border: 1px solid rgb(255 255 255 / 0.8);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.95), 0 1px 2px rgb(0 0 0 / 0.05), 0 40px 80px -40px rgb(0 0 0 / 0.4);
-  -webkit-backdrop-filter: blur(22px) saturate(180%); backdrop-filter: blur(22px) saturate(180%);
+    radial-gradient(120% 70% at 0% 0%, rgb(255 255 255 / 0.08), transparent 58%),
+    linear-gradient(135deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0.025));
+  border: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1), 0 40px 90px -40px rgb(0 0 0 / 0.9);
+  -webkit-backdrop-filter: blur(22px) saturate(140%); backdrop-filter: blur(22px) saturate(140%);
 }
 .hero-frame-in { position: relative; padding: 14px; }
 @media (min-width: 640px) { .hero-frame-in { padding: 18px 20px 16px; } }
 .hcard {
   position: relative; border-radius: 16px;
-  background: linear-gradient(135deg, rgb(255 255 255 / 0.82), rgb(255 255 255 / 0.56));
-  border: 1px solid rgb(255 255 255 / 0.9);
-  -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%);
-  padding: 14px 16px; box-shadow: 0 1px 0 rgb(0 0 0 / 0.02), 0 18px 36px -24px var(--shadow);
+  background: linear-gradient(135deg, rgb(255 255 255 / 0.075), rgb(255 255 255 / 0.03));
+  border: 1px solid rgb(255 255 255 / 0.1);
+  -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%);
+  padding: 14px 16px; box-shadow: 0 1px 0 rgb(255 255 255 / 0.04), 0 18px 36px -24px rgb(0 0 0 / 0.8);
   display: flex; flex-direction: column; min-height: 148px;
+  color: rgb(255 255 255 / 0.8);
+}
+.hcard-value {
+  margin-top: 8px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  font-size: 2.6rem;
+  line-height: 1;
+  color: #fff;
 }
 .hero-status .when-busy { display: none; }
 .hero-status .when-done { display: inline-flex; }
 .hero.is-assembling .hero-status .when-busy { display: inline; }
 .hero.is-assembling .hero-status .when-done { display: none; }
-.cue-mouse { position: relative; width: 18px; height: 28px; border: 1.5px solid var(--line-strong); border-radius: 999px; }
+.hero .live-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.12);
+}
+.cue-mouse { position: relative; width: 18px; height: 28px; border: 1.5px solid rgb(255 255 255 / 0.25); border-radius: 999px; }
 .cue-mouse::after {
   content: ""; position: absolute; left: 50%; top: 6px; width: 3px; height: 6px; margin-left: -1.5px;
-  border-radius: 999px; background: var(--accent); animation: cue 1.8s ease-in-out infinite;
+  border-radius: 999px; background: rgb(255 255 255 / 0.8); animation: cue 1.8s ease-in-out infinite;
 }
 @keyframes cue { 0% { transform: translateY(0); opacity: 1; } 70% { transform: translateY(8px); opacity: 0; } 100% { transform: translateY(0); opacity: 0; } }
-.spark-draw { clip-path: inset(0 100% 0 0); animation: spark-wipe 1300ms var(--ease-out) 600ms forwards; }
+.spark-draw { clip-path: inset(0 100% 0 0); animation: spark-wipe 1300ms var(--ease-out) 600ms forwards; color: rgb(255 255 255 / 0.55); }
 @keyframes spark-wipe { to { clip-path: inset(0 0 0 0); } }
+
+/* Phone and tablet: one long column. The object sits above the headline,
+   bled off the right edge so it is cropped rather than shrunk. */
+@media (max-width: 1099px) {
+  .hero-sticky { padding-bottom: 20px; }
+  /* The object is cropped off the right edge and the headline is set over its
+     dark lower half, so the first screen carries both. */
+  .hero-orb {
+    width: min(420px, 104vw);
+    margin: -8px -20vw -84px auto;
+  }
+  .hero-copy { position: relative; z-index: 1; }
+  .hero-title { margin-top: 20px; }
+  .hero-meta { margin-top: 38px; font-size: 9.5px; letter-spacing: 0.14em; }
+}
+
+/* Wide, but not pinned — no JS, a short window, or reduced motion. The stage
+   is still two columns; it simply does not move. The pinned layout below
+   positions everything absolutely, so this grid only governs the static case. */
+@media (min-width: 1100px) {
+  .hero-wrap {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr);
+    align-items: center;
+    column-gap: 48px;
+  }
+  .hero-copy { grid-area: 1 / 1; }
+  .hero-orb { grid-area: 1 / 2; width: min(520px, 38vw); margin: 0 0 0 auto; }
+  .hero-frame { grid-area: 2 / 1 / 3 / -1; }
+}
 
 @media (min-width: 1100px) and (min-height: 640px) and (prefers-reduced-motion: no-preference) {
   .js .hero { height: 250vh; }
-  /* The pinned view fills the whole viewport, navbar included, so the photo
-     runs under the floating capsule. The copy sits a little below centre to
-     make room for it. */
+  /* The pinned view fills the whole viewport, navbar included, so the room
+     runs under the floating capsule. */
   .js .hero-sticky { position: sticky; top: 0; height: 100svh; overflow: clip; }
   .js .hero-wrap { position: absolute; inset: 0; max-width: none; padding: 0; }
+  /* Act one sits flush left over the left third; the object holds the right. */
   .js .hero-copy {
-    position: absolute; left: 50%; top: calc(47% + 38px); width: min(780px, 62vw); transform: translate(-50%, -50%);
+    position: absolute;
+    left: max(5vw, calc(50vw - 540px));
+    top: calc(50% + 14px);
+    width: min(560px, 42vw);
+    transform: translateY(-50%);
+  }
+  .js .hero-orb {
+    position: absolute;
+    right: clamp(-6vw, calc(48vw - 560px), 4vw);
+    top: calc(50% + 14px);
+    width: min(600px, 42vw, 74svh);
+    margin: 0;
+    transform: translateY(-50%);
   }
   .js .hero-frame { position: absolute; left: 50%; top: calc(52% + 38px); width: 980px; margin: 0; transform: translate(-50%, -50%); }
   .js .hero-frame-bg, .js .hero-frame-head, .js .hero-frame-foot { opacity: 0; }
-  .js .hcard {
-    opacity: 0;
-    transition: opacity 700ms var(--ease-out) calc(var(--i, 0) * 90ms + 150ms), --hl 400ms ease 0s;
-  }
-  .js .hero.is-ready .hcard { opacity: 1; animation: hcard-float 7s ease-in-out infinite; animation-delay: calc(var(--i, 0) * -1.2s); }
+  .js .hcard { opacity: 0; }
+  .js .hero.is-ready .hcard { animation: hcard-float 7s ease-in-out infinite; animation-delay: calc(var(--i, 0) * -1.2s); }
   .js .hero-cue { display: flex; }
 
   /* Merge: the grid closes up, each tile keeps its glass but loses its rounded
      corners, rim and shadow as hairline dividers fade in, so the six read as
-     one pane. --m (0..1) is set from scroll progress in Hero.tsx. The glass
-     itself stays on the tile — a drawn inset card could not refract the photo,
-     and `isolation` would stop the tile sampling it. */
+     one pane. --m (0..1) is set from scroll progress in Hero.tsx. */
   .js .hero-grid { gap: 0; }
   .js .hcard {
     padding: 22px 26px;
     min-height: 164px;
     border-radius: calc(18px * (1 - var(--m, 0)));
-    --g-rim: inset 0 0 0 0.5px rgb(255 255 255 / calc(0.75 * (1 - var(--m, 0)))),
-      inset 0 1px 0 rgb(255 255 255 / calc(0.9 * (1 - var(--m, 0))));
-    box-shadow: var(--g-rim), 0 18px 40px -24px rgb(16 20 32 / calc(0.34 * (1 - var(--m, 0))));
+    border-color: rgb(255 255 255 / calc(0.1 * (1 - var(--m, 0))));
+    box-shadow: 0 18px 40px -24px rgb(0 0 0 / calc(0.8 * (1 - var(--m, 0))));
   }
   .js .hcard::after {
     content: ""; position: absolute; inset: 0; pointer-events: none; opacity: var(--m, 0);
-    border-right: 1px solid rgb(255 255 255 / 0.5); border-bottom: 1px solid rgb(255 255 255 / 0.5);
+    border-right: 1px solid rgb(255 255 255 / 0.1); border-bottom: 1px solid rgb(255 255 255 / 0.1);
   }
   .js .hcard:nth-child(3n)::after { border-right-color: transparent; }
   .js .hcard:nth-child(n + 4)::after { border-bottom-color: transparent; }
@@ -397,6 +638,79 @@ body::before {
 /* Gentle idle float in the scattered state; JS fades it out via --float as cards assemble. */
 @keyframes hcard-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 calc(var(--float, 1) * -6px); } }
 .hero-cue { display: none; }
+
+/* =====================================================================
+   SECTION HEADINGS — the hero's two-line editorial form, carried down the
+   page by components/SectionIntro.tsx so every section opens the same way.
+   Light scope here: the upper-case line is ink, the display italic falls
+   away to grey.
+   ===================================================================== */
+.sec-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+}
+.sec-eyebrow-rule { display: block; width: 40px; height: 1px; background: var(--line-strong); }
+
+.sec-title {
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  line-height: 0.95;
+}
+.sec-title-caps {
+  display: block;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: -0.026em;
+  font-size: clamp(2rem, 4.4vw, 3.1rem);
+  color: var(--ink);
+}
+.sec-title-script {
+  display: block;
+  font-family: var(--font-display), Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.012em;
+  font-size: clamp(2.1rem, 4.7vw, 3.35rem);
+  margin-top: 0.04em;
+  color: #8a8a93;
+}
+.sec-lede {
+  margin-top: 22px;
+  max-width: 32rem;
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* A hairline band of running mono type between the hero and the page. It is
+   the page's one piece of ornament, and it says only what the hero said. */
+.ticker {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 13px 0;
+  background: var(--surface);
+}
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 34px;
+  padding-right: 34px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ticker-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--line-strong); }
 
 /* =====================================================================
    CUSTOMER JOURNEY (interactive)
@@ -546,9 +860,6 @@ body::before {
 .card,
 .glass,
 .glass-lg,
-.hero-frame-bg,
-.hcard,
-.hero-cta-bar,
 .btn-secondary,
 .field,
 .bk-nav,
@@ -586,7 +897,7 @@ body::before {
 }
 
 /* Panes sit still and brighten; controls also lift a little. */
-.card:hover, .glass:hover, .glass-lg:hover, .jr-card:hover, .wf-box:hover, .hcard:hover, .hero-cta-bar:hover { --hl: 1; }
+.card:hover, .glass:hover, .glass-lg:hover, .jr-card:hover, .wf-box:hover { --hl: 1; }
 .btn-secondary:hover,
 .bk-nav:hover:not(:disabled),
 .bk-day:not(.is-sel):not(:disabled):hover,
@@ -601,16 +912,8 @@ body::before {
 
 /* Thicknesses: big panes carry more blur, small controls less. */
 .glass-lg, .card, .jr-card { --g-tint: rgb(255 255 255 / 0.52); --g-blur: 26px; }
-.hero-frame-bg { --g-tint: rgb(255 255 255 / 0.46); --g-blur: 28px; }
-.hcard { --g-tint: rgb(255 255 255 / 0.5); --g-blur: 16px; border-radius: 18px; }
-/* The one concentrated glass moment on the page: a pill holding the hero CTAs.
-   Stacked on mobile, two full-pill buttons inside a 999px capsule pinch at the
-   waist, so it only goes full pill once the row is horizontal (matches the
-   sm:flex-row breakpoint on the markup). */
-.hero-cta-bar { --g-tint: rgb(255 255 255 / 0.4); --g-blur: 22px; border-radius: var(--radius-lg); padding: 8px; }
-@media (min-width: 640px) {
-  .hero-cta-bar { border-radius: 999px; }
-}
+/* The hero is the page's one dark scope, so its pane and tiles carry their own
+   dark material in the HERO block above rather than this light glass skin. */
 .why-chip, .uf-chip, .tag-sample, .bk-nav, .bk-day, .bk-slot { --g-blur: 12px; }
 .wf-canvas-bg { --g-tint: rgb(255 255 255 / 0.34); --g-blur: 14px; }
 
@@ -677,7 +980,7 @@ body::before {
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .card, .glass, .glass-lg, .hero-frame-bg, .hcard, .jr-card, .field, .hero-cta-bar {
+  .card, .glass, .glass-lg, .jr-card, .field {
     background-color: rgb(255 255 255 / 0.94);
   }
 }

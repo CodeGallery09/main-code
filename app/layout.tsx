@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Instrument_Serif, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import "./motion.css";
 import "./pip.css";
 import { Pip } from "@/components/pip/Pip";
 
