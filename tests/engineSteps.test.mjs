@@ -200,3 +200,15 @@ test("an email step carries its thread setting to the sender", () => {
   assert.equal(send.thread, true);
   assert.equal(send.body, "Hi Maya");
 });
+
+test("every variable the builder offers is filled, so a lead never receives braces", async () => {
+  const { MERGE_VARS } = await import("../lib/app/workflow.ts");
+  const lead = { id: "a", name: "Maya Ortiz", company: "Northwind", score: 50, title: "Head of Sales" };
+  const filled = fillMergeFields(MERGE_VARS.join(" "), lead);
+  assert.doesNotMatch(filled, /[{}]/);
+  assert.equal(filled, "Maya Northwind Head of Sales");
+});
+
+test("a lead with no first name is greeted as 'there', not 'Hi ,'", () => {
+  assert.equal(fillMergeFields("Hi {first_name},", { id: "a", name: "", company: "", score: 0 }), "Hi there,");
+});

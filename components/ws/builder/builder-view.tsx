@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft, Check, Rocket, CircleDashed, LayoutTemplate, Minus, Plus, Redo2, Save, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { LIVE_SEND_NOTE } from "@/lib/capabilities";
+import type { MessageTemplate, TemplateKind } from "@/lib/data/types";
 import {
   defaults,
   issues as findIssues,
@@ -297,6 +297,34 @@ export function BuilderView({
   /* ---------- edits ---------- */
 
   const say = useCallback((text: string) => setNotice(text), []);
+
+  /* ---------- templates ---------- */
+
+  // The workspace's saved messages, offered on the steps they fit. A failed read leaves the list
+  // empty: writing copy by hand still works.
+  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  useEffect(() => {
+    let alive = true;
+    api.templates().then(
+      (r) => alive && setTemplates(r.templates),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const saveTemplate = useCallback(
+    async (input: { kind: TemplateKind; name: string; subject: string; body: string }) => {
+      try {
+        const { template } = await api.createTemplate(input);
+        setTemplates((all) => [template, ...all]);
+        say(`Saved “${template.name}” as a template.`);
+      } catch (e) {
+        say(e instanceof Error ? e.message : "That template couldn't be saved.");
+      }
+    },
+    [say],
+  );
   useEffect(() => {
     if (!notice) return;
     const t = window.setTimeout(() => setNotice(null), 3600);
@@ -560,10 +588,6 @@ export function BuilderView({
                 </div>
               </div>
             ))}
-            <p className="hidden text-[11px] leading-[1.5] text-muted-foreground lg:block">
-              Drag a step onto the canvas, or click one to add it after the selected step. Pull from a dot under a
-              step to the next step to connect them.
-            </p>
           </aside>
 
           {/* Canvas */}
@@ -584,9 +608,6 @@ export function BuilderView({
               onDropStep={dropStep}
               onRefused={say}
             />
-            <p className="border-t border-border bg-chrome px-4 py-[6px] text-[11px] text-muted-foreground">
-              Figures on the steps are estimates from your audience size, not your results.
-            </p>
             <AnimatePresence>
               {notice ? (
                 <motion.p
@@ -616,6 +637,8 @@ export function BuilderView({
                 edges={edges}
                 lists={lists}
                 problem={problems[selectedNode.id]}
+                templates={templates}
+                onSaveTemplate={saveTemplate}
                 onPatch={patchStep}
                 onDelete={deleteStep}
                 onLink={link}
@@ -634,14 +657,7 @@ export function BuilderView({
               </div>
             ) : (
               <div className="flex flex-col gap-4 px-4 py-4">
-                <div>
-                  <h2 className="font-mono text-[13px] font-bold">This strategy</h2>
-                  <p className="mt-1 text-[12px] leading-[1.5] text-muted-foreground">
-                    {steps === 0
-                      ? "Nothing in it yet. Add the first step from the left."
-                      : "Select a step to edit it, or drag between the dots to connect two."}
-                  </p>
-                </div>
+                <h2 className="font-mono text-[13px] font-bold">This strategy</h2>
 
                 <dl className="grid grid-cols-3 gap-2">
                   {[
@@ -781,9 +797,6 @@ export function BuilderView({
                   </div>
                 ) : null}
 
-                <p className="rounded-lg bg-accent px-[11px] py-[9px] text-[11.5px] leading-[1.55] text-body">
-                  {LIVE_SEND_NOTE} Edits here save as a draft; launch from Strategies.
-                </p>
               </div>
             )}
           </aside>

@@ -340,6 +340,31 @@ export const workspaceSettings = pgTable("workspace_settings", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * A message written once and reused: an invitation note, a LinkedIn message or an email.
+ *
+ * A template is **copied** into a step when it is picked, not linked: editing a template later
+ * does not rewrite a plan that is already running, which would change what a lead receives
+ * between one touch and the next. `kind` is the step it fits (`li_invite`, `li_msg`, `email`);
+ * `subject` is used by email only.
+ */
+export const messageTemplates = pgTable(
+  "message_templates",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    name: text("name").notNull(),
+    subject: text("subject").notNull().default(""),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("message_templates_workspace_idx").on(t.workspaceId, t.kind)],
+);
+
 /* ------------------------------------------- org-level channel accounts -- */
 
 /**

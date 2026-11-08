@@ -17,7 +17,7 @@ import {
   type StepKind,
 } from "@/lib/app/workflow";
 import { SENDING_CHANNELS } from "@/lib/capabilities";
-import type { Channel, Strategy } from "@/lib/data/types";
+import type { Channel, MessageTemplate, Strategy } from "@/lib/data/types";
 import { CHANNEL_NAME } from "@/lib/ws/channels";
 import { cn } from "@/lib/ws/utils";
 import { EASE_OUT } from "@/components/ws/ui/motion";
@@ -104,6 +104,20 @@ export function SequenceComposer({
   const [audience, setAudience] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+
+  // Saved templates, offered on the touches they fit.
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    api.templates().then(
+      (r) => alive && setTemplates(r.templates),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [open]);
 
   // The same question the New strategy screen asks, for the same reason: a plan that starts on an
   // audience with nobody in it is refused at launch, and the refusal is hard to act on.
@@ -277,6 +291,7 @@ export function SequenceComposer({
                     index={i}
                     last={i === steps.length - 1}
                     only={steps.length === 1}
+                    templates={templates}
                     onKind={(kind) => changeKind(step, kind)}
                     onEdit={(patch) => edit(step.uid, patch)}
                     onMove={(by) => move(i, by)}
@@ -329,6 +344,7 @@ function StepCard({
   index,
   last,
   only,
+  templates,
   onKind,
   onEdit,
   onMove,
@@ -338,6 +354,7 @@ function StepCard({
   index: number;
   last: boolean;
   only: boolean;
+  templates: MessageTemplate[];
   onKind: (kind: StepKind) => void;
   onEdit: (patch: Partial<Draft>) => void;
   onMove: (by: -1 | 1) => void;
@@ -345,6 +362,7 @@ function StepCard({
 }) {
   const id = `seq-${step.uid}`;
   const invite = step.kind === "li_invite";
+  const fitting = templates.filter((t) => t.kind === step.kind);
 
   return (
     <div className="flex flex-col gap-[10px] rounded-[10px] border border-border bg-chrome px-[14px] py-3">
@@ -410,6 +428,21 @@ function StepCard({
           <span className="text-[11.5px] text-muted-foreground">business days after the touch above</span>
         </span>
       )}
+
+      {fitting.length > 0 ? (
+        <NativeSelect
+          id={`${id}-template`}
+          label="Use a template"
+          hideLabel
+          value=""
+          onChange={(v) => {
+            const picked = fitting.find((t) => t.id === v);
+            if (picked) onEdit({ body: picked.body, ...(step.kind === "email" ? { subject: picked.subject } : {}) });
+          }}
+          options={[{ value: "", label: "Use a template…" }, ...fitting.map((t) => ({ value: t.id, label: t.name }))]}
+          selectClassName="w-full"
+        />
+      ) : null}
 
       {step.kind === "email" && (
         <span className="flex flex-col gap-[5px]">

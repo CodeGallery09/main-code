@@ -438,6 +438,23 @@ export type SendingDomain = {
   isSample: boolean;
 };
 
+/** The steps a template can fill: an invitation note, a LinkedIn message, an email. */
+export type TemplateKind = "li_invite" | "li_msg" | "email";
+
+/**
+ * A message written once and reused. Picking one in the builder **copies** its words into the
+ * step, so a later edit never changes a plan that is already running.
+ */
+export type MessageTemplate = {
+  id: string;
+  kind: TemplateKind;
+  name: string;
+  /** Email only; "" otherwise. */
+  subject: string;
+  body: string;
+  updatedAt: string;
+};
+
 /** A domain as it stands after a live DNS lookup: the stored row, and what each record said. */
 export type DomainCheck = {
   domain: SendingDomain;

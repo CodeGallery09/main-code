@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Trash2, TriangleAlert } from "lucide-react";
+import { useState } from "react";
+import { Save, Trash2, TriangleAlert } from "lucide-react";
 import {
   CHECKS,
   GOALS,
@@ -23,6 +24,7 @@ import { SETUP_HREF } from "@/lib/nav";
 import { cn } from "@/lib/ws/utils";
 import { Button } from "@/components/ws/ui/button";
 import { NativeSelect, Switch } from "@/components/ws/ui/misc";
+import type { MessageTemplate, TemplateKind } from "@/lib/data/types";
 import { StepTile } from "./canvas";
 
 /**
@@ -73,14 +75,100 @@ function Variables({ onInsert }: { onInsert: (v: string) => void }) {
  * subject and body for an email, a delay for a wait, a test for a condition. Where the step goes
  * next is set here too, so a plan can be wired without the mouse.
  */
-/** What each condition is decided on, in the operator's words. Every one is a reported fact. */
-const CONDITION_HINT: Partial<Record<CheckKey, string>> = {
-  accepted:
-    "Seen when LinkedIn shows them as a connection of the sending account — read from the connections list every 15 minutes, and from the Users webhook when it is set up.",
-  replied: "Seen when they write back on LinkedIn or by email. An out-of-office does not count.",
-  opened: "Seen when the email's tracking image loads. Apple Mail loads it by itself, so this can read high.",
-  clicked: "Seen when they click a link in an email from this plan.",
-};
+/**
+ * Fills a step from a saved template — a copy, so a later edit to the template never changes a
+ * plan that is already running — and saves the step's own words as a new one.
+ */
+function TemplateBar({
+  kind,
+  templates,
+  readOnly,
+  onPick,
+  onSave,
+}: {
+  kind: TemplateKind;
+  templates: MessageTemplate[];
+  readOnly?: boolean;
+  onPick: (template: MessageTemplate) => void;
+  onSave?: (name: string) => Promise<void>;
+}) {
+  const fitting = templates.filter((t) => t.kind === kind);
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  if (naming && onSave) {
+    return (
+      <form
+        className="flex items-center gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!name.trim()) return;
+          setBusy(true);
+          try {
+            await onSave(name.trim());
+            setNaming(false);
+            setName("");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <label htmlFor={`tpl-name-${kind}`} className="sr-only">
+          Template name
+        </label>
+        <input
+          id={`tpl-name-${kind}`}
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Template name"
+          className={cn(INPUT, "min-w-0 flex-1")}
+        />
+        <Button size="sm" type="submit" disabled={busy || !name.trim()}>
+          {busy ? "Saving…" : "Save"}
+        </Button>
+        <Button size="sm" variant="ghost" type="button" onClick={() => setNaming(false)}>
+          Cancel
+        </Button>
+      </form>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <NativeSelect
+        id={`tpl-pick-${kind}`}
+        label="Use a template"
+        hideLabel
+        value=""
+        disabled={readOnly || fitting.length === 0}
+        onChange={(v) => {
+          const picked = fitting.find((t) => t.id === v);
+          if (picked) onPick(picked);
+        }}
+        options={[
+          { value: "", label: fitting.length ? "Use a template…" : "No templates yet" },
+          ...fitting.map((t) => ({ value: t.id, label: t.name })),
+        ]}
+        className="min-w-0 flex-1"
+        selectClassName="w-full"
+      />
+      {onSave ? (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={readOnly}
+          aria-label="Save these words as a template"
+          onClick={() => setNaming(true)}
+        >
+          <Save aria-hidden strokeWidth={1.9} />
+          Save
+        </Button>
+      ) : null}
+    </div>
+  );
+}
 
 export function Inspector({
   node,
@@ -89,6 +177,8 @@ export function Inspector({
   lists,
   problem,
   readOnly,
+  templates = [],
+  onSaveTemplate,
   onPatch,
   onDelete,
   onLink,
@@ -99,6 +189,10 @@ export function Inspector({
   lists: AudienceList[];
   problem?: string;
   readOnly?: boolean;
+  /** The workspace's saved messages, offered on the steps they fit. */
+  templates?: MessageTemplate[];
+  /** Saves a step's words as a new template. */
+  onSaveTemplate?: (input: { kind: TemplateKind; name: string; subject: string; body: string }) => Promise<void>;
   onPatch: (id: string, patch: Partial<StepData>) => void;
   onDelete: (id: string) => void;
   /** Wire `port` of this step to `target`, or clear it when `target` is empty. */
@@ -167,6 +261,17 @@ export function Inspector({
 
       {node.kind === "li_invite" && (
         <Field id={id("note")} label="Note with the invite">
+          <TemplateBar
+            kind="li_invite"
+            templates={templates}
+            readOnly={readOnly}
+            onPick={(t) => patch({ note: t.body })}
+            onSave={
+              onSaveTemplate && (d.note ?? "").trim()
+                ? (name) => onSaveTemplate({ kind: "li_invite", name, subject: "", body: d.note ?? "" })
+                : undefined
+            }
+          />
           <textarea
             id={id("note")}
             rows={5}
@@ -187,19 +292,24 @@ export function Inspector({
               {(d.note ?? "").length}/{NOTE_LIMIT}
             </span>
           </div>
-          {/* The note is ours to write but LinkedIn's to deliver, and on a free account it usually
-              is not. Saying so here is the only honest place: by the time the invite has gone out
-              there is no way to tell from the API whether the note went with it. */}
-          <p className="text-[11px] leading-[1.55] text-muted-foreground">
-            {(d.note ?? "").length > FREE_NOTE_LIMIT
-              ? `Over ${FREE_NOTE_LIMIT} characters. A free LinkedIn account will not take a note this long — it sends the invite without one. Premium accounts take up to ${NOTE_LIMIT}.`
-              : `LinkedIn, not Flightpath, decides whether a note is delivered: a free account takes only a handful of personalised invites a month and caps the note at ${FREE_NOTE_LIMIT} characters. Past that it sends the request bare, and tells nobody.`}
-          </p>
         </Field>
       )}
 
       {(node.kind === "li_msg" || node.kind === "sms" || node.kind === "wa") && (
         <Field id={id("body")} label="Message">
+          {node.kind === "li_msg" ? (
+            <TemplateBar
+              kind="li_msg"
+              templates={templates}
+              readOnly={readOnly}
+              onPick={(t) => patch({ body: t.body })}
+              onSave={
+                onSaveTemplate && (d.body ?? "").trim()
+                  ? (name) => onSaveTemplate({ kind: "li_msg", name, subject: "", body: d.body ?? "" })
+                  : undefined
+              }
+            />
+          ) : null}
           <textarea
             id={id("body")}
             rows={6}
@@ -214,6 +324,17 @@ export function Inspector({
 
       {node.kind === "email" && (
         <>
+          <TemplateBar
+            kind="email"
+            templates={templates}
+            readOnly={readOnly}
+            onPick={(t) => patch({ subject: t.subject, body: t.body })}
+            onSave={
+              onSaveTemplate && (d.body ?? "").trim()
+                ? (name) => onSaveTemplate({ kind: "email", name, subject: d.subject ?? "", body: d.body ?? "" })
+                : undefined
+            }
+          />
           <Field id={id("subject")} label="Subject">
             <input
               id={id("subject")}
@@ -238,11 +359,6 @@ export function Inspector({
             <span className="text-[12px]">Reply in the same thread</span>
             <Switch checked={Boolean(d.thread)} disabled={readOnly} onChange={(v) => patch({ thread: v })} label="Reply in the same thread" />
           </div>
-          <p className="text-[11px] leading-[1.55] text-muted-foreground">
-            A follow-up goes as &ldquo;Re:&rdquo; to the last email this plan sent the lead, from the same mailbox, so it
-            lands under it in their inbox. Leaving the subject empty does the same. Opens and link clicks are tracked;
-            Apple Mail loads images on its own, so an open is a weak signal — a reply or a click is a strong one.
-          </p>
         </>
       )}
 
@@ -274,9 +390,6 @@ export function Inspector({
               className={INPUT}
             />
           </Field>
-          <p className="text-[11.5px] leading-[1.5] text-muted-foreground">
-            A call step becomes a to-do for a person. Nothing dials for you.
-          </p>
         </>
       )}
 
@@ -336,7 +449,6 @@ export function Inspector({
               />
             </Field>
           ) : (
-            <>
             <Field id={id("within")} label="Within">
               <span className="flex items-center gap-2">
                 <input
@@ -352,11 +464,6 @@ export function Inspector({
                 <span className="text-[12px] text-muted-foreground">days</span>
               </span>
             </Field>
-            <p className="text-[11px] leading-[1.55] text-muted-foreground">
-              {CONDITION_HINT[d.check ?? "replied"] ?? ""} The lead takes Yes the moment it happens and No once the
-              window runs out.
-            </p>
-            </>
           )}
         </>
       )}
@@ -394,12 +501,6 @@ export function Inspector({
             selectClassName="w-full"
           />
         </Field>
-      )}
-
-      {node.kind === "exit" && (
-        <p className="text-[11.5px] leading-[1.5] text-muted-foreground">
-          Anyone who reaches this step leaves the strategy.
-        </p>
       )}
 
       {step.ports.length > 0 && (

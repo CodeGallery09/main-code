@@ -7,6 +7,8 @@
 
 import type {
   DomainCheck,
+  MessageTemplate,
+  TemplateKind,
   AccountActivity,
   AccountsSnapshot,
   Analytics,
@@ -206,6 +208,27 @@ export const api = {
       method: "POST",
       body: JSON.stringify(accountId ? { accountId } : {}),
     }),
+
+  templates: () => request<{ templates: MessageTemplate[] }>("/api/templates"),
+
+  createTemplate: (input: { kind: TemplateKind; name: string; subject?: string; body: string }) =>
+    request<{ template: MessageTemplate }>("/api/templates", { method: "POST", body: JSON.stringify(input) }),
+
+  updateTemplate: (id: string, patch: { name?: string; subject?: string; body?: string }) =>
+    request<{ template: MessageTemplate }>(`/api/templates/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+
+  deleteTemplate: (id: string) =>
+    request<{ deleted: string }>(`/api/templates/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  /** Deletes an uploaded audience; with `withLeads`, every lead in it is deleted from the workspace too. */
+  deleteSegment: (id: string, withLeads: boolean) =>
+    request<{ deleted: string; leadsDeleted: number }>(
+      `/api/audiences/segments/${encodeURIComponent(id)}${withLeads ? "?leads=1" : ""}`,
+      { method: "DELETE" },
+    ),
 
   /** Adds a sending domain and looks its SPF, DKIM and DMARC up straight away. */
   addDomain: (host: string) =>

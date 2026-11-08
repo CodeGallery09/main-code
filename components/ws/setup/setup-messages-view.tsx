@@ -15,6 +15,7 @@ import { cn } from "@/lib/ws/utils";
 import { CAMPAIGNS_HREF } from "@/lib/nav";
 import { PageBody, PageHeader, SetupTabs, TopBar } from "@/components/ws/shell/page";
 import { SequenceComposer } from "@/components/ws/setup/sequence-composer";
+import { TemplatesCard } from "@/components/ws/setup/templates-card";
 import { useWorkspace } from "@/components/ws/shell/workspace-context";
 import { Card, CardHeader, CardTitle, FILL } from "@/components/ws/ui/card";
 import { Button } from "@/components/ws/ui/button";
@@ -74,7 +75,7 @@ export function SetupMessagesView() {
         <Appear>
           <PageHeader
             title="Messages"
-            subtitle="Write a sequence here and it becomes a strategy you can launch. Editing a message changes that one step — there is no shared template library yet."
+            subtitle="Templates you reuse, and the messages in your strategies."
             actions={
               <Button onClick={() => setWriting(true)}>
                 <Plus aria-hidden strokeWidth={2} />
@@ -117,10 +118,14 @@ export function SetupMessagesView() {
           </Appear>
         )}
 
+        <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:grid-rows-1">
         <Appear index={2} className={FILL}>
+          <TemplatesCard />
+        </Appear>
+        <Appear index={3} className={FILL}>
           <Card className={FILL}>
             <CardHeader>
-              <CardTitle>{filter === "all" ? "All messages" : `${CHANNEL_NAME[filter]} messages`}</CardTitle>
+              <CardTitle>{filter === "all" ? "In your strategies" : `${CHANNEL_NAME[filter]} in your strategies`}</CardTitle>
               <span className="font-mono text-[11px] text-muted-foreground">
                 {shown.length} {shown.length === 1 ? "message" : "messages"}
               </span>
@@ -140,7 +145,7 @@ export function SetupMessagesView() {
             ) : shown.length === 0 ? (
               <EmptyState>
                 {rows.length === 0
-                  ? "No messages yet. They appear here as soon as a strategy has a touch that sends one."
+                  ? "No messages in your strategies yet."
                   : "No messages match this filter."}
               </EmptyState>
             ) : (
@@ -149,11 +154,11 @@ export function SetupMessagesView() {
                   <div key={row.key} className="border-b border-secondary last:border-b-0">
                     <div className="flex flex-wrap items-center gap-3 py-[9px]">
                       <ChannelTile channel={row.channel} />
-                      <span className="flex min-w-0 flex-1 basis-[280px] flex-col gap-[2px]">
+                      <span className="flex min-w-0 flex-1 basis-[180px] flex-col gap-[2px]">
                         <span className="truncate text-[12.5px] font-semibold">{row.what}</span>
                         <span className="truncate text-[11.5px] text-muted-foreground">{firstLine(row)}</span>
                       </span>
-                      <span className="flex shrink-0 basis-[180px] flex-col gap-[2px]">
+                      <span className="flex min-w-0 shrink basis-[140px] flex-col gap-[2px]">
                         <Link
                           href={`/dashboard/workflows/${row.strategyId}`}
                           className="truncate font-mono text-[10.5px] text-muted-foreground hover:underline"
@@ -194,11 +199,7 @@ export function SetupMessagesView() {
             )}
           </Card>
         </Appear>
-
-        <p className="rounded-[10px] bg-accent px-[13px] py-[8px] text-[11.5px] leading-[1.55] text-muted-foreground">
-          WhatsApp and SMS messages would need approval before they could send — WhatsApp by Meta, SMS through DLT
-          registration. Neither channel is connected, which is why neither is offered in the builder.
-        </p>
+        </div>
       </PageBody>
 
       <SequenceComposer

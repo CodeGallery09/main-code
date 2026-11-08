@@ -25,6 +25,7 @@ import type { Table } from "@/lib/audiences/table";
 
 import type {
   DomainCheck,
+  MessageTemplate,
   AccountActivity,
   AccountsSnapshot,
   Analytics,
@@ -61,6 +62,7 @@ import type {
   CompliancePatch,
   AudiencePatch,
   SendingRulesPatch,
+  TemplateInput,
   VariableFallbacksPatch,
 } from "@/lib/data/validate";
 import type { WorkflowGraph } from "@/lib/app/workflow";
@@ -258,6 +260,15 @@ export interface Repository {
    */
   accountActivity(ctx: Ctx, windowDays: number): Promise<AccountActivity[]>;
 
+  /* ---------------------------------------------------------- message templates -- */
+
+  /** The workspace's templates, newest edit first. */
+  listTemplates(ctx: Ctx): Promise<MessageTemplate[]>;
+  createTemplate(ctx: Ctx, input: TemplateInput): Promise<MessageTemplate>;
+  /** `null` when the template is not yours. */
+  updateTemplate(ctx: Ctx, id: string, patch: Partial<TemplateInput>): Promise<MessageTemplate | null>;
+  deleteTemplate(ctx: Ctx, id: string): Promise<{ deleted: string } | null>;
+
   /* -------------------------------------------------------- sending domains -- */
 
   /**
@@ -314,6 +325,12 @@ export interface Repository {
 
   /** Newest first, each with its live `audienceCount`. */
   listSegments(ctx: Ctx): Promise<Segment[]>;
+  /**
+   * Deletes an uploaded audience. With `withLeads`, every lead in it is deleted from the workspace
+   * too — from every other audience and strategy, with their conversations, to-dos and plan runs
+   * (the database cascades). Sample leads are never deleted. `null` when it is not yours.
+   */
+  deleteSegment(ctx: Ctx, id: string, withLeads: boolean): Promise<{ deleted: string; leadsDeleted: number } | null>;
   getSegment(ctx: Ctx, id: string): Promise<Segment | null>;
 
   /**

@@ -273,3 +273,28 @@ test("an account's working day is checked, not trusted", async () => {
   assert.equal(validateAccountPatch("email", { connections: 10 }).ok, false);
   assert.equal(validateAccountPatch("email", { rotate: true }).ok, false);
 });
+
+test("a template is checked: a known type, a name, words, and a subject only on email", async () => {
+  const { validateTemplate } = await import("../lib/data/validate.ts");
+  const invite = validateTemplate({ kind: "li_invite", name: " Warm intro ", body: "Hi {first_name}" });
+  assert.equal(invite.ok, true);
+  assert.deepEqual(invite.data, { kind: "li_invite", name: "Warm intro", body: "Hi {first_name}" });
+
+  const email = validateTemplate({ kind: "email", name: "Opener", subject: "Quick question", body: "Hi" });
+  assert.equal(email.ok, true);
+  assert.equal(email.data.subject, "Quick question");
+
+  assert.equal(validateTemplate({ kind: "wa", name: "x", body: "y" }).ok, false, "only steps that can send");
+  assert.equal(validateTemplate({ kind: "li_msg", name: "", body: "y" }).ok, false);
+  assert.equal(validateTemplate({ kind: "li_msg", name: "x", body: "  " }).ok, false);
+  assert.equal(validateTemplate({ kind: "li_msg", name: "x", subject: "No", body: "y" }).ok, false, "a LinkedIn message has no subject");
+  assert.match(validateTemplate({ kind: "li_invite", name: "x", body: "a".repeat(301) }).errors.body, /300/);
+});
+
+test("a template edit checks only what changed, against its stored type", async () => {
+  const { validateTemplate } = await import("../lib/data/validate.ts");
+  assert.deepEqual(validateTemplate({ body: "New words" }, { kind: "li_msg" }).data, { body: "New words" });
+  assert.equal(validateTemplate({ body: "a".repeat(301) }, { kind: "li_invite" }).ok, false);
+  assert.equal(validateTemplate({ kind: "email" }, { kind: "li_msg" }).ok, false, "the type never changes");
+  assert.equal(validateTemplate({}, { kind: "li_msg" }).ok, false);
+});

@@ -53,7 +53,7 @@ import type { ProviderProfile } from "@/lib/channels/adapter";
 import { journeyRows } from "@/lib/engine/journey";
 import { SENDING_ENABLED } from "@/lib/capabilities";
 import { defaultWorkspaceSettings } from "@/lib/app/configuration";
-import type { AccountSettingsPatch, StrategyPatch, AudiencePatch } from "@/lib/data/validate";
+import type { AccountSettingsPatch, StrategyPatch, AudiencePatch, TemplateInput } from "@/lib/data/validate";
 import { findInJourney, mergeAudiences, type InJourneyRow, type AudienceProfile } from "@/lib/audiences/merge";
 import { identityFill, audienceIdentity, splitFileFields } from "@/lib/audiences/profile";
 import { buildProspect } from "@/lib/audiences/prospect";
@@ -63,6 +63,7 @@ import { suggestMapping, type Mapping, type ParsedAudience } from "@/lib/audienc
 import type { Table } from "@/lib/audiences/table";
 import type {
   DomainCheck,
+  MessageTemplate,
   SendingDomain,
   AccountActivity,
   AccountsSnapshot,
@@ -119,6 +120,7 @@ function shared<T>(key: string, init: () => T): T {
 const uploads = shared("uploads", () => new Map<string, { fileName: string; fileSize: number; table: Table; at: number }>());
 const segments = shared<Segment[]>("segments", () => []);
 const segmentMembers = shared("segmentMembers", () => new Map<string, Set<string>>());
+const templates = shared<MessageTemplate[]>("templates", () => []);
 /** What the `Audience` shape has no field for: the kept file columns and the creation time. Seed audiences
  *  have neither, so their profiles say so rather than invent one. */
 const audienceExtra = shared("audienceExtra", () => new Map<string, Record<string, string>>());
@@ -497,7 +499,7 @@ export class MemoryRepository implements Repository {
               nodes: flow.graph.nodes,
               edges: flow.graph.edges,
               stepId: job.stepId,
-              audience: { id: person.id, name: person.name, company: person.company, score: person.score },
+              audience: { id: person.id, name: person.name, company: person.company, score: person.score, title: person.title ?? "" },
               now: Date.now(),
             })
           : { effects: [], next: null, finish: "stopped" as const };
@@ -1079,6 +1081,48 @@ export class MemoryRepository implements Repository {
     const members = segmentMembers.get(segment.id);
     const audienceCount = members ? audienceRows.filter((l) => members.has(l.id)).length : 0;
     return { ...segment, audienceCount };
+  }
+
+  async deleteSegment(_ctx: Ctx, id: string, withLeads: boolean): Promise<{ deleted: string; leadsDeleted: number } | null> {
+    const at = segments.findIndex((s) => s.id === id);
+    if (at < 0) return null;
+    let leadsDeleted = 0;
+    if (withLeads) {
+      for (const leadId of [...(segmentMembers.get(id) ?? [])]) {
+        const lead = audienceRows.find((a) => a.id === leadId);
+        if (lead && !lead.isSample && (await this.deleteAudience(_ctx, leadId))) leadsDeleted += 1;
+      }
+    }
+    segments.splice(at, 1);
+    segmentMembers.delete(id);
+    return { deleted: id, leadsDeleted };
+  }
+
+  /* Templates live as long as the process, like every other write in the demo store. */
+  async listTemplates(_ctx: Ctx): Promise<MessageTemplate[]> {
+    return [...templates].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  async createTemplate(_ctx: Ctx, input: TemplateInput): Promise<MessageTemplate> {
+    const row: MessageTemplate = { id: `tpl_${nextId("template")}`, ...input, updatedAt: new Date().toISOString() };
+    templates.push(row);
+    return { ...row };
+  }
+
+  async updateTemplate(_ctx: Ctx, id: string, patch: Partial<TemplateInput>): Promise<MessageTemplate | null> {
+    const row = templates.find((t) => t.id === id);
+    if (!row) return null;
+    const { kind: _kind, ...rest } = patch;
+    void _kind;
+    Object.assign(row, rest, { updatedAt: new Date().toISOString() });
+    return { ...row };
+  }
+
+  async deleteTemplate(_ctx: Ctx, id: string): Promise<{ deleted: string } | null> {
+    const at = templates.findIndex((t) => t.id === id);
+    if (at < 0) return null;
+    templates.splice(at, 1);
+    return { deleted: id };
   }
 
   async listSegments(_ctx: Ctx): Promise<Segment[]> {

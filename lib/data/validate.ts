@@ -737,3 +737,62 @@ export function validateCompliancePatch(input: unknown): Validation<CompliancePa
   if (Object.keys(out).length === 0) return { ok: false, errors: { _: "Send at least one setting to change." } };
   return { ok: true, data: out };
 }
+
+/* -------------------------------------------------------------- templates -- */
+
+export const TEMPLATE_KINDS = ["li_invite", "li_msg", "email"] as const;
+/** LinkedIn refuses a longer invitation note; the builder caps it the same. */
+export const TEMPLATE_NOTE_MAX = 300;
+
+export type TemplateInput = {
+  kind: (typeof TEMPLATE_KINDS)[number];
+  name: string;
+  subject: string;
+  body: string;
+};
+
+/**
+ * A template to save. `partial` is a PATCH: only what is sent is checked, and the stored kind is
+ * passed in so the length rules still apply to a body changed on its own.
+ */
+export function validateTemplate(
+  input: unknown,
+  partial: { kind: TemplateInput["kind"] } | null = null,
+): Validation<Partial<TemplateInput>> {
+  if (!isObject(input)) return { ok: false, errors: { _: "Expected an object." } };
+  const errors: ValidationErrors = {};
+  const out: Partial<TemplateInput> = {};
+
+  const kind = input.kind ?? partial?.kind;
+  if (!TEMPLATE_KINDS.includes(kind as TemplateInput["kind"])) {
+    errors.kind = "Choose an invitation note, a LinkedIn message or an email.";
+  } else if (!partial) {
+    out.kind = kind as TemplateInput["kind"];
+  } else if (input.kind !== undefined && input.kind !== partial.kind) {
+    errors.kind = "A template's type can't be changed. Make a new one.";
+  }
+
+  if (!partial || input.name !== undefined) {
+    const name = text(input.name);
+    if (!name) errors.name = "Give the template a name.";
+    else if (name.length > 80) errors.name = "Keep the name under 80 characters.";
+    else out.name = name;
+  }
+  if (!partial || input.body !== undefined) {
+    const body = typeof input.body === "string" ? input.body.trim() : "";
+    const max = kind === "li_invite" ? TEMPLATE_NOTE_MAX : 5000;
+    if (!body) errors.body = "Write the message.";
+    else if (body.length > max) errors.body = `Keep it under ${max} characters.`;
+    else out.body = body;
+  }
+  if (input.subject !== undefined || (!partial && kind === "email")) {
+    const subject = text(input.subject);
+    if (kind !== "email" && subject) errors.subject = "Only an email has a subject.";
+    else if (subject.length > 200) errors.subject = "Keep the subject under 200 characters.";
+    else out.subject = kind === "email" ? subject : "";
+  }
+
+  if (Object.keys(errors).length) return { ok: false, errors };
+  if (partial && Object.keys(out).length === 0) return { ok: false, errors: { _: "Send at least one field to change." } };
+  return { ok: true, data: out };
+}

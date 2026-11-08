@@ -33,6 +33,7 @@ import {
   events as eventsTable,
   audiences as audiencesTable,
   memberships,
+  messageTemplates,
   messages as messagesTable,
   segmentAudiences,
   segments as segmentsTable,
@@ -93,7 +94,7 @@ import { buildProspect } from "@/lib/audiences/prospect";
 import type { MappingReport, Segment, UploadPreview } from "@/lib/audiences/segments";
 import { suggestMapping, type Mapping, type ParsedAudience } from "@/lib/audiences/validation";
 import type { Table } from "@/lib/audiences/table";
-import type { AccountSettingsPatch, StrategyPatch, AudiencePatch } from "@/lib/data/validate";
+import type { AccountSettingsPatch, StrategyPatch, AudiencePatch, TemplateInput } from "@/lib/data/validate";
 import type {
   AccountActivity,
   AccountsSnapshot,
@@ -133,6 +134,7 @@ import type {
   JourneyStrategy,
   SendingDomain,
   DomainCheck,
+  MessageTemplate,
 } from "@/lib/data/types";
 
 /* ------------------------------------------------------------- utilities -- */
@@ -1644,6 +1646,7 @@ export class PgRepository implements Repository {
           id: audiencesTable.id,
           name: audiencesTable.name,
           company: audiencesTable.company,
+          title: audiencesTable.title,
           score: audiencesTable.score,
           consent: audiencesTable.consent,
           email: audiencesTable.email,
@@ -1692,7 +1695,7 @@ export class PgRepository implements Repository {
           nodes: job.graph.nodes,
           edges: job.graph.edges,
           stepId: job.step_id,
-          audience: { id: person.id, name: person.name, company: person.company, score: person.score },
+          audience: { id: person.id, name: person.name, company: person.company, score: person.score, title: person.title ?? "" },
           now: Date.now(),
           dayMs: sending ? REAL_DAY_MS : DRY_RUN_DAY_MS,
           // A condition decides on what the providers reported about this lead.
@@ -3198,6 +3201,90 @@ export class PgRepository implements Repository {
       createdBy: row.createdBy ?? "",
       audienceCount,
     };
+  }
+
+  async deleteSegment(ctx: Ctx, id: string, withLeads: boolean): Promise<{ deleted: string; leadsDeleted: number } | null> {
+    return this.db.transaction(async (tx) => {
+      const [segment] = await tx
+        .select({ id: segmentsTable.id })
+        .from(segmentsTable)
+        .where(and(eq(segmentsTable.id, id), this.ws(segmentsTable.workspaceId, ctx)))
+        .limit(1);
+      if (!segment) return null;
+      let leadsDeleted = 0;
+      if (withLeads) {
+        // The leads go first, while the link table still says who they are. Everything hanging
+        // off a lead (memberships, threads, messages, to-dos, plan runs) cascades in the database.
+        const gone = await tx
+          .delete(audiencesTable)
+          .where(
+            and(
+              this.ws(audiencesTable.workspaceId, ctx),
+              eq(audiencesTable.isSample, false),
+              inArray(
+                audiencesTable.id,
+                tx
+                  .select({ id: segmentAudiences.audienceId })
+                  .from(segmentAudiences)
+                  .where(and(eq(segmentAudiences.segmentId, id), this.ws(segmentAudiences.workspaceId, ctx))),
+              ),
+            ),
+          )
+          .returning({ id: audiencesTable.id });
+        leadsDeleted = gone.length;
+      }
+      await tx.delete(segmentsTable).where(and(eq(segmentsTable.id, id), this.ws(segmentsTable.workspaceId, ctx)));
+      return { deleted: id, leadsDeleted };
+    });
+  }
+
+  /* ------------------------------------------------------ message templates -- */
+
+  private toTemplate(row: typeof messageTemplates.$inferSelect): MessageTemplate {
+    return {
+      id: row.id,
+      kind: row.kind as MessageTemplate["kind"],
+      name: row.name,
+      subject: row.subject,
+      body: row.body,
+      updatedAt: iso(row.updatedAt),
+    };
+  }
+
+  async listTemplates(ctx: Ctx): Promise<MessageTemplate[]> {
+    const rows = await this.db
+      .select()
+      .from(messageTemplates)
+      .where(this.ws(messageTemplates.workspaceId, ctx))
+      .orderBy(desc(messageTemplates.updatedAt), asc(messageTemplates.id));
+    return rows.map((row) => this.toTemplate(row));
+  }
+
+  async createTemplate(ctx: Ctx, input: TemplateInput): Promise<MessageTemplate> {
+    const [row] = await this.db
+      .insert(messageTemplates)
+      .values({ id: newId("tpl"), workspaceId: ctx.workspaceId, ...input })
+      .returning();
+    return this.toTemplate(row);
+  }
+
+  async updateTemplate(ctx: Ctx, id: string, patch: Partial<TemplateInput>): Promise<MessageTemplate | null> {
+    const { kind: _kind, ...rest } = patch;
+    void _kind;
+    const [row] = await this.db
+      .update(messageTemplates)
+      .set({ ...rest, updatedAt: new Date() })
+      .where(and(eq(messageTemplates.id, id), this.ws(messageTemplates.workspaceId, ctx)))
+      .returning();
+    return row ? this.toTemplate(row) : null;
+  }
+
+  async deleteTemplate(ctx: Ctx, id: string): Promise<{ deleted: string } | null> {
+    const [row] = await this.db
+      .delete(messageTemplates)
+      .where(and(eq(messageTemplates.id, id), this.ws(messageTemplates.workspaceId, ctx)))
+      .returning({ id: messageTemplates.id });
+    return row ? { deleted: row.id } : null;
   }
 
   async listSegments(ctx: Ctx): Promise<Segment[]> {

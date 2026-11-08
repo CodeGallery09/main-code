@@ -59,6 +59,9 @@ export function AudiencesView() {
   const [editing, setEditing] = useState<Audience | "new" | null>(null);
   const [removing, setRemoving] = useState<Audience | null>(null);
   const [busy, setBusy] = useState(false);
+  /** The uploaded audience being deleted, and whether its leads go with it. */
+  const [droppingList, setDroppingList] = useState<Segment | null>(null);
+  const [withLeads, setWithLeads] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
 
   const segments = useAsync(() => api.segments(), []);
@@ -120,6 +123,19 @@ export function AudiencesView() {
       window.setTimeout(() => setCopied(null), 1500);
     } catch {
       // Clipboard access can be refused; the address is on screen either way.
+    }
+  }
+
+  async function removeList(segment: Segment) {
+    setBusy(true);
+    try {
+      await api.deleteSegment(segment.id, withLeads);
+      setDroppingList(null);
+      if (segmentId === segment.id) select("all");
+      leads.reload();
+      segments.reload();
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -212,6 +228,10 @@ export function AudiencesView() {
                       rows={s.audienceCount}
                       selected={segmentId === s.id}
                       onSelect={() => select(s.id)}
+                      onDelete={() => {
+                        setWithLeads(true);
+                        setDroppingList(s);
+                      }}
                       segment={s}
                     />
                   ))}
@@ -428,9 +448,39 @@ export function AudiencesView() {
       />
 
       <Confirm
+        open={droppingList !== null}
+        title={`Delete ${droppingList?.name ?? ""}?`}
+        body={
+          <span className="flex flex-col gap-3">
+            <label className="flex items-start gap-[9px]">
+              <input
+                type="checkbox"
+                checked={withLeads}
+                onChange={(e) => setWithLeads(e.target.checked)}
+                className="mt-[3px] size-[14px] accent-[var(--primary)]"
+              />
+              <span>
+                Also delete the {fmt(droppingList?.audienceCount ?? 0)}{" "}
+                {droppingList?.audienceCount === 1 ? "lead" : "leads"} in it
+              </span>
+            </label>
+            <span>
+              {withLeads
+                ? "They are deleted from the database: removed from every audience and strategy, with their conversations, to-dos and plan history. This can't be undone."
+                : "Only the list is deleted. Its leads stay in All leads."}
+            </span>
+          </span>
+        }
+        confirmLabel={withLeads ? "Delete the audience and its leads" : "Delete the audience"}
+        busy={busy}
+        onCancel={() => setDroppingList(null)}
+        onConfirm={() => droppingList && void removeList(droppingList)}
+      />
+
+      <Confirm
         open={removing !== null}
         title={`Delete ${removing?.name ?? ""}?`}
-        body="The lead is removed from this workspace, along with their place in any audience and strategy. Their conversations stay in the Inbox."
+        body="The lead is deleted from the database, along with their place in every audience and strategy, their conversations and their to-dos. This can't be undone."
         confirmLabel="Delete the lead"
         busy={busy}
         onCancel={() => setRemoving(null)}
@@ -455,6 +505,7 @@ function AudienceCard({
   rows,
   selected,
   onSelect,
+  onDelete,
   segment,
 }: {
   name: string;
@@ -462,6 +513,7 @@ function AudienceCard({
   rows: number | null;
   selected: boolean;
   onSelect: () => void;
+  onDelete?: () => void;
   segment?: Segment;
 }) {
   return (
@@ -495,6 +547,11 @@ function AudienceCard({
             <Users aria-hidden className="size-[13px] text-muted-foreground" strokeWidth={1.8} />
             {rows === 0 ? "Empty" : `${fmt(rows ?? 0)} ${rows === 1 ? "lead" : "leads"}`}
           </span>
+          {onDelete ? (
+            <Button variant="danger" size="icon-sm" aria-label={`Delete ${name}`} onClick={onDelete}>
+              <Trash2 aria-hidden strokeWidth={1.8} />
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>

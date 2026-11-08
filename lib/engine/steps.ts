@@ -29,7 +29,7 @@ export const REAL_DAY_MS = 86_400_000;
 
 export type EngineNode = { id: string; kind: string; data: Record<string, unknown> };
 export type EngineEdge = { source: string; target: string; port: string };
-export type EngineAudience = { id: string; name: string; company: string; score: number };
+export type EngineAudience = { id: string; name: string; company: string; score: number; title?: string };
 
 /** The behaviours a condition can wait for. */
 export type SignalKey = "accepted" | "replied" | "opened" | "clicked";
@@ -104,13 +104,19 @@ const str = (value: unknown): string => (typeof value === "string" ? value : "")
 const num = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
-/** `{first_name}`, `{last_name}` and `{company}` filled in, so the log shows what would go out. */
+/**
+ * `{first_name}`, `{last_name}`, `{company}` and `{title}` filled in, so the log shows what would
+ * go out. A missing first name reads "there" ("Hi there,") rather than leaving "Hi ,"; the others
+ * read empty. Every variable the builder offers (`MERGE_VARS`) must be filled here, or a lead
+ * receives the braces.
+ */
 export function fillMergeFields(text: string, audience: EngineAudience): string {
   const [first = "", ...rest] = audience.name.trim().split(/\s+/);
   return text
-    .replace(/\{first_name\}/g, first)
+    .replace(/\{first_name\}/g, first || "there")
     .replace(/\{last_name\}/g, rest.join(" "))
-    .replace(/\{company\}/g, audience.company);
+    .replace(/\{company\}/g, audience.company)
+    .replace(/\{title\}/g, audience.title ?? "");
 }
 
 const clip = (text: string, max = 140): string => {

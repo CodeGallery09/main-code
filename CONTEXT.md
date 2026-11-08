@@ -245,7 +245,7 @@ Tables, grouped:
 - **tenancy** `workspaces` `users` `memberships` `sessions`
 - **org-level channel accounts** `channel_accounts` `strategy_accounts` (many to many) `sending_domains` `connect_sessions`
 - **uploads** `uploads` (parked parsed files, swept after 1 h) `segments` `segment_audiences`
-- **domain** `audiences` `strategies` `workflows` `threads` `messages` `tasks`
+- **domain** `audiences` `strategies` `workflows` `threads` `messages` `tasks` `message_templates` (migration `0007`, hand-written like `0006` — see §5)
 - **quota/metrics** `channel_quotas` `daily_rollups` `events`
 - **engine** `workflow_runs` `step_jobs`
 - **cross-channel settings** `workspace_settings` (one row per workspace, three jsonb blobs: Variables/Sending rules/Compliance — see Configuration below)
@@ -385,6 +385,8 @@ directly.
 | `/api/badges` | GET | `{ tasks, inbox, config }`: the rail counts, fetched on every navigation |
 | `/api/settings` | GET, PATCH | the (removed) rules screen: Variables/Sending rules/Compliance (`workspace_settings`); no screen calls it now. PATCH body carries only the section(s) changed (`{ variableFallbacks? \| sendingRules? \| compliance? }`); shape/range checked in `validate.ts`, merged into the stored row by the repository. Always real for the signed-in workspace, but nothing acts on it — the sender holds to the plan's window and the account's caps instead. See Configuration below |
 | `/api/audiences/uploads`, `…/[id]/validate`, `/api/audiences/segments` | POST, GET | parked file → review (per-channel reach, **in-journey warning**, import plan) → saved segment. Segments carry a live `audienceCount`. Max 4 MB (Vercel's body cap) |
+| `/api/audiences/segments/[id]` | DELETE | deletes an uploaded audience; `?leads=1` deletes its (non-sample) leads from the database too, everything hanging off them cascading. `{ deleted, leadsDeleted }` |
+| `/api/templates`, `/api/templates/[id]` | GET POST, PATCH DELETE | message templates (`li_invite` / `li_msg` / `email`). `validateTemplate`; a template's kind never changes; 422 names the field |
 | `/api/audiences/briefings` | POST | reads a few of this workspace's unread LinkedIn profiles (`fillBriefings`). POST only: it makes provider calls and writes, so a link prefetch must never run it. The Audiences screen polls it; the scheduled tick runs the same pass |
 | `/api/threads`, `/api/threads/[id]`, `/api/threads/[id]/messages` | GET, POST | |
 | `/api/analytics` | GET | `?range=`, `?channels=` |
@@ -672,7 +674,11 @@ and `/dashboard/settings` are `permanentRedirect`s here, and the integrations ro
 the real outcome rather than trusting the query string, and clears the parameter so a refresh
 cannot replay a stale result.
 
-**Messages is new, and it is real copy.** `lib/ws/messages.ts` reads every stored workflow's
+**Messages has two halves.** Left, **Templates** (`templates-card.tsx`): invitation notes,
+LinkedIn messages and emails written once, picked in the builder or the sequence composer
+("Use a template…", a copy — never a link). Right, the real copy in every stored workflow.
+
+**Messages is real copy.** `lib/ws/messages.ts` reads every stored workflow's
 channel steps and lists the actual subject/body/note per touch, per strategy (`bodyField()` knows
 `li_invite → note`, `call → notes`, else `body`). Nothing is invented: a strategy with no copy
 written says so. Editing copy in place is open work (§7).
@@ -732,7 +738,7 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 `engineSteps.test.mjs` (the pure step runner, incl. conditions that watch for a lead acting) —
 `emailFormat.test.mjs` (copy → email HTML, threading subjects, quote stripping) ·
 `dnsRecords.test.mjs` (SPF / DKIM / DMARC reading) —
-**318 tests**
+**322 tests**
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).
@@ -762,6 +768,7 @@ namespaces, no parameter properties).
 | Swap the LinkedIn vendor | implement `LinkedInChannelAdapter` (`lib/channels/adapter.ts`) and return it from `getLinkedInAdapter()`. Nothing else — that is what the interface is for. |
 | Handle another provider webhook | a reader in `lib/channels/events.ts` (+ a case in `tests/unipileEvents.test.mjs`), a writer (`inbound.ts`, `email.ts` or `relations.ts`, or a new file beside them), a route under `app/api/webhooks/unipile/` that starts with `guardWebhook`, and the `source` in `webhookConfig.ts` so the registration script picks it up |
 | Add a condition a plan can wait on | an `events.kind` in `LEAD_EVENT` + `SIGNAL_OF_KIND` (`lib/data/accountEvents.ts`), something that writes it (a webhook writer or a pull), its words in `SIGNAL_PHRASE` / `CHECK_LABEL` (`lib/engine/steps.ts`), the `observe()` query in `pg.ts`, `OFFERED_CHECKS` in `lib/app/workflow.ts`, and `CONDITION_HINT` in the builder inspector |
+| Add a template type, or change what a template can hold | `TEMPLATE_KINDS` + `validateTemplate` in `lib/data/validate.ts` (+ `tests/validate.test.mjs`), `TemplateKind` in `types.ts`, `KIND_NAME` in `components/ws/setup/templates-card.tsx`, and the `TemplateBar` on that step in `components/ws/builder/inspector.tsx` |
 | Change how an email is sent or threaded | `sendEmailStep` / `pickMailbox` / `mailboxFor` in `pg.ts`, the body in `lib/channels/emailFormat.ts`, the form fields in `emailFields` (`unipileRequests.ts`, tested) |
 | Add a per-account figure | `AccountActivity` in `lib/data/types.ts` → `accountActivity()` in **both** repository impls → `SeatActivity` in `ChannelTabs.tsx`. Count real `events` rows; never estimate |
 | Move a lead into or out of an uploaded audience | `segmentIds` on `AudienceInput` (`lib/data/validate.ts`) → `setSegments`/`segmentsOf` in `pg.ts` and their equivalents in `memory.ts` → the checkbox list in `components/ws/audiences/lead-form.tsx`. Sending the list replaces the whole membership; leaving the key out leaves it alone |
@@ -994,6 +1001,11 @@ namespaces, no parameter properties).
   `dist/types/**.d.ts` and `dist/esm/resources/*.js`) and is the source the email, relation and
   hosted-auth shapes were taken from. The SDK does not type webhook bodies, so `events.ts` reads
   every plausible spelling.
+- **`drizzle-kit generate` no longer runs non-interactively.** `0006` was hand-written with no
+  snapshot, so generate diffs from `0005`'s snapshot, sees the renames, and stops on a TTY prompt.
+  `0007_message_templates` is hand-written in drizzle's format with a journal entry, and was applied
+  to Neon by hand and recorded in `drizzle.__drizzle_migrations` as `sha256(file)` + the journal's
+  `when` — what the migrator itself writes, so a later `db:migrate` skips it.
 - **The build session also has no public DNS** (`resolveTxt` → `ENOTFOUND` for everything), so the
   domain check reports every domain as "couldn't be found" there. That is the sandbox, not the
   code; on Vercel it resolves. Check `node -e "require('dns').promises.resolveTxt('google.com')"`
