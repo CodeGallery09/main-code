@@ -298,3 +298,12 @@ test("a template edit checks only what changed, against its stored type", async 
   assert.equal(validateTemplate({ kind: "email" }, { kind: "li_msg" }).ok, false, "the type never changes");
   assert.equal(validateTemplate({}, { kind: "li_msg" }).ok, false);
 });
+
+test("an account's business hours take a real time zone, or none (the workspace's)", async () => {
+  const { validateAccountPatch } = await import("../lib/data/validate.ts");
+  const at = (zone) => validateAccountPatch("linkedin", { hours: { days: ["Mon"], from: "09:30", to: "17:30", zone } });
+  assert.equal(at("Asia/Kolkata").ok, true);
+  assert.equal(at("Asia/Kolkata").data.hours.zone, "Asia/Kolkata");
+  assert.equal(at("").ok, true, "empty follows the workspace");
+  assert.equal(at("Mars/Olympus").ok, false);
+});

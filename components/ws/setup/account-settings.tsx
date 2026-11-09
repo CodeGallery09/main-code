@@ -5,9 +5,24 @@ import { api } from "@/lib/api";
 import type { AccountSettingsPatch } from "@/lib/data/validate";
 import type { ChannelAccount } from "@/lib/data/types";
 import { Button } from "@/components/ws/ui/button";
-import { Switch } from "@/components/ws/ui/misc";
+import { NativeSelect, Switch } from "@/components/ws/ui/misc";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** The zones offered for an account's business hours. "" follows the workspace. */
+export const ZONES = [
+  "Asia/Kolkata",
+  "Asia/Dubai",
+  "Asia/Riyadh",
+  "Asia/Singapore",
+  "Europe/London",
+  "Europe/Berlin",
+  "America/New_York",
+  "America/Chicago",
+  "America/Los_Angeles",
+  "Australia/Sydney",
+  "UTC",
+];
 
 /**
  * The dials on one account: its daily ceiling, its working hours and whether a
@@ -16,7 +31,16 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
  * Identity and connection state are facts the provider reports, so they are
  * read-only here and the server refuses them anyway.
  */
-export function AccountSettings({ account, onSaved }: { account: ChannelAccount; onSaved: () => void }) {
+export function AccountSettings({
+  account,
+  workspaceZone,
+  onSaved,
+}: {
+  account: ChannelAccount;
+  /** What "Workspace default" means, so the option can name it. */
+  workspaceZone: string;
+  onSaved: () => void;
+}) {
   const [values, setValues] = useState<AccountSettingsPatch>(() =>
     account.channel === "linkedin"
       ? {
@@ -90,7 +114,7 @@ export function AccountSettings({ account, onSaved }: { account: ChannelAccount;
 
       {values.hours ? (
         <>
-          <span className="label-mono">Working hours</span>
+          <span className="label-mono">Business hours</span>
           <div className="flex flex-wrap gap-[5px]">
             {WEEKDAYS.map((day) => {
               const on = values.hours!.days.includes(day);
@@ -117,6 +141,24 @@ export function AccountSettings({ account, onSaved }: { account: ChannelAccount;
             })}
           </div>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
+            <div className="flex flex-col gap-[5px]">
+              <span className="label-mono">Time zone</span>
+              <NativeSelect
+                id={`${account.id}-zone`}
+                label="Time zone"
+                hideLabel
+                value={values.hours.zone}
+                onChange={(v) => setValues((state) => ({ ...state, hours: { ...state.hours!, zone: v } }))}
+                options={[
+                  { value: "", label: `Workspace (${workspaceZone})` },
+                  ...[...new Set([...ZONES, ...(values.hours.zone ? [values.hours.zone] : [])])].map((z) => ({
+                    value: z,
+                    label: z,
+                  })),
+                ]}
+                selectClassName="w-full"
+              />
+            </div>
             <Clock
               id={`${account.id}-from`}
               label="Starts"
@@ -145,10 +187,6 @@ export function AccountSettings({ account, onSaved }: { account: ChannelAccount;
               label="Ease a new account in over two weeks"
             />
           </div>
-          <p className="text-[11.5px] leading-[1.55] text-muted-foreground">
-            Touches are spread across these hours with an uneven gap rather than sent in a burst, in{" "}
-            {account.settings.hours.zone || "your workspace's time zone"}.
-          </p>
         </>
       ) : null}
 

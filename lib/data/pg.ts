@@ -1995,6 +1995,7 @@ export class PgRepository implements Repository {
     return {
       accounts,
       scheduler: Boolean(process.env.CRON_SECRET?.trim()),
+      workspaceZone: await this.ownerZone(ctx),
       domains: domains.map((d) => ({
         id: d.id,
         host: d.host,

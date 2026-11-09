@@ -385,6 +385,16 @@ export type AccountSettingsPatch = {
   warmup?: boolean;
 };
 
+/** Whether the runtime knows this IANA zone. `Intl` is a global, so this stays import-free. */
+function isTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The weekday names an account's working day is stored with. */
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const clockMinutes = (value: unknown): number | null => {
@@ -426,8 +436,8 @@ function validateHours(input: unknown, errors: ValidationErrors): AccountSetting
     return undefined;
   }
   const zone = typeof input.zone === "string" ? input.zone.trim() : "";
-  if (zone.length > 64) {
-    errors.hours = "That time zone name is too long.";
+  if (zone.length > 64 || (zone && !isTimeZone(zone))) {
+    errors.hours = "That isn't a time zone we know. Pick one from the list.";
     return undefined;
   }
   return { days: days as string[], from: input.from as string, to: input.to as string, zone };

@@ -651,6 +651,7 @@ export class MemoryRepository implements Repository {
       accounts: accounts.map((a) => this.account(a)),
       domains: domains.map((d) => ({ ...d })),
       scheduler: Boolean(process.env.CRON_SECRET?.trim()),
+      workspaceZone: "UTC",
     };
   }
 

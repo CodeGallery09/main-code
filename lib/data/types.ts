@@ -470,6 +470,8 @@ export type AccountsSnapshot = {
    * while somebody has Flightpath open, which the operator has to be told rather than discover.
    */
   scheduler: boolean;
+  /** The workspace owner's IANA zone: what an account with no zone of its own sends in. */
+  workspaceZone: string;
 };
 
 /* ------------------------------------------------- connecting an account -- */

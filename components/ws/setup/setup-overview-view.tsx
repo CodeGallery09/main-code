@@ -123,6 +123,7 @@ export function SetupOverviewView({ linkedInConfigured }: { linkedInConfigured: 
                       <AccountRow
                         key={account.id}
                         account={account}
+                        workspaceZone={snapshot.data?.workspaceZone ?? "UTC"}
                         open={editing === account.id}
                         connecting={connecting === account.id}
                         onToggle={() => setEditing(editing === account.id ? null : account.id)}
@@ -157,6 +158,7 @@ export function SetupOverviewView({ linkedInConfigured }: { linkedInConfigured: 
                       <AccountRow
                         key={account.id}
                         account={account}
+                        workspaceZone={snapshot.data?.workspaceZone ?? "UTC"}
                         open={editing === account.id}
                         connecting={connecting === account.id}
                         onToggle={() => setEditing(editing === account.id ? null : account.id)}
@@ -247,6 +249,7 @@ function GroupHeader({
 
 function AccountRow({
   account,
+  workspaceZone,
   open,
   connecting,
   onToggle,
@@ -255,6 +258,7 @@ function AccountRow({
   onSaved,
 }: {
   account: ChannelAccount;
+  workspaceZone: string;
   open: boolean;
   connecting: boolean;
   onToggle: () => void;
@@ -281,6 +285,7 @@ function AccountRow({
           <span className="break-all text-[11.5px] text-muted-foreground">
             {account.handle} · {account.connection.statusDetail || account.connection.provider}
           </span>
+          <HoursLine hours={account.settings.hours} workspaceZone={workspaceZone} onEdit={onToggle} />
           {account.channel === "linkedin" && account.pace ? <PaceLine pace={account.pace} /> : null}
           {account.channel === "email" && account.pace ? <MailPaceLine pace={account.pace} /> : null}
         </span>
@@ -310,7 +315,7 @@ function AccountRow({
       <AnimatePresence initial={false}>
         {open && (
           <Expand>
-            <AccountSettings account={account} onSaved={onSaved} />
+            <AccountSettings account={account} workspaceZone={workspaceZone} onSaved={onSaved} />
           </Expand>
         )}
       </AnimatePresence>
@@ -337,6 +342,36 @@ function PaceLine({ pace }: { pace: NonNullable<Extract<ChannelAccount, { channe
       </span>
       {pace.warming ? <span>Easing in · day {pace.ageDays + 1} of 14</span> : null}
       {resumes ? <span>{pace.open ? "Day spent · resumes" : "Outside hours · resumes"} {resumes}</span> : null}
+    </span>
+  );
+}
+
+/** "Mon–Fri" for a run of days, else the days listed. */
+function dayRange(days: string[]): string {
+  const week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const idx = days.map((d) => week.indexOf(d)).filter((i) => i >= 0).sort((a, b) => a - b);
+  if (idx.length > 2 && idx.every((v, i) => i === 0 || v === idx[i - 1] + 1)) return `${week[idx[0]]}–${week[idx[idx.length - 1]]}`;
+  return idx.map((i) => week[i]).join(", ");
+}
+
+/** An account's business hours at a glance, with the way to change them one click away. */
+function HoursLine({
+  hours,
+  workspaceZone,
+  onEdit,
+}: {
+  hours: { days: string[]; from: string; to: string; zone: string };
+  workspaceZone: string;
+  onEdit: () => void;
+}) {
+  return (
+    <span className="flex flex-wrap items-center gap-x-[8px] font-mono text-[11px] text-muted-foreground">
+      <span>
+        Hours {dayRange(hours.days)} · {hours.from}–{hours.to} · {hours.zone || workspaceZone}
+      </span>
+      <button type="button" onClick={onEdit} className="font-sans text-[11px] font-medium text-foreground underline">
+        Change
+      </button>
     </span>
   );
 }

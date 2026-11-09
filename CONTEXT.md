@@ -367,7 +367,7 @@ directly.
 | `/api/inbox/sync` | POST | pulls recent LinkedIn chats **and each mailbox's inbox** into the Inbox through the idempotent webhook writers. Returns `{ checked, stored, accounts, mailboxes, configured }`; the Inbox polls it every 30 s and uses `accounts`/`mailboxes` to say whether a reply really goes out |
 | `/api/audiences/[id]/enrich` | GET, POST | GET the briefing stored on a lead (free; no provider call). POST reads their LinkedIn profile now through a healthy account and stores it; 503 when no provider is configured, 422 with the reason when there is no URL, no account or no profile |
 | `/api/workflows` | GET | every workflow in the workspace, newest edit first |
-| `/api/accounts` | GET | the workspace's LinkedIn accounts, mailboxes and sending domains, each with the strategies that use it |
+| `/api/accounts` | GET | the workspace's LinkedIn accounts, mailboxes and sending domains, each with the strategies that use it, plus `workspaceZone` (what an account with no zone of its own sends in) |
 | `/api/accounts/[id]` | PATCH DELETE | PATCH is the dials only (LinkedIn daily caps; a mailbox's daily cap; working hours and the warm-up toggle on both) — identity/state are never accepted. DELETE disconnects at the provider first, then removes the row |
 | `/api/accounts/[id]/strategies` | PUT | `{ strategyIds }` replaces the strategies sending from an account; a foreign strategy id is a 422 |
 | `/api/accounts/activity` | GET | `?days=` — real per-account counts from `events` (inbound messages, status changes). Zero means zero, never an estimate |
@@ -738,7 +738,7 @@ and is import-free at runtime, so `tests/adapt.test.mjs` pins every channel and 
 `engineSteps.test.mjs` (the pure step runner, incl. conditions that watch for a lead acting) —
 `emailFormat.test.mjs` (copy → email HTML, threading subjects, quote stripping) ·
 `dnsRecords.test.mjs` (SPF / DKIM / DMARC reading) —
-**322 tests**
+**323 tests**
 `.mjs` files import `.ts` directly via Node type stripping (needs Node ≥ 22.18), so **any module
 under test must have no `@/` or extensionless imports and only erasable TS** (no enums, no
 namespaces, no parameter properties).
@@ -1006,6 +1006,13 @@ namespaces, no parameter properties).
   `0007_message_templates` is hand-written in drizzle's format with a journal entry, and was applied
   to Neon by hand and recorded in `drizzle.__drizzle_migrations` as `sha256(file)` + the journal's
   `when` — what the migrator itself writes, so a later `db:migrate` skips it.
+- **Chrome flagged a per-deployment `*.vercel.app` URL "Dangerous"** (random subdomain + a sign-in
+  form reads as phishing to Safe Browsing). `middleware.ts` now 308s production page loads on any
+  other `vercel.app` host to `VERCEL_PROJECT_PRODUCTION_URL`; `/api` is excluded so webhooks and the
+  tick keep working wherever they point. A custom domain is the lasting fix.
+- **The scheduler was never on.** `CRON_SECRET` was unset in Vercel until 2026-11-09, so live plans
+  only advanced while a screen was open. It is set now; the 10-minute beat also needs the two GitHub
+  secrets (`FLIGHTPATH_URL`, `FLIGHTPATH_CRON_SECRET`), which only the repository owner can add.
 - **The build session also has no public DNS** (`resolveTxt` → `ENOTFOUND` for everything), so the
   domain check reports every domain as "couldn't be found" there. That is the sandbox, not the
   code; on Vercel it resolves. Check `node -e "require('dns').promises.resolveTxt('google.com')"`
